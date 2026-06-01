@@ -323,6 +323,16 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
 .lpill.on{border-color:currentColor;}
 .lpill .list-dot{width:9px;height:9px;}
 
+.sub-row{display:flex;align-items:center;gap:10px;padding:6px 0;}
+.sub-check{width:20px;height:20px;border-radius:6px;border:2px solid var(--border-2);flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#fff;transition:.12s;}
+.sub-check svg{width:11px;height:11px;color:#fff;opacity:0;}
+.sub-check.done{background:var(--sage);border-color:var(--sage);}
+.sub-check.done svg{opacity:1;}
+.sub-text{flex:1;font-size:14px;word-break:break-word;}
+.sub-row.done .sub-text{text-decoration:line-through;color:var(--text-3);}
+.sub-del{width:24px;height:24px;border-radius:6px;color:var(--text-3);display:flex;align-items:center;justify-content:center;flex-shrink:0;background:none;}
+.sub-del:hover{background:var(--coral-soft);color:var(--coral-dark);}
+.sub-del svg{width:13px;height:13px;}
 .sheet-actions{display:flex;gap:10px;margin-top:22px;}
 .btn{flex:1;padding:14px;border-radius:14px;font-size:15.5px;font-weight:650;transition:.14s;text-align:center;}
 .btn-primary{background:var(--violet);color:#fff;box-shadow:0 6px 18px rgba(91,79,207,.32);}
@@ -620,6 +630,17 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
       </div>
       <div class="field-row" style="flex-direction:column;align-items:stretch;gap:8px;">
         <div style="display:flex;align-items:center;gap:12px;">
+          <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <span class="field-label">Subtasks</span>
+        </div>
+        <div id="qaSubtasks"></div>
+        <div style="display:flex;gap:8px;">
+          <input id="qaSubInput" placeholder="Add a subtask…" autocomplete="off" style="flex:1;border:1px solid var(--border);border-radius:9px;padding:9px 12px;font-size:14px;background:var(--bg);">
+          <button class="qa-chip" id="qaSubAdd" style="padding:9px 16px;">Add</button>
+        </div>
+      </div>
+      <div class="field-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <div style="display:flex;align-items:center;gap:12px;">
           <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg></div>
           <span class="field-label">Notes</span>
         </div>
@@ -848,6 +869,7 @@ function addReminder(data){
     dueDate:data.dueDate||null, hasTime:!!data.hasTime, listId:data.listId||'reminders',
     priority:data.priority||'normal', completed:false, completedAt:null,
     recurrence: data.repeat&&data.repeat!=='none' ? {freq:data.repeat,interval:1} : null,
+    subtasks: data.subtasks||[],
     createdAt:new Date().toISOString(), source:data.source||'manual', snoozedUntil:null, dismissed:false,
   };
   state.reminders.unshift(r); persist(); return r;
@@ -978,6 +1000,7 @@ function cardHTML(r){
   const meta=[];
   if(r.dueDate) meta.push(`<span class="rmeta-item ${dueCls}">${IC.clock}${od?ageText(r.dueDate):fmtDue(r.dueDate,r.hasTime)}</span>`);
   if(r.recurrence) meta.push(`<span class="rmeta-item">${IC.repeat}${recurText(r.recurrence)}</span>`);
+  if(r.subtasks&&r.subtasks.length){ const dn=r.subtasks.filter(s=>s.done).length; const all=dn===r.subtasks.length; meta.push(`<span class="rmeta-item" style="${all?'color:var(--sage);font-weight:600;':''}">${IC.check}${dn}/${r.subtasks.length}</span>`); }
   if(ui.view==='all'||ui.view==='today'||ui.view==='scheduled'||ui.search) meta.push(`<span class="rlist-tag" style="color:${l.color}"><span class="list-dot" style="background:${l.color}"></span>${l.name}</span>`);
   if(r.priority==='high') meta.push(`<span class="pri-flag high">${IC.flame}High</span>`);
   if(r.source&&r.source!=='manual') meta.push(`<span class="auto-badge">${r.source==='finance'?'Finance':r.source==='studytrack'?'Study':'Auto'}</span>`);
@@ -1086,11 +1109,11 @@ function setSearchVisible(v){
 /* ============ QUICK ADD ============ */
 function openAdd(){
   ui.editingId=null;
-  ui.qa={ date:null, time:null, repeat:'none', pri:'normal', list: ui.view==='list-detail'?ui.list:'reminders', dateManual:false, nlSource:null, nlClean:null };
-  $('#qaTitle').value=''; $('#qaNotes').value=''; $('#qaDate').value=''; $('#qaTime').value='';
+  ui.qa={ date:null, time:null, repeat:'none', pri:'normal', list: ui.view==='list-detail'?ui.list:'reminders', dateManual:false, nlSource:null, nlClean:null, subtasks:[] };
+  $('#qaTitle').value=''; $('#qaNotes').value=''; $('#qaDate').value=''; $('#qaTime').value=''; if($('#qaSubInput'))$('#qaSubInput').value='';
   $('#qaSave').textContent='Add Reminder'; $('#qaSave').disabled=true; $('#qaDelete').style.display='none';
   $('#qaDetail').classList.remove('show'); $('#qaMoreToggle').classList.remove('open');
-  syncQAChips(); buildListPills(); setSeg('#qaRepeat','rep','none'); setSeg('#qaPriSeg','pri','normal');
+  syncQAChips(); buildListPills(); renderQASubtasks(); setSeg('#qaRepeat','rep','none'); setSeg('#qaPriSeg','pri','normal');
   showOverlay('#addOverlay'); setTimeout(()=>$('#qaTitle').focus(),250);
 }
 function openEdit(id){
@@ -1099,13 +1122,14 @@ function openEdit(id){
   ui.qa={
     date: r.dueDate?r.dueDate.slice(0,10):null,
     time: r.dueDate&&r.hasTime?new Date(r.dueDate).toTimeString().slice(0,5):null,
-    repeat: r.recurrence?r.recurrence.freq:'none', pri:r.priority, list:r.listId
+    repeat: r.recurrence?r.recurrence.freq:'none', pri:r.priority, list:r.listId,
+    subtasks:(r.subtasks||[]).map(s=>({...s})), dateManual:true, nlSource:null, nlClean:null
   };
   $('#qaTitle').value=r.title; $('#qaNotes').value=r.notes||'';
   $('#qaDate').value=ui.qa.date||''; $('#qaTime').value=ui.qa.time||'';
   $('#qaSave').textContent='Save Changes'; $('#qaSave').disabled=false; $('#qaDelete').style.display='';
   $('#qaDetail').classList.add('show'); $('#qaMoreToggle').classList.add('open');
-  syncQAChips(); buildListPills(); setSeg('#qaRepeat','rep',ui.qa.repeat); setSeg('#qaPriSeg','pri',ui.qa.pri);
+  syncQAChips(); buildListPills(); renderQASubtasks(); setSeg('#qaRepeat','rep',ui.qa.repeat); setSeg('#qaPriSeg','pri',ui.qa.pri);
   showOverlay('#addOverlay'); setTimeout(()=>$('#qaTitle').focus(),250);
 }
 function syncQAChips(){
@@ -1124,6 +1148,25 @@ function buildListPills(){
   ).join('');
   $$('#qaListPills .lpill').forEach(b=>b.onclick=()=>{ ui.qa.list=b.dataset.list; buildListPills(); syncQAChips(); });
 }
+function renderQASubtasks(){
+  const wrap=$('#qaSubtasks'); if(!wrap) return;
+  const subs=ui.qa.subtasks||[];
+  wrap.innerHTML = subs.map(s=>`<div class="sub-row ${s.done?'done':''}" data-id="${s.id}">
+    <button class="sub-check ${s.done?'done':''}" data-sact="toggle">${IC.check}</button>
+    <span class="sub-text">${esc(s.title)}</span>
+    <button class="sub-del" data-sact="del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg></button>
+  </div>`).join('');
+  wrap.querySelectorAll('.sub-row').forEach(row=>{
+    const id=row.dataset.id;
+    row.querySelector('[data-sact=toggle]').onclick=()=>{ const s=ui.qa.subtasks.find(x=>x.id===id); s.done=!s.done; renderQASubtasks(); };
+    row.querySelector('[data-sact=del]').onclick=()=>{ ui.qa.subtasks=ui.qa.subtasks.filter(x=>x.id!==id); renderQASubtasks(); };
+  });
+}
+function addQASub(){
+  const inp=$('#qaSubInput'), v=inp.value.trim(); if(!v) return;
+  ui.qa.subtasks.push({id:uuid(), title:v, done:false});
+  inp.value=''; renderQASubtasks(); inp.focus();
+}
 function setSeg(sel,attr,val){
   $$(`${sel} button`).forEach(b=>b.classList.toggle('on', b.dataset[attr]===val));
 }
@@ -1135,11 +1178,15 @@ function saveQA(){
     const t=ui.qa.time||'09:00'; hasTime=!!ui.qa.time;
     dueDate=new Date(ui.qa.date+'T'+t).toISOString();
   }
-  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat };
+  const existing = ui.editingId ? state.reminders.find(x=>x.id===ui.editingId) : null;
+  const recurrence = ui.qa.repeat!=='none'
+    ? { freq:ui.qa.repeat, interval:(existing&&existing.recurrence&&existing.recurrence.freq===ui.qa.repeat?existing.recurrence.interval:1) }
+    : null;
+  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat, subtasks:ui.qa.subtasks };
   if(ui.editingId){
     updateReminder(ui.editingId,{
-      title:payload.title, notes:payload.notes, dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri,
-      recurrence: ui.qa.repeat!=='none'?{freq:ui.qa.repeat,interval:1}:null
+      title, notes:payload.notes, dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri,
+      recurrence, subtasks:ui.qa.subtasks
     });
     showToast('Saved');
   } else { addReminder(payload); showToast('Added'); }
@@ -1465,6 +1512,8 @@ function bindGlobal(){
   $('#qaTitle').onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); if($('#qaTitle').value.trim()) saveQA(); } };
 
   $('#qaMoreToggle').onclick=()=>{ $('#qaDetail').classList.toggle('show'); $('#qaMoreToggle').classList.toggle('open'); };
+  $('#qaSubAdd').onclick=addQASub;
+  $('#qaSubInput').onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); addQASub(); } };
 
   // chips
   $('#chipDate').onclick=()=>{ $('#qaDetail').classList.add('show'); $('#qaMoreToggle').classList.add('open'); $('#qaDate').showPicker?.(); $('#qaDate').focus(); };
