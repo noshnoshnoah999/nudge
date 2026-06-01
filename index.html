@@ -127,6 +127,25 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
 }
 .icon-btn:hover{color:var(--violet);border-color:var(--violet-soft);transform:translateY(-1px);}
 .icon-btn svg{width:20px;height:20px;}
+.icon-btn.active{background:var(--violet);color:#fff;border-color:transparent;}
+/* board / kanban */
+.board{display:flex;gap:14px;overflow-x:auto;padding-bottom:14px;align-items:flex-start;-webkit-overflow-scrolling:touch;}
+.board-col{flex:0 0 262px;max-width:262px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--r-md);padding:10px;box-shadow:var(--shadow-sm);}
+.board-col-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;padding:5px 6px 11px;letter-spacing:-.01em;}
+.board-col-count{margin-left:auto;font-size:12px;font-weight:600;color:var(--text-3);background:var(--bg);padding:0 8px;border-radius:20px;}
+.board-col-body{display:flex;flex-direction:column;gap:8px;min-height:50px;border-radius:10px;padding:2px;transition:background .12s;}
+.board-col-body.drop{background:var(--violet-soft);outline:2px dashed var(--violet);}
+.board-card{display:flex;gap:9px;align-items:flex-start;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:10px 11px;cursor:grab;box-shadow:var(--shadow-sm);transition:box-shadow .12s;}
+.board-card:hover{box-shadow:var(--shadow-md);}
+.board-card:active{cursor:grabbing;}
+.board-card.overdue{border-left:3px solid var(--coral);background:var(--coral-softer);}
+.board-card.dragging{opacity:.4;}
+.board-card .check{width:20px;height:20px;margin-top:1px;}
+.board-card-body{flex:1;min-width:0;}
+.board-card-title{font-size:13.5px;font-weight:500;line-height:1.38;word-break:break-word;}
+.board-card-due{font-size:11.5px;color:var(--text-3);margin-top:3px;}
+.board-card-due.od{color:var(--coral);font-weight:600;}
+.board-empty{text-align:center;color:var(--text-3);font-size:12px;padding:14px 6px;border:1.5px dashed var(--border);border-radius:9px;}
 
 /* Search */
 .search-wrap{position:relative;margin-bottom:22px;}
@@ -311,6 +330,8 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
   border:1px solid var(--border);border-radius:9px;padding:7px 11px;font-size:14px;background:var(--bg);
 }
 .field-row input:focus{outline:none;border-color:var(--violet);}
+.qa-select{border:1px solid var(--border);border-radius:9px;padding:7px 11px;font-size:14px;background:var(--bg);color:var(--text);font-family:inherit;cursor:pointer;}
+.qa-select:focus{outline:none;border-color:var(--violet);}
 #qaNotes{
   width:100%;border:1px solid var(--border);border-radius:11px;padding:11px 13px;
   font-size:14.5px;resize:vertical;min-height:60px;background:var(--bg);margin-top:2px;
@@ -545,6 +566,9 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
           <button class="icon-btn hidden" id="smartEditBtn" title="Edit smart list">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <button class="icon-btn" id="boardToggle" title="Board view (B)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="14" rx="1.5"/></svg>
+          </button>
           <button class="icon-btn" id="searchToggle" title="Search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
           </button>
@@ -623,6 +647,18 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
             <button data-rep="yearly">Yearly</button>
           </div>
         </div>
+      </div>
+      <div class="field-row">
+        <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <span class="field-label">Remind</span>
+        <div class="field-control"><select id="qaRemindBefore" class="qa-select">
+          <option value="">At due time</option>
+          <option value="10">10 min before</option>
+          <option value="60">1 hour before</option>
+          <option value="1440">1 day before</option>
+          <option value="4320">3 days before</option>
+          <option value="10080">1 week before</option>
+        </select></div>
       </div>
       <div class="field-row">
         <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22V4M4 4h12l-2 4 2 4H4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -751,7 +787,7 @@ let state = {
   settings: { notifs:false, escalate:true, sundayDigest:true, firstRun:true },
 };
 let ui = {
-  view:'all', list:'all', search:'',
+  view:'all', list:'all', search:'', board:false, tag:null, smartId:null,
   editingId:null, editingListId:null,
   qa:{ date:null, time:null, repeat:'none', pri:'normal', list:'reminders' },
   newListColor:'#5B4FCF',
@@ -897,6 +933,13 @@ function recurText(rec){
   const unit={daily:'day',weekly:'week',monthly:'month',yearly:'year'}[f]||f;
   return `every ${iv} ${unit}s`;
 }
+function remindBeforeText(m){
+  if(m==null) return '';
+  if(m<60) return m+' min before';
+  if(m<1440) return (m/60)+' hr before';
+  if(m<10080){ const d=m/1440; return d+' day'+(d>1?'s':'')+' before'; }
+  const w=m/10080; return w+' week'+(w>1?'s':'')+' before';
+}
 
 /* ---------- CRUD ---------- */
 function addReminder(data){
@@ -906,6 +949,7 @@ function addReminder(data){
     priority:data.priority||'normal', completed:false, completedAt:null,
     recurrence: data.repeat&&data.repeat!=='none' ? {freq:data.repeat,interval:1} : null,
     subtasks: data.subtasks||[],
+    remindBefore: data.remindBefore??null,
     createdAt:new Date().toISOString(), source:data.source||'manual', snoozedUntil:null, dismissed:false,
   };
   state.reminders.unshift(r); persist(); return r;
@@ -1001,22 +1045,25 @@ function render(){
   $('#viewTitle').innerHTML = (dot?`<span class="vt-dot" style="background:${dot}"></span>`:'') + title;
   $('#viewSub').textContent = sub;
 
+  const canBoard = ['all','today','scheduled'].includes(ui.view);
+  if($('#boardToggle')){ $('#boardToggle').classList.toggle('hidden', !canBoard); $('#boardToggle').classList.toggle('active', ui.board && canBoard); }
+  if(ui.board && canBoard){
+    let bhtml=''; const oc=allOverdue().length;
+    if(oc>0 && !ui.search) bhtml+=triageBannerHTML(oc);
+    bhtml+=renderBoard();
+    c.innerHTML=`<div class="view">${bhtml}</div>`;
+    bindBoard();
+    const tb=$('#triageBanner'); if(tb) tb.onclick=startTriage;
+    return;
+  }
+
   const rs = visibleReminders();
   const g = groupReminders(rs);
   let html='';
 
   // triage banner (only on all/today views, when overdue exist, not searching)
   const overdueCount = allOverdue().length;
-  if(overdueCount>0 && !ui.search && (ui.view==='all'||ui.view==='today')){
-    html += `<div class="triage-banner" id="triageBanner">
-      <div class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="tb-text">
-        <div class="tb-title">${overdueCount} overdue ${overdueCount===1?'reminder':'reminders'}</div>
-        <div class="tb-sub">Clear the backlog in a quick guided sweep</div>
-      </div>
-      <div class="tb-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-    </div>`;
-  }
+  if(overdueCount>0 && !ui.search && (ui.view==='all'||ui.view==='today')) html += triageBannerHTML(overdueCount);
 
   if(rs.length===0){
     html += ui.search ? emptyState('🔍','No matches','Nothing matches "'+ui.search+'". Try another search.')
@@ -1043,6 +1090,48 @@ function section(key,label,items,overdue){
     ${items.map(cardHTML).join('')}
   </div>`;
 }
+function triageBannerHTML(count){
+  return `<div class="triage-banner" id="triageBanner">
+    <div class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="tb-text"><div class="tb-title">${count} overdue ${count===1?'reminder':'reminders'}</div><div class="tb-sub">Clear the backlog in a quick guided sweep</div></div>
+    <div class="tb-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  </div>`;
+}
+function renderBoard(){
+  const rs=visibleReminders();
+  const cols=state.lists.map(l=>({list:l, items:rs.filter(r=>r.listId===l.id).sort((a,b)=>{ if(!a.dueDate)return 1; if(!b.dueDate)return -1; return new Date(a.dueDate)-new Date(b.dueDate); })}));
+  return `<div class="board">${cols.map(col=>`
+    <div class="board-col">
+      <div class="board-col-head"><span class="list-dot" style="background:${col.list.color}"></span>${esc(col.list.name)}<span class="board-col-count">${col.items.length}</span></div>
+      <div class="board-col-body" data-list="${col.list.id}">
+        ${col.items.map(boardCard).join('')||'<div class="board-empty">Drop here</div>'}
+      </div>
+    </div>`).join('')}</div>`;
+}
+function boardCard(r){
+  const od=isOverdue(r);
+  return `<div class="board-card ${od?'overdue':''} p-${r.priority}" draggable="true" data-id="${r.id}">
+    <button class="check" data-act="complete">${IC.check}</button>
+    <div class="board-card-body" data-act="edit">
+      <div class="board-card-title">${esc(displayTitle(r))}</div>
+      ${r.dueDate?`<div class="board-card-due ${od?'od':''}">${od?ageText(r.dueDate):fmtDue(r.dueDate,r.hasTime)}</div>`:''}
+    </div>
+  </div>`;
+}
+function bindBoard(){
+  $$('.board-card').forEach(card=>{
+    const id=card.dataset.id;
+    card.querySelector('[data-act=complete]').onclick=(e)=>{ e.stopPropagation(); card.style.opacity='.4'; completeReminder(id); showToast('Completed','Undo',()=>{completeReminder(id);render();}); setTimeout(render,150); };
+    card.querySelector('[data-act=edit]').onclick=(e)=>{ e.stopPropagation(); openEdit(id); };
+    card.ondragstart=(e)=>{ e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed='move'; card.classList.add('dragging'); };
+    card.ondragend=()=>card.classList.remove('dragging');
+  });
+  $$('.board-col-body').forEach(body=>{
+    body.ondragover=(e)=>{ e.preventDefault(); body.classList.add('drop'); };
+    body.ondragleave=()=>body.classList.remove('drop');
+    body.ondrop=(e)=>{ e.preventDefault(); body.classList.remove('drop'); const id=e.dataTransfer.getData('text/plain'); if(id){ updateReminder(id,{listId:body.dataset.list}); render(); showToast('Moved'); } };
+  });
+}
 
 function cardHTML(r){
   const l=listById(r.listId);
@@ -1052,6 +1141,7 @@ function cardHTML(r){
   if(r.dueDate) meta.push(`<span class="rmeta-item ${dueCls}">${IC.clock}${od?ageText(r.dueDate):fmtDue(r.dueDate,r.hasTime)}</span>`);
   if(r.recurrence) meta.push(`<span class="rmeta-item">${IC.repeat}${recurText(r.recurrence)}</span>`);
   if(r.subtasks&&r.subtasks.length){ const dn=r.subtasks.filter(s=>s.done).length; const all=dn===r.subtasks.length; meta.push(`<span class="rmeta-item" style="${all?'color:var(--sage);font-weight:600;':''}">${IC.check}${dn}/${r.subtasks.length}</span>`); }
+  if(r.remindBefore!=null && r.dueDate) meta.push(`<span class="rmeta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke-linecap="round" stroke-linejoin="round"/></svg>${remindBeforeText(r.remindBefore)}</span>`);
   getTags(r).forEach(tg=>meta.push(`<button class="tag-chip" data-tag="${esc(tg)}">#${esc(tg)}</button>`));
   if(ui.view==='all'||ui.view==='today'||ui.view==='scheduled'||ui.search) meta.push(`<span class="rlist-tag" style="color:${l.color}"><span class="list-dot" style="background:${l.color}"></span>${l.name}</span>`);
   if(r.priority==='high') meta.push(`<span class="pri-flag high">${IC.flame}High</span>`);
@@ -1179,7 +1269,7 @@ function setSearchVisible(v){
 function openAdd(){
   ui.editingId=null;
   ui.qa={ date:null, time:null, repeat:'none', pri:'normal', list: ui.view==='list-detail'?ui.list:'reminders', dateManual:false, nlSource:null, nlClean:null, subtasks:[] };
-  $('#qaTitle').value=''; $('#qaNotes').value=''; $('#qaDate').value=''; $('#qaTime').value=''; if($('#qaSubInput'))$('#qaSubInput').value='';
+  $('#qaTitle').value=''; $('#qaNotes').value=''; $('#qaDate').value=''; $('#qaTime').value=''; if($('#qaSubInput'))$('#qaSubInput').value=''; if($('#qaRemindBefore'))$('#qaRemindBefore').value='';
   $('#qaSave').textContent='Add Reminder'; $('#qaSave').disabled=true; $('#qaDelete').style.display='none';
   $('#qaDetail').classList.remove('show'); $('#qaMoreToggle').classList.remove('open');
   syncQAChips(); buildListPills(); renderQASubtasks(); setSeg('#qaRepeat','rep','none'); setSeg('#qaPriSeg','pri','normal');
@@ -1196,6 +1286,7 @@ function openEdit(id){
   };
   $('#qaTitle').value=r.title; $('#qaNotes').value=r.notes||'';
   $('#qaDate').value=ui.qa.date||''; $('#qaTime').value=ui.qa.time||'';
+  if($('#qaRemindBefore'))$('#qaRemindBefore').value=r.remindBefore!=null?String(r.remindBefore):'';
   $('#qaSave').textContent='Save Changes'; $('#qaSave').disabled=false; $('#qaDelete').style.display='';
   $('#qaDetail').classList.add('show'); $('#qaMoreToggle').classList.add('open');
   syncQAChips(); buildListPills(); renderQASubtasks(); setSeg('#qaRepeat','rep',ui.qa.repeat); setSeg('#qaPriSeg','pri',ui.qa.pri);
@@ -1251,11 +1342,12 @@ function saveQA(){
   const recurrence = ui.qa.repeat!=='none'
     ? { freq:ui.qa.repeat, interval:(existing&&existing.recurrence&&existing.recurrence.freq===ui.qa.repeat?existing.recurrence.interval:1) }
     : null;
-  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat, subtasks:ui.qa.subtasks };
+  const remindBefore = $('#qaRemindBefore') && $('#qaRemindBefore').value ? +$('#qaRemindBefore').value : null;
+  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat, subtasks:ui.qa.subtasks, remindBefore };
   if(ui.editingId){
     updateReminder(ui.editingId,{
       title, notes:payload.notes, dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri,
-      recurrence, subtasks:ui.qa.subtasks
+      recurrence, subtasks:ui.qa.subtasks, remindBefore
     });
     showToast('Saved');
   } else { addReminder(payload); showToast('Added'); }
@@ -1662,6 +1754,7 @@ function bindGlobal(){
   $$('#bottomnav .bn-item').forEach(b=>b.onclick=()=>navTo(b.dataset.view, b.dataset.list||undefined));
 
   // search
+  $('#boardToggle').onclick=()=>{ ui.board=!ui.board; state.settings.boardView=ui.board; persist(); render(); };
   $('#searchToggle').onclick=()=>{ const hidden=$('#searchWrap').classList.contains('hidden'); setSearchVisible(hidden); };
   $('#searchInput').oninput=()=>{ ui.search=$('#searchInput').value.trim(); $('#searchClear').style.display=ui.search?'flex':'none'; render(); };
   $('#searchClear').onclick=()=>{ ui.search=''; $('#searchInput').value=''; $('#searchClear').style.display='none'; $('#searchInput').focus(); render(); };
@@ -1676,6 +1769,7 @@ function bindGlobal(){
     else if(e.key==='/'){ e.preventDefault(); setSearchVisible(true); }
     else if(e.key==='Escape'){ $$('.overlay.show').forEach(o=>hideOverlay('#'+o.id)); if(ui.triage.active && !$('.overlay.show')) {} }
     else if(e.key==='t'||e.key==='T'){ if(allOverdue().length) startTriage(); }
+    else if(e.key==='b'||e.key==='B'){ if(['all','today','scheduled'].includes(ui.view)){ ui.board=!ui.board; state.settings.boardView=ui.board; persist(); render(); } }
   });
 }
 
@@ -1704,6 +1798,7 @@ async function init(){
   if(CLOUD){ await cloudPull(); }
   else setSync('local');
   if(state.settings.firstRun && state.reminders.length===0) seedSample();
+  ui.board = !!state.settings.boardView;
   bindGlobal();
   render();
   if('Notification' in window && state.settings.notifs && Notification.permission==='granted') setTimeout(checkNudges, 1500);
