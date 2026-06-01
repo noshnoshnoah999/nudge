@@ -205,6 +205,8 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
 .pri-flag.high{background:var(--coral-soft);color:var(--coral-dark);}
 .pri-flag.low{background:var(--bg);color:var(--text-3);}
 .auto-badge{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--violet-soft);color:var(--violet);text-transform:uppercase;letter-spacing:.03em;}
+.tag-chip{display:inline-flex;align-items:center;font-size:12px;font-weight:650;color:var(--violet);background:var(--violet-soft);padding:1px 8px;border-radius:6px;transition:.12s;}
+.tag-chip:hover{background:var(--violet);color:#fff;}
 .rcard-actions{display:flex;gap:2px;align-items:center;opacity:0;transition:.14s;margin-left:4px;}
 .rcard:hover .rcard-actions{opacity:1;}
 .rmini-btn{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-3);transition:.12s;}
@@ -519,6 +521,13 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
       New List
     </button>
 
+    <div class="nav-section-label">Smart Lists</div>
+    <div id="sidebar-smart"></div>
+    <button class="nav-item add-list-btn" id="addSmartBtn">
+      <span class="ni-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      New Smart List
+    </button>
+
     <div class="sidebar-spacer"></div>
     <div class="sync-pill local" id="syncPill"><span class="sync-dot"></span><span id="syncLabel">Local only</span></div>
     <button class="nav-item" data-view="settings">
@@ -533,6 +542,9 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
       <div class="main-inner">
         <div class="topbar">
           <h1 class="view-title" id="viewTitle">All Reminders</h1>
+          <button class="icon-btn hidden" id="smartEditBtn" title="Edit smart list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <button class="icon-btn" id="searchToggle" title="Search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
           </button>
@@ -670,6 +682,26 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
   </div>
 </div>
 
+<!-- SMART LIST BUILDER -->
+<div class="overlay" id="smartOverlay">
+  <div class="sheet" id="smartSheet" style="max-width:460px;">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="smartSheetTitle">New Smart List</div>
+    <input id="smartName" placeholder="Smart list name" autocomplete="off" style="width:100%;font-size:17px;font-weight:550;padding:12px 2px;border:none;border-bottom:1px solid var(--border);margin-bottom:16px;">
+    <div class="field-label" style="width:auto;margin-bottom:6px;color:var(--text-2);font-weight:600;">Show reminders matching</div>
+    <div class="field-row"><span class="field-label" style="width:auto;flex:1;">Tags <span style="color:var(--text-3);font-weight:400;">(comma-separated)</span></span><div class="field-control"><input id="smartTags" placeholder="money, health" autocomplete="off" style="border:1px solid var(--border);border-radius:9px;padding:7px 11px;font-size:14px;background:var(--bg);width:150px;"></div></div>
+    <div class="field-row"><span class="field-label" style="width:auto;flex:1;">High priority only</span><div class="field-control"><button class="toggle" id="smartPri"></button></div></div>
+    <div class="field-row"><span class="field-label" style="width:auto;flex:1;">Overdue only</span><div class="field-control"><button class="toggle" id="smartOverdue"></button></div></div>
+    <div class="field-row"><span class="field-label" style="width:auto;flex:1;">No due date only</span><div class="field-control"><button class="toggle" id="smartNoDate"></button></div></div>
+    <div class="field-label" style="width:auto;margin:14px 0 10px;color:var(--text-2);font-weight:600;">Colour</div>
+    <div class="color-grid" id="smartColorGrid"></div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" id="deleteSmartBtn" style="display:none;">Delete</button>
+      <button class="btn btn-primary" id="saveSmartBtn" disabled>Create Smart List</button>
+    </div>
+  </div>
+</div>
+
 <!-- TRIAGE FULLSCREEN -->
 <div id="triage">
   <div class="triage-top">
@@ -715,6 +747,7 @@ const DEFAULT_LISTS = [
 let state = {
   reminders: [],
   lists: [],
+  smartLists: [],
   settings: { notifs:false, escalate:true, sundayDigest:true, firstRun:true },
 };
 let ui = {
@@ -792,6 +825,9 @@ function parseNaturalDate(text){
 function isOverdue(r){ return r.dueDate && !r.completed && new Date(r.dueDate) < new Date() && !isSnoozed(r); }
 function isSnoozed(r){ return r.snoozedUntil && new Date(r.snoozedUntil) > new Date(); }
 function listById(id){ return state.lists.find(l=>l.id===id) || DEFAULT_LISTS[0]; }
+function getTags(r){ return (String(r.title||'').match(/#[\p{L}0-9_-]+/gu)||[]).map(t=>t.slice(1).toLowerCase()); }
+function displayTitle(r){ const s=String(r.title||'').replace(/#[\p{L}0-9_-]+/gu,'').replace(/\s{2,}/g,' ').trim(); return s||String(r.title||''); }
+function allTags(){ const s=new Set(); state.reminders.forEach(r=>{ if(!r.completed) getTags(r).forEach(t=>s.add(t)); }); return [...s].sort(); }
 
 /* ---------- persistence (localStorage-first, Supabase-ready) ---------- */
 const LS_KEY = 'nudge.data.v1';
@@ -800,12 +836,12 @@ let saveTimer=null, syncTimer=null;
 function loadLocal(){
   try{
     const raw = localStorage.getItem(LS_KEY);
-    if(raw){ const d=JSON.parse(raw); state.reminders=d.reminders||[]; state.lists=d.lists||[]; state.settings={...state.settings,...(d.settings||{})}; }
+    if(raw){ const d=JSON.parse(raw); state.reminders=d.reminders||[]; state.lists=d.lists||[]; state.smartLists=d.smartLists||[]; state.settings={...state.settings,...(d.settings||{})}; }
   }catch(e){ console.warn('load failed',e); }
   if(!state.lists.length) state.lists = DEFAULT_LISTS.map(l=>({...l}));
 }
 function persist(){
-  localStorage.setItem(LS_KEY, JSON.stringify({reminders:state.reminders, lists:state.lists, settings:state.settings}));
+  localStorage.setItem(LS_KEY, JSON.stringify({reminders:state.reminders, lists:state.lists, smartLists:state.smartLists, settings:state.settings}));
   if(CLOUD){ setSync('syncing'); clearTimeout(syncTimer); syncTimer=setTimeout(cloudPush, 800); }
 }
 async function cloudPush(){
@@ -813,7 +849,7 @@ async function cloudPush(){
     const res = await fetch(`${SUPABASE.url}/rest/v1/nudge_data?user_key=eq.${SUPABASE.userKey}`,{
       method:'POST',
       headers:{ apikey:SUPABASE.anon, Authorization:`Bearer ${SUPABASE.anon}`, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates' },
-      body: JSON.stringify({ user_key:SUPABASE.userKey, data:{reminders:state.reminders, lists:state.lists, settings:state.settings}, updated_at:new Date().toISOString() })
+      body: JSON.stringify({ user_key:SUPABASE.userKey, data:{reminders:state.reminders, lists:state.lists, smartLists:state.smartLists, settings:state.settings}, updated_at:new Date().toISOString() })
     });
     setSync(res.ok ? 'synced' : 'local');
   }catch(e){ setSync('local'); }
@@ -827,7 +863,7 @@ async function cloudPull(){
     const rows = await res.json();
     if(rows && rows[0] && rows[0].data){
       const d = rows[0].data;
-      state.reminders=d.reminders||state.reminders; state.lists=d.lists||state.lists; state.settings={...state.settings,...(d.settings||{})};
+      state.reminders=d.reminders||state.reminders; state.lists=d.lists||state.lists; state.smartLists=d.smartLists||state.smartLists; state.settings={...state.settings,...(d.settings||{})};
     }
     setSync('synced');   // connection succeeded — synced even if the remote row is empty
   }catch(e){ console.warn('cloud pull failed', e); setSync('local'); }
@@ -900,6 +936,8 @@ function visibleReminders(){
   let rs = state.reminders.filter(r=>!r.completed);
   if(ui.search){ const q=ui.search.toLowerCase(); rs=rs.filter(r=>r.title.toLowerCase().includes(q)||(r.notes||'').toLowerCase().includes(q)); }
   if(ui.view==='list-detail') rs=rs.filter(r=>r.listId===ui.list);
+  if(ui.view==='tag') rs=rs.filter(r=>getTags(r).includes(ui.tag));
+  if(ui.view==='smart'){ const sl=(state.smartLists||[]).find(s=>s.id===ui.smartId); if(sl) rs=rs.filter(r=>matchSmart(r,sl.rules)); }
   if(ui.view==='today'){ const t=todayStart(); rs=rs.filter(r=>r.dueDate && startOfDay(r.dueDate)<=t); }
   if(ui.view==='scheduled') rs=rs.filter(r=>r.dueDate);
   return rs;
@@ -921,6 +959,16 @@ function groupReminders(rs){
   return g;
 }
 function allOverdue(){ return state.reminders.filter(isOverdue).sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate)); }
+function matchSmart(r, rules){
+  if(!rules) return false;
+  if(rules.tags && rules.tags.length){ const tg=getTags(r); if(!rules.tags.every(t=>tg.includes(t))) return false; }
+  if(rules.priority && r.priority!==rules.priority) return false;
+  if(rules.overdue && !isOverdue(r)) return false;
+  if(rules.noDate && r.dueDate) return false;
+  if(rules.listId && r.listId!==rules.listId) return false;
+  return true;
+}
+function smartCount(sl){ return state.reminders.filter(r=>!r.completed && matchSmart(r,sl.rules)).length; }
 
 /* ---------- ICONS ---------- */
 const IC = {
@@ -937,6 +985,7 @@ const IC = {
 function render(){
   renderSidebar();
   renderCounts();
+  if($('#smartEditBtn')) $('#smartEditBtn').classList.toggle('hidden', ui.view!=='smart');
   const c=$('#content');
   if(ui.view==='settings'){ c.innerHTML=renderSettings(); bindSettings(); $('#viewTitle').textContent='Settings'; $('#viewSub').textContent=''; setSearchVisible(false); return; }
   if(ui.view==='lists'){ c.innerHTML=renderListsGrid(); bindListsGrid(); $('#viewTitle').textContent='Lists'; $('#viewSub').textContent=`${state.lists.length} lists`; setSearchVisible(false); return; }
@@ -946,6 +995,8 @@ function render(){
   if(ui.view==='today'){ title='Today'; sub=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}); }
   else if(ui.view==='scheduled'){ title='Scheduled'; sub='Everything with a due date'; }
   else if(ui.view==='list-detail'){ const l=listById(ui.list); title=l.name; dot=l.color; const n=state.reminders.filter(r=>r.listId===l.id&&!r.completed).length; sub=`${n} open`; }
+  else if(ui.view==='tag'){ title='#'+ui.tag; sub='Tagged reminders'; dot='#5B4FCF'; }
+  else if(ui.view==='smart'){ const sl=(state.smartLists||[]).find(s=>s.id===ui.smartId); title=sl?sl.name:'Smart List'; dot=sl?sl.color:''; sub='Smart list'; }
   else { const open=state.reminders.filter(r=>!r.completed).length; sub = open?`${open} open · stay on top of it`:'You\'re all caught up'; }
   $('#viewTitle').innerHTML = (dot?`<span class="vt-dot" style="background:${dot}"></span>`:'') + title;
   $('#viewSub').textContent = sub;
@@ -1001,6 +1052,7 @@ function cardHTML(r){
   if(r.dueDate) meta.push(`<span class="rmeta-item ${dueCls}">${IC.clock}${od?ageText(r.dueDate):fmtDue(r.dueDate,r.hasTime)}</span>`);
   if(r.recurrence) meta.push(`<span class="rmeta-item">${IC.repeat}${recurText(r.recurrence)}</span>`);
   if(r.subtasks&&r.subtasks.length){ const dn=r.subtasks.filter(s=>s.done).length; const all=dn===r.subtasks.length; meta.push(`<span class="rmeta-item" style="${all?'color:var(--sage);font-weight:600;':''}">${IC.check}${dn}/${r.subtasks.length}</span>`); }
+  getTags(r).forEach(tg=>meta.push(`<button class="tag-chip" data-tag="${esc(tg)}">#${esc(tg)}</button>`));
   if(ui.view==='all'||ui.view==='today'||ui.view==='scheduled'||ui.search) meta.push(`<span class="rlist-tag" style="color:${l.color}"><span class="list-dot" style="background:${l.color}"></span>${l.name}</span>`);
   if(r.priority==='high') meta.push(`<span class="pri-flag high">${IC.flame}High</span>`);
   if(r.source&&r.source!=='manual') meta.push(`<span class="auto-badge">${r.source==='finance'?'Finance':r.source==='studytrack'?'Study':'Auto'}</span>`);
@@ -1008,7 +1060,7 @@ function cardHTML(r){
   return `<div class="rcard ${od?'overdue':''} p-${r.priority}" data-id="${r.id}">
     <button class="check" data-act="complete">${IC.check}</button>
     <div class="rbody" data-act="edit">
-      <div class="rtitle">${esc(r.title)}</div>
+      <div class="rtitle">${esc(displayTitle(r))}</div>
       ${meta.length?`<div class="rmeta">${meta.join('')}</div>`:''}
       ${r.notes?`<div class="rnote-preview">${esc(r.notes)}</div>`:''}
     </div>
@@ -1035,6 +1087,12 @@ function bindCards(){
         else if(act==='edit'){ openEdit(id); }
         else if(act==='delete'){ animateDelete(card,id,true); }
       };
+    });
+    card.querySelectorAll('.tag-chip').forEach(tc=>tc.onclick=(e)=>{
+      e.stopPropagation();
+      ui.view='tag'; ui.tag=tc.dataset.tag; ui.search=''; $('#searchInput').value=''; $('#searchClear').style.display='none';
+      $$('#bottomnav .bn-item').forEach(b=>b.classList.remove('active'));
+      $('#main-scroll').scrollTop=0; render();
     });
   });
 }
@@ -1079,6 +1137,17 @@ function renderSidebar(){
     </button>`;
   }).join('');
   wrap.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>{ navTo('list-detail', b.dataset.list); });
+  const sw=$('#sidebar-smart');
+  if(sw){
+    sw.innerHTML=(state.smartLists||[]).map(sl=>{
+      const active=ui.view==='smart'&&ui.smartId===sl.id;
+      return `<button class="nav-item ${active?'active':''}" data-smart="${sl.id}">
+        <span class="ni-icon"><svg viewBox="0 0 24 24" fill="${sl.color}" stroke="${sl.color}" stroke-width="1.5"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" stroke-linejoin="round"/></svg></span>
+        ${esc(sl.name)} <span class="ni-count">${smartCount(sl)||''}</span>
+      </button>`;
+    }).join('');
+    sw.querySelectorAll('[data-smart]').forEach(b=>b.onclick=()=>{ ui.view='smart'; ui.smartId=b.dataset.smart; ui.search=''; $('#searchInput').value=''; $('#searchClear').style.display='none'; $$('#bottomnav .bn-item').forEach(x=>x.classList.remove('active')); $('#main-scroll').scrollTop=0; render(); });
+  }
   // active states on top-level
   $$('#sidebar .nav-item[data-view]').forEach(b=>{
     if(!b.dataset.list || b.dataset.list==='all') b.classList.toggle('active', b.dataset.view===ui.view && ui.view!=='list-detail');
@@ -1227,6 +1296,45 @@ function deleteList(){
   persist(); hideOverlay('#listOverlay');
   if(ui.list===id) navTo('all','all'); else render();
   showToast('List deleted');
+}
+
+/* ============ SMART LISTS ============ */
+function openSmartBuilder(editId){
+  ui.editingSmartId=editId||null;
+  const grid=$('#smartColorGrid');
+  grid.innerHTML=LIST_COLORS.map(c=>`<div class="color-opt" data-c="${c}" style="background:${c};color:${c}"></div>`).join('');
+  const sl = editId ? state.smartLists.find(s=>s.id===editId) : null;
+  ui.smartColor = sl?sl.color:LIST_COLORS[0];
+  $('#smartSheetTitle').textContent = sl?'Edit Smart List':'New Smart List';
+  $('#smartName').value = sl?sl.name:'';
+  $('#smartTags').value = sl&&sl.rules.tags?sl.rules.tags.join(', '):'';
+  $('#smartPri').classList.toggle('on', !!(sl&&sl.rules.priority==='high'));
+  $('#smartOverdue').classList.toggle('on', !!(sl&&sl.rules.overdue));
+  $('#smartNoDate').classList.toggle('on', !!(sl&&sl.rules.noDate));
+  $('#saveSmartBtn').textContent = sl?'Save':'Create Smart List';
+  $('#saveSmartBtn').disabled = !sl;
+  $('#deleteSmartBtn').style.display = sl?'':'none';
+  grid.querySelectorAll('.color-opt').forEach(o=>{ o.classList.toggle('on',o.dataset.c===ui.smartColor); o.onclick=()=>{ ui.smartColor=o.dataset.c; grid.querySelectorAll('.color-opt').forEach(x=>x.classList.toggle('on',x===o)); }; });
+  showOverlay('#smartOverlay'); setTimeout(()=>$('#smartName').focus(),250);
+}
+function saveSmart(){
+  const name=$('#smartName').value.trim(); if(!name) return;
+  const rules={
+    tags: $('#smartTags').value.split(',').map(t=>t.trim().replace(/^#/,'').toLowerCase()).filter(Boolean),
+    priority: $('#smartPri').classList.contains('on')?'high':null,
+    overdue: $('#smartOverdue').classList.contains('on'),
+    noDate: $('#smartNoDate').classList.contains('on'),
+  };
+  if(ui.editingSmartId){ const sl=state.smartLists.find(s=>s.id===ui.editingSmartId); sl.name=name; sl.color=ui.smartColor; sl.rules=rules; }
+  else { const id=uuid(); state.smartLists.push({id,name,color:ui.smartColor,rules}); ui.view='smart'; ui.smartId=id; }
+  persist(); hideOverlay('#smartOverlay'); render(); showToast(ui.editingSmartId?'Smart list updated':'Smart list created');
+}
+function deleteSmart(){
+  if(!ui.editingSmartId) return;
+  const id=ui.editingSmartId; state.smartLists=state.smartLists.filter(s=>s.id!==id);
+  persist(); hideOverlay('#smartOverlay');
+  if(ui.view==='smart'&&ui.smartId===id) navTo('all','all'); else render();
+  showToast('Smart list deleted');
 }
 
 /* ============ LISTS GRID (mobile view) ============ */
@@ -1531,6 +1639,15 @@ function bindGlobal(){
   $('#newListName').onkeydown=(e)=>{ if(e.key==='Enter'&&$('#newListName').value.trim()) saveList(); };
   $('#saveListBtn').onclick=saveList;
   $('#deleteListBtn').onclick=deleteList;
+
+  // smart lists
+  $('#addSmartBtn').onclick=()=>openSmartBuilder();
+  $('#smartEditBtn').onclick=()=>{ if(ui.smartId) openSmartBuilder(ui.smartId); };
+  $('#smartName').oninput=()=>{ $('#saveSmartBtn').disabled=!$('#smartName').value.trim(); };
+  $('#saveSmartBtn').onclick=saveSmart;
+  $('#deleteSmartBtn').onclick=deleteSmart;
+  $('#smartSheet').querySelector('.sheet-handle').onclick=()=>hideOverlay('#smartOverlay');
+  ['smartPri','smartOverdue','smartNoDate'].forEach(id=>{ $('#'+id).onclick=()=>$('#'+id).classList.toggle('on'); });
 
   // overlays: click outside / handle to close
   $$('.overlay').forEach(o=>o.onclick=(e)=>{ if(e.target===o) hideOverlay('#'+o.id); });
