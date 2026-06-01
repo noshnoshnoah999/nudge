@@ -661,6 +661,22 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
         </select></div>
       </div>
       <div class="field-row">
+        <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke-linecap="round"/></svg></div>
+        <span class="field-label">Time zone</span>
+        <div class="field-control"><select id="qaTz" class="qa-select">
+          <option value="">Local (default)</option>
+          <option value="Asia/Tokyo">Japan · JST</option>
+          <option value="Europe/London">UK · London</option>
+          <option value="America/New_York">US East</option>
+          <option value="America/Los_Angeles">US West</option>
+          <option value="Europe/Paris">Europe · Paris</option>
+          <option value="Asia/Dubai">Dubai</option>
+          <option value="Asia/Singapore">Singapore</option>
+          <option value="Australia/Sydney">Sydney</option>
+          <option value="Asia/Kolkata">India</option>
+        </select></div>
+      </div>
+      <div class="field-row">
         <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22V4M4 4h12l-2 4 2 4H4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <span class="field-label">Priority</span>
         <div class="field-control">
@@ -817,6 +833,32 @@ function fmtDue(iso, hasTime){
   else day=d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
   return timeStr ? `${day}, ${timeStr}` : day;
 }
+/* ---------- timezone pin helpers ---------- */
+const TZ_LABEL={'Asia/Tokyo':'JST','Europe/London':'UK','America/New_York':'ET','America/Los_Angeles':'PT','Europe/Paris':'CET','Asia/Dubai':'GST','Asia/Singapore':'SGT','Australia/Sydney':'AEST','Asia/Kolkata':'IST'};
+function partsInTz(iso, tz){
+  const d=new Date(iso);
+  const f=new Intl.DateTimeFormat('en-GB',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(d).reduce((a,p)=>(a[p.type]=p.value,a),{});
+  let hh=f.hour==='24'?'00':f.hour;
+  return { date:`${f.year}-${f.month}-${f.day}`, time:`${hh}:${f.minute}` };
+}
+function wallToUTC(dateStr, timeStr, tz){
+  if(!tz) return new Date(dateStr+'T'+timeStr).toISOString();
+  const asUTC=new Date(`${dateStr}T${timeStr}:00Z`);
+  const tzWall=new Date(asUTC.toLocaleString('en-US',{timeZone:tz}));
+  const utcWall=new Date(asUTC.toLocaleString('en-US',{timeZone:'UTC'}));
+  return new Date(asUTC.getTime()-(tzWall-utcWall)).toISOString();
+}
+function fmtDuePinned(iso, tz){
+  const p=partsInTz(iso,tz), now=new Date();
+  const d=new Date(p.date+'T'+(p.time||'00:00'));
+  const diff=daysBetween(d, now);
+  let day;
+  if(diff===0) day='Today'; else if(diff===1) day='Tomorrow'; else if(diff===-1) day='Yesterday';
+  else if(diff>0&&diff<=7) day=d.toLocaleDateString('en-GB',{weekday:'short'});
+  else day=d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  const label=TZ_LABEL[tz]||tz.split('/').pop().replace('_',' ');
+  return `${day}, ${p.time} ${label}`;
+}
 function ageText(iso){
   const d = -daysBetween(new Date(iso), new Date());
   if(d<=0) return 'Due today';
@@ -950,6 +992,7 @@ function addReminder(data){
     recurrence: data.repeat&&data.repeat!=='none' ? {freq:data.repeat,interval:1} : null,
     subtasks: data.subtasks||[],
     remindBefore: data.remindBefore??null,
+    tz: data.tz??null,
     createdAt:new Date().toISOString(), source:data.source||'manual', snoozedUntil:null, dismissed:false,
   };
   state.reminders.unshift(r); persist(); return r;
@@ -1114,7 +1157,7 @@ function boardCard(r){
     <button class="check" data-act="complete">${IC.check}</button>
     <div class="board-card-body" data-act="edit">
       <div class="board-card-title">${esc(displayTitle(r))}</div>
-      ${r.dueDate?`<div class="board-card-due ${od?'od':''}">${od?ageText(r.dueDate):fmtDue(r.dueDate,r.hasTime)}</div>`:''}
+      ${r.dueDate?`<div class="board-card-due ${od?'od':''}">${od?ageText(r.dueDate):(r.tz?fmtDuePinned(r.dueDate,r.tz):fmtDue(r.dueDate,r.hasTime))}</div>`:''}
     </div>
   </div>`;
 }
@@ -1138,7 +1181,7 @@ function cardHTML(r){
   const od=isOverdue(r);
   const dueCls = od?'due-overdue':(r.dueDate&&daysBetween(r.dueDate,new Date())===0?'due-today':'');
   const meta=[];
-  if(r.dueDate) meta.push(`<span class="rmeta-item ${dueCls}">${IC.clock}${od?ageText(r.dueDate):fmtDue(r.dueDate,r.hasTime)}</span>`);
+  if(r.dueDate) meta.push(`<span class="rmeta-item ${dueCls}">${IC.clock}${od?ageText(r.dueDate):(r.tz?fmtDuePinned(r.dueDate,r.tz):fmtDue(r.dueDate,r.hasTime))}</span>`);
   if(r.recurrence) meta.push(`<span class="rmeta-item">${IC.repeat}${recurText(r.recurrence)}</span>`);
   if(r.subtasks&&r.subtasks.length){ const dn=r.subtasks.filter(s=>s.done).length; const all=dn===r.subtasks.length; meta.push(`<span class="rmeta-item" style="${all?'color:var(--sage);font-weight:600;':''}">${IC.check}${dn}/${r.subtasks.length}</span>`); }
   if(r.remindBefore!=null && r.dueDate) meta.push(`<span class="rmeta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke-linecap="round" stroke-linejoin="round"/></svg>${remindBeforeText(r.remindBefore)}</span>`);
@@ -1269,7 +1312,7 @@ function setSearchVisible(v){
 function openAdd(){
   ui.editingId=null;
   ui.qa={ date:null, time:null, repeat:'none', pri:'normal', list: ui.view==='list-detail'?ui.list:'reminders', dateManual:false, nlSource:null, nlClean:null, subtasks:[] };
-  $('#qaTitle').value=''; $('#qaNotes').value=''; $('#qaDate').value=''; $('#qaTime').value=''; if($('#qaSubInput'))$('#qaSubInput').value=''; if($('#qaRemindBefore'))$('#qaRemindBefore').value='';
+  $('#qaTitle').value=''; $('#qaNotes').value=''; $('#qaDate').value=''; $('#qaTime').value=''; if($('#qaSubInput'))$('#qaSubInput').value=''; if($('#qaRemindBefore'))$('#qaRemindBefore').value=''; if($('#qaTz'))$('#qaTz').value='';
   $('#qaSave').textContent='Add Reminder'; $('#qaSave').disabled=true; $('#qaDelete').style.display='none';
   $('#qaDetail').classList.remove('show'); $('#qaMoreToggle').classList.remove('open');
   syncQAChips(); buildListPills(); renderQASubtasks(); setSeg('#qaRepeat','rep','none'); setSeg('#qaPriSeg','pri','normal');
@@ -1278,15 +1321,17 @@ function openAdd(){
 function openEdit(id){
   const r=state.reminders.find(x=>x.id===id); if(!r) return;
   ui.editingId=id;
+  let _dp=null,_tp=null;
+  if(r.dueDate){ if(r.tz){ const p=partsInTz(r.dueDate,r.tz); _dp=p.date; _tp=r.hasTime?p.time:null; } else { _dp=r.dueDate.slice(0,10); _tp=r.hasTime?new Date(r.dueDate).toTimeString().slice(0,5):null; } }
   ui.qa={
-    date: r.dueDate?r.dueDate.slice(0,10):null,
-    time: r.dueDate&&r.hasTime?new Date(r.dueDate).toTimeString().slice(0,5):null,
+    date:_dp, time:_tp,
     repeat: r.recurrence?r.recurrence.freq:'none', pri:r.priority, list:r.listId,
     subtasks:(r.subtasks||[]).map(s=>({...s})), dateManual:true, nlSource:null, nlClean:null
   };
   $('#qaTitle').value=r.title; $('#qaNotes').value=r.notes||'';
   $('#qaDate').value=ui.qa.date||''; $('#qaTime').value=ui.qa.time||'';
   if($('#qaRemindBefore'))$('#qaRemindBefore').value=r.remindBefore!=null?String(r.remindBefore):'';
+  if($('#qaTz'))$('#qaTz').value=r.tz||'';
   $('#qaSave').textContent='Save Changes'; $('#qaSave').disabled=false; $('#qaDelete').style.display='';
   $('#qaDetail').classList.add('show'); $('#qaMoreToggle').classList.add('open');
   syncQAChips(); buildListPills(); renderQASubtasks(); setSeg('#qaRepeat','rep',ui.qa.repeat); setSeg('#qaPriSeg','pri',ui.qa.pri);
@@ -1333,21 +1378,22 @@ function setSeg(sel,attr,val){
 function saveQA(){
   let title=$('#qaTitle').value.trim(); if(!title) return;
   if(!ui.editingId && ui.qa.nlClean && ui.qa.nlSource===title && ui.qa.nlClean.length>1) title=ui.qa.nlClean;
+  const tz = $('#qaTz') && $('#qaTz').value ? $('#qaTz').value : null;
   let dueDate=null, hasTime=false;
   if(ui.qa.date){
     const t=ui.qa.time||'09:00'; hasTime=!!ui.qa.time;
-    dueDate=new Date(ui.qa.date+'T'+t).toISOString();
+    dueDate=wallToUTC(ui.qa.date, t, tz);
   }
   const existing = ui.editingId ? state.reminders.find(x=>x.id===ui.editingId) : null;
   const recurrence = ui.qa.repeat!=='none'
     ? { freq:ui.qa.repeat, interval:(existing&&existing.recurrence&&existing.recurrence.freq===ui.qa.repeat?existing.recurrence.interval:1) }
     : null;
   const remindBefore = $('#qaRemindBefore') && $('#qaRemindBefore').value ? +$('#qaRemindBefore').value : null;
-  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat, subtasks:ui.qa.subtasks, remindBefore };
+  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat, subtasks:ui.qa.subtasks, remindBefore, tz };
   if(ui.editingId){
     updateReminder(ui.editingId,{
       title, notes:payload.notes, dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri,
-      recurrence, subtasks:ui.qa.subtasks, remindBefore
+      recurrence, subtasks:ui.qa.subtasks, remindBefore, tz
     });
     showToast('Saved');
   } else { addReminder(payload); showToast('Added'); }
