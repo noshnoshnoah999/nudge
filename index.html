@@ -790,14 +790,24 @@ function setSync(status){
 /* ---------- recurrence ---------- */
 function nextOccurrence(r){
   if(!r.recurrence || !r.dueDate) return null;
-  const d=new Date(r.dueDate), f=r.recurrence.freq;
-  if(f==='daily') d.setDate(d.getDate()+1);
-  else if(f==='weekly') d.setDate(d.getDate()+7);
-  else if(f==='monthly') d.setMonth(d.getMonth()+1);
-  else if(f==='yearly') d.setFullYear(d.getFullYear()+1);
-  // skip into the future if needed
-  while(d < new Date() && f==='daily') d.setDate(d.getDate()+1);
+  const f=r.recurrence.freq, iv=r.recurrence.interval||1;
+  const d=new Date(r.dueDate), now=new Date();
+  let guard=0;
+  do {
+    if(f==='daily') d.setDate(d.getDate()+iv);
+    else if(f==='weekly') d.setDate(d.getDate()+7*iv);
+    else if(f==='monthly') d.setMonth(d.getMonth()+iv);
+    else if(f==='yearly') d.setFullYear(d.getFullYear()+iv);
+    else break;
+  } while(d < now && ++guard < 2000);   // advance to the next FUTURE occurrence
   return d.toISOString();
+}
+function recurText(rec){
+  if(!rec) return '';
+  const iv=rec.interval||1, f=rec.freq;
+  if(iv===1) return f;
+  const unit={daily:'day',weekly:'week',monthly:'month',yearly:'year'}[f]||f;
+  return `every ${iv} ${unit}s`;
 }
 
 /* ---------- CRUD ---------- */
@@ -936,7 +946,7 @@ function cardHTML(r){
   const dueCls = od?'due-overdue':(r.dueDate&&daysBetween(r.dueDate,new Date())===0?'due-today':'');
   const meta=[];
   if(r.dueDate) meta.push(`<span class="rmeta-item ${dueCls}">${IC.clock}${od?ageText(r.dueDate):fmtDue(r.dueDate,r.hasTime)}</span>`);
-  if(r.recurrence) meta.push(`<span class="rmeta-item">${IC.repeat}${r.recurrence.freq}</span>`);
+  if(r.recurrence) meta.push(`<span class="rmeta-item">${IC.repeat}${recurText(r.recurrence)}</span>`);
   if(ui.view==='all'||ui.view==='today'||ui.view==='scheduled'||ui.search) meta.push(`<span class="rlist-tag" style="color:${l.color}"><span class="list-dot" style="background:${l.color}"></span>${l.name}</span>`);
   if(r.priority==='high') meta.push(`<span class="pri-flag high">${IC.flame}High</span>`);
   if(r.source&&r.source!=='manual') meta.push(`<span class="auto-badge">${r.source==='finance'?'Finance':r.source==='studytrack'?'Study':'Auto'}</span>`);
