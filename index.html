@@ -785,7 +785,7 @@ const CLOUD = !!(SUPABASE.url && SUPABASE.anon);
 /* StudyTrack shares this same Supabase project (study_data key-value table). */
 const STUDYTRACK = { url: SUPABASE.url, anon: SUPABASE.anon };
 /* Finance is a separate project — paste its anon key to enable finance auto-reminders. */
-const FINANCE = { url:'https://ipjwpkqcuztahumijici.supabase.co', anon:'', userKey:'f7e2a914-3b8c-4d5e-9a1f-6c2d7b0e8f3a' };
+const FINANCE = { url:'https://ipjwpkqcuztahumijici.supabase.co', anon:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlwandwa3FjdXp0YWh1bWlqaWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTg0NjAsImV4cCI6MjA5MjU5NDQ2MH0.aCrIwHvNLkCtA_RXPdzIybRp2EMCrBeIVS5ABCtjl48', userKey:'f7e2a914-3b8c-4d5e-9a1f-6c2d7b0e8f3a' };
 
 /* ---------- constants ---------- */
 const LIST_COLORS = ['#5B4FCF','#E85D4A','#E8A23D','#7CA982','#3D9BE8','#D45A9E','#8B5C3D','#6B6B78'];
@@ -1887,6 +1887,13 @@ async function financeAuto(){
     out.push({ id:`auto-fin-goals-${ym}`, source:'finance', listId:'finance', dueDate:due.toISOString(), hasTime:true,
       title:`💰 Savings check-in — ${pct}% to your goals`, notes:lines });
   }
+  // new one-off expenses this month → a "budget for it" reminder (no date, gentle)
+  const md=(d.data&&d.data[ym])?d.data[ym]:{};
+  (md.oneOffs||[]).forEach(o=>{
+    if(o.mumPays || !o.name) return;
+    out.push({ id:`auto-fin-oneoff-${o.id}`, source:'finance', listId:'finance', dueDate:null, hasTime:false,
+      title:`💰 Budget for ${o.name}`+(o.amount?` (¥${Math.round(o.amount).toLocaleString()})`:''), notes:'One-off expense added in your finance app' });
+  });
   return out;
 }
 async function syncIntegrations(){
