@@ -1,0 +1,31 @@
+{
+  "name": "Nudge — Reminders",
+  "short_name": "Nudge",
+  "description": "Reminders that don't get forgotten. Capture fast, triage the backlog, stay on top of it.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8F6F2",
+  "theme_color": "#5B4FCF",
+  "categories": ["productivity", "lifestyle", "utilities"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "New reminder",
+      "short_name": "Add",
+      "url": "./index.html?action=add",
+      "description": "Quickly capture a new reminder"
+    },
+    {
+      "name": "Triage overdue",
+      "short_name": "Triage",
+      "url": "./index.html?action=triage",
+      "description": "Clear your overdue backlog"
+    }
+  ]
+}

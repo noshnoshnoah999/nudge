@@ -1,0 +1,5 @@
+import_reminders.py
+make_icons.py
+*.tsv
+*.err
+.DS_Store

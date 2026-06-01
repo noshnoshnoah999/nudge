@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#F8F6F2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Nudge">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Nudge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ===================== PALETTE & TOKENS ===================== */
+:root{
+  --bg:#F8F6F2;
+  --bg-elevated:#FFFFFF;
+  --card:#FFFFFF;
+  --violet:#5B4FCF;
+  --violet-dark:#4A3FB5;
+  --violet-soft:#EEE9FF;
+  --violet-softer:#F5F2FF;
+  --coral:#E85D4A;
+  --coral-dark:#D44733;
+  --coral-soft:#FDEAE7;
+  --coral-softer:#FEF4F2;
+  --sage:#7CA982;
+  --sage-soft:#E8F2E9;
+  --amber:#E8A23D;
+  --text:#2A2A33;
+  --text-2:#6B6B78;
+  --text-3:#9B9BA6;
+  --border:#ECEAE4;
+  --border-2:#E2DFD8;
+  --shadow-sm:0 1px 2px rgba(40,38,50,.04), 0 1px 3px rgba(40,38,50,.06);
+  --shadow-md:0 4px 12px rgba(40,38,50,.07), 0 2px 4px rgba(40,38,50,.04);
+  --shadow-lg:0 12px 40px rgba(40,38,50,.16), 0 4px 12px rgba(40,38,50,.08);
+  --r-sm:10px;
+  --r-md:14px;
+  --r-lg:20px;
+  --r-xl:28px;
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overscroll-behavior-y:none;
+  line-height:1.5;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;}
+input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
+::selection{background:var(--violet-soft);}
+.hidden{display:none !important;}
+
+/* scrollbars */
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:10px;border:3px solid var(--bg);}
+::-webkit-scrollbar-thumb:hover{background:var(--text-3);}
+
+/* ===================== APP SHELL ===================== */
+#app{display:flex;min-height:100vh;min-height:100dvh;}
+
+/* Sidebar (desktop) */
+#sidebar{
+  width:264px;flex-shrink:0;
+  background:var(--bg-elevated);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  padding:calc(20px + var(--safe-top)) 14px 20px;
+  position:sticky;top:0;height:100vh;height:100dvh;
+  overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 10px 22px;}
+.brand-logo{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,var(--violet),#7A6FE0);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 12px rgba(91,79,207,.3);
+}
+.brand-logo svg{width:20px;height:20px;}
+.brand-name{font-size:21px;font-weight:800;letter-spacing:-.02em;}
+.nav-section-label{
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--text-3);padding:14px 12px 7px;
+}
+.nav-item{
+  display:flex;align-items:center;gap:11px;
+  padding:9px 12px;border-radius:10px;
+  font-size:14.5px;font-weight:500;color:var(--text-2);
+  transition:background .12s,color .12s;width:100%;text-align:left;
+}
+.nav-item:hover{background:var(--bg);}
+.nav-item.active{background:var(--violet-soft);color:var(--violet-dark);font-weight:600;}
+.nav-item .ni-icon{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.nav-item .ni-icon svg{width:18px;height:18px;}
+.list-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+.nav-item .ni-count{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--text-3);background:var(--bg);padding:1px 8px;border-radius:20px;min-width:24px;text-align:center;}
+.nav-item.active .ni-count{background:#fff;color:var(--violet);}
+.nav-overdue-badge{margin-left:auto;font-size:12px;font-weight:700;color:#fff;background:var(--coral);padding:1px 8px;border-radius:20px;}
+.add-list-btn{margin-top:6px;color:var(--text-3);font-size:13.5px;}
+.add-list-btn:hover{color:var(--violet);}
+.sidebar-spacer{flex:1;}
+
+/* ===================== MAIN ===================== */
+#main{flex:1;min-width:0;display:flex;flex-direction:column;}
+#main-scroll{flex:1;overflow-y:auto;}
+.main-inner{max-width:720px;margin:0 auto;padding:calc(26px + var(--safe-top)) 24px 140px;}
+
+/* Topbar */
+.topbar{display:flex;align-items:center;gap:14px;margin-bottom:8px;}
+.view-title{font-size:30px;font-weight:800;letter-spacing:-.025em;flex:1;display:flex;align-items:center;gap:12px;}
+.view-title .vt-dot{width:16px;height:16px;border-radius:50%;}
+.view-sub{font-size:14.5px;color:var(--text-2);margin-bottom:24px;font-weight:450;}
+.icon-btn{
+  width:42px;height:42px;border-radius:12px;background:var(--bg-elevated);
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+  color:var(--text-2);transition:.14s;flex-shrink:0;box-shadow:var(--shadow-sm);
+}
+.icon-btn:hover{color:var(--violet);border-color:var(--violet-soft);transform:translateY(-1px);}
+.icon-btn svg{width:20px;height:20px;}
+
+/* Search */
+.search-wrap{position:relative;margin-bottom:22px;}
+.search-wrap svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);width:19px;height:19px;color:var(--text-3);pointer-events:none;}
+#searchInput{
+  width:100%;padding:13px 16px 13px 44px;border-radius:14px;
+  background:var(--bg-elevated);border:1px solid var(--border);
+  font-size:15px;box-shadow:var(--shadow-sm);transition:.14s;
+}
+#searchInput:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px var(--violet-soft);}
+.search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;background:var(--border);display:none;align-items:center;justify-content:center;color:var(--text-2);}
+.search-clear svg{width:14px;height:14px;}
+
+/* Triage banner */
+.triage-banner{
+  display:flex;align-items:center;gap:15px;
+  background:linear-gradient(120deg,var(--coral),#F0795F);
+  color:#fff;padding:16px 18px;border-radius:var(--r-md);margin-bottom:24px;
+  box-shadow:0 8px 24px rgba(232,93,74,.3);cursor:pointer;transition:.16s;
+  position:relative;overflow:hidden;
+}
+.triage-banner:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(232,93,74,.38);}
+.triage-banner::after{content:'';position:absolute;right:-30px;top:-30px;width:120px;height:120px;background:rgba(255,255,255,.08);border-radius:50%;}
+.tb-icon{width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.tb-icon svg{width:23px;height:23px;}
+.tb-text{flex:1;min-width:0;}
+.tb-title{font-weight:700;font-size:16px;letter-spacing:-.01em;}
+.tb-sub{font-size:13px;opacity:.92;margin-top:1px;}
+.tb-arrow{width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.tb-arrow svg{width:22px;height:22px;}
+
+/* ===================== SECTIONS ===================== */
+.section{margin-bottom:30px;}
+.section-head{display:flex;align-items:center;gap:9px;margin-bottom:13px;padding-left:2px;}
+.section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);}
+.section.overdue .section-title{color:var(--coral);}
+.section-count{font-size:12px;font-weight:700;color:var(--text-3);background:var(--bg-elevated);border:1px solid var(--border);padding:0 8px;border-radius:20px;line-height:19px;}
+.section.overdue .section-count{color:#fff;background:var(--coral);border-color:var(--coral);}
+.section-line{flex:1;height:1px;background:var(--border);}
+
+/* Reminder card */
+.rcard{
+  display:flex;align-items:flex-start;gap:13px;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:14px 15px;margin-bottom:9px;
+  box-shadow:var(--shadow-sm);transition:transform .14s,box-shadow .14s,border-color .14s;
+  position:relative;cursor:pointer;
+}
+.rcard:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);}
+.rcard.overdue{border-left:3px solid var(--coral);background:var(--coral-softer);}
+.rcard.done{opacity:.55;}
+.rcard.swiping{transition:none;}
+.check{
+  width:23px;height:23px;border-radius:50%;border:2px solid var(--border-2);
+  flex-shrink:0;margin-top:1px;transition:.15s;display:flex;align-items:center;justify-content:center;
+  background:#fff;
+}
+.check svg{width:13px;height:13px;color:#fff;opacity:0;transform:scale(.5);transition:.15s;}
+.check:hover{border-color:var(--violet);}
+.rcard.p-high .check{border-color:var(--coral);}
+.rcard.done .check{background:var(--sage);border-color:var(--sage);}
+.rcard.done .check svg{opacity:1;transform:scale(1);}
+.rcard.overdue .check:hover{border-color:var(--coral);}
+.rbody{flex:1;min-width:0;}
+.rtitle{font-size:15px;font-weight:550;line-height:1.4;word-break:break-word;}
+.rcard.done .rtitle{text-decoration:line-through;text-decoration-color:var(--sage);color:var(--text-2);}
+.rmeta{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap;}
+.rmeta-item{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text-3);font-weight:500;}
+.rmeta-item svg{width:13px;height:13px;}
+.rmeta-item.due-overdue{color:var(--coral);font-weight:650;}
+.rmeta-item.due-today{color:var(--violet);font-weight:600;}
+.rlist-tag{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:550;}
+.rlist-tag .list-dot{width:8px;height:8px;}
+.rnote-preview{font-size:13px;color:var(--text-3);margin-top:4px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}
+.pri-flag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:6px;}
+.pri-flag.high{background:var(--coral-soft);color:var(--coral-dark);}
+.pri-flag.low{background:var(--bg);color:var(--text-3);}
+.auto-badge{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--violet-soft);color:var(--violet);text-transform:uppercase;letter-spacing:.03em;}
+.rcard-actions{display:flex;gap:2px;align-items:center;opacity:0;transition:.14s;margin-left:4px;}
+.rcard:hover .rcard-actions{opacity:1;}
+.rmini-btn{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-3);transition:.12s;}
+.rmini-btn:hover{background:var(--bg);color:var(--coral);}
+.rmini-btn svg{width:16px;height:16px;}
+
+/* swipe reveal (mobile) */
+.rcard-wrap{position:relative;overflow:hidden;border-radius:var(--r-md);margin-bottom:9px;}
+.rcard-wrap .rcard{margin-bottom:0;}
+.swipe-bg{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding-right:22px;background:linear-gradient(90deg,#F0795F,var(--coral));color:#fff;border-radius:var(--r-md);}
+.swipe-bg svg{width:22px;height:22px;}
+
+/* empty states */
+.empty{text-align:center;padding:70px 20px;}
+.empty-emoji{font-size:54px;margin-bottom:18px;filter:saturate(.9);}
+.empty-title{font-size:19px;font-weight:700;margin-bottom:7px;letter-spacing:-.01em;}
+.empty-text{font-size:14.5px;color:var(--text-2);max-width:300px;margin:0 auto;line-height:1.55;}
+.all-clear{text-align:center;padding:48px 20px;}
+.all-clear .ac-circle{width:78px;height:78px;border-radius:50%;background:var(--sage-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;}
+.all-clear .ac-circle svg{width:38px;height:38px;color:var(--sage);}
+
+/* ===================== FAB ===================== */
+.fab{
+  position:fixed;right:28px;bottom:calc(28px + var(--safe-bottom));z-index:40;
+  width:60px;height:60px;border-radius:20px;
+  background:linear-gradient(135deg,var(--violet),#7A6FE0);
+  display:flex;align-items:center;justify-content:center;color:#fff;
+  box-shadow:0 10px 30px rgba(91,79,207,.42);transition:.18s;
+}
+.fab:hover{transform:translateY(-3px) scale(1.04);box-shadow:0 16px 40px rgba(91,79,207,.5);}
+.fab:active{transform:scale(.95);}
+.fab svg{width:28px;height:28px;}
+
+/* ===================== BOTTOM NAV (mobile) ===================== */
+#bottomnav{
+  display:none;position:fixed;bottom:0;left:0;right:0;z-index:35;
+  background:rgba(255,255,255,.86);backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+  border-top:1px solid var(--border);
+  padding:8px 8px calc(8px + var(--safe-bottom));
+  justify-content:space-around;
+}
+.bn-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 18px;color:var(--text-3);transition:.12s;border-radius:12px;position:relative;}
+.bn-item.active{color:var(--violet);}
+.bn-item svg{width:24px;height:24px;}
+.bn-label{font-size:10.5px;font-weight:600;}
+.bn-badge{position:absolute;top:0;right:11px;min-width:17px;height:17px;background:var(--coral);color:#fff;font-size:10px;font-weight:700;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid #fff;}
+
+/* ===================== MODALS / SHEETS ===================== */
+.overlay{
+  position:fixed;inset:0;z-index:50;background:rgba(30,28,40,.4);
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  display:flex;align-items:flex-end;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .22s;
+}
+.overlay.show{opacity:1;pointer-events:auto;}
+.sheet{
+  background:var(--bg-elevated);width:100%;max-width:540px;
+  border-radius:var(--r-xl) var(--r-xl) 0 0;
+  padding:10px 22px calc(24px + var(--safe-bottom));
+  box-shadow:var(--shadow-lg);transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1);
+  max-height:92vh;overflow-y:auto;
+}
+.overlay.show .sheet{transform:translateY(0);}
+@media(min-width:600px){
+  .overlay{align-items:center;}
+  .sheet{border-radius:var(--r-xl);max-height:88vh;}
+}
+.sheet-handle{width:38px;height:4px;border-radius:4px;background:var(--border-2);margin:6px auto 16px;}
+.sheet-title{font-size:20px;font-weight:750;letter-spacing:-.02em;margin-bottom:4px;}
+
+/* Quick add */
+#qaTitle{
+  width:100%;font-size:19px;font-weight:550;padding:8px 2px;border:none;
+  background:none;letter-spacing:-.01em;
+}
+#qaTitle:focus{outline:none;}
+#qaTitle::placeholder{color:var(--text-3);font-weight:450;}
+.qa-divider{height:1px;background:var(--border);margin:10px 0 14px;}
+.qa-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;}
+.qa-chip{
+  display:flex;align-items:center;gap:6px;padding:8px 13px;border-radius:11px;
+  background:var(--bg);border:1px solid var(--border);font-size:13.5px;font-weight:550;color:var(--text-2);
+  transition:.12s;
+}
+.qa-chip:hover{border-color:var(--violet-soft);color:var(--violet);}
+.qa-chip.set{background:var(--violet-soft);border-color:transparent;color:var(--violet-dark);}
+.qa-chip svg{width:16px;height:16px;}
+.qa-chip .chip-x{margin-left:2px;opacity:.6;}
+.qa-chip .chip-x:hover{opacity:1;}
+
+/* expandable detail rows */
+.qa-detail{margin-top:14px;display:none;flex-direction:column;gap:2px;}
+.qa-detail.show{display:flex;}
+.field-row{display:flex;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid var(--border);}
+.field-row:last-child{border-bottom:none;}
+.field-icon{width:22px;height:22px;color:var(--text-3);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.field-icon svg{width:19px;height:19px;}
+.field-label{font-size:14.5px;font-weight:500;flex-shrink:0;width:74px;color:var(--text-2);}
+.field-control{flex:1;display:flex;justify-content:flex-end;gap:8px;align-items:center;flex-wrap:wrap;}
+.field-row input[type=date],.field-row input[type=time]{
+  border:1px solid var(--border);border-radius:9px;padding:7px 11px;font-size:14px;background:var(--bg);
+}
+.field-row input:focus{outline:none;border-color:var(--violet);}
+#qaNotes{
+  width:100%;border:1px solid var(--border);border-radius:11px;padding:11px 13px;
+  font-size:14.5px;resize:vertical;min-height:60px;background:var(--bg);margin-top:2px;
+}
+#qaNotes:focus{outline:none;border-color:var(--violet);background:#fff;}
+.seg{display:inline-flex;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px;}
+.seg button{padding:6px 13px;border-radius:8px;font-size:13px;font-weight:600;color:var(--text-2);transition:.12s;}
+.seg button.on{background:#fff;color:var(--violet);box-shadow:var(--shadow-sm);}
+.seg button.on[data-pri=high]{color:var(--coral-dark);}
+.list-select-pills{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;}
+.lpill{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:1.5px solid var(--border);font-size:13px;font-weight:600;color:var(--text-2);transition:.12s;}
+.lpill.on{border-color:currentColor;}
+.lpill .list-dot{width:9px;height:9px;}
+
+.sheet-actions{display:flex;gap:10px;margin-top:22px;}
+.btn{flex:1;padding:14px;border-radius:14px;font-size:15.5px;font-weight:650;transition:.14s;text-align:center;}
+.btn-primary{background:var(--violet);color:#fff;box-shadow:0 6px 18px rgba(91,79,207,.32);}
+.btn-primary:hover{background:var(--violet-dark);transform:translateY(-1px);}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;}
+.btn-ghost{background:var(--bg);color:var(--text-2);flex:0 0 auto;padding:14px 22px;}
+.btn-ghost:hover{background:var(--border);}
+.btn-danger{background:var(--coral-soft);color:var(--coral-dark);}
+.btn-danger:hover{background:var(--coral);color:#fff;}
+
+/* expand toggle */
+.qa-more{display:flex;align-items:center;gap:6px;color:var(--violet);font-size:13.5px;font-weight:600;padding:12px 2px 2px;}
+.qa-more svg{width:16px;height:16px;transition:transform .2s;}
+.qa-more.open svg{transform:rotate(180deg);}
+
+/* ===================== TRIAGE FULLSCREEN ===================== */
+#triage{
+  position:fixed;inset:0;z-index:60;background:var(--bg);
+  display:none;flex-direction:column;
+  padding:calc(18px + var(--safe-top)) 20px calc(20px + var(--safe-bottom));
+}
+#triage.show{display:flex;}
+.triage-top{display:flex;align-items:center;gap:14px;margin-bottom:8px;}
+.triage-close{width:40px;height:40px;border-radius:11px;background:var(--bg-elevated);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-2);}
+.triage-close svg{width:20px;height:20px;}
+.triage-progress-wrap{flex:1;}
+.triage-stage-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:6px;}
+.triage-bar{height:6px;background:var(--border);border-radius:6px;overflow:hidden;}
+.triage-bar-fill{height:100%;background:linear-gradient(90deg,var(--violet),#7A6FE0);border-radius:6px;transition:width .3s;width:0;}
+.triage-stage-num{font-size:13px;font-weight:700;color:var(--text-3);}
+
+.triage-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;max-width:540px;margin:0 auto;width:100%;}
+
+/* stage intro */
+.stage-intro{text-align:center;}
+.stage-intro .si-emoji{font-size:60px;margin-bottom:20px;}
+.stage-intro h2{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-bottom:10px;}
+.stage-intro p{font-size:15.5px;color:var(--text-2);max-width:360px;margin:0 auto 28px;line-height:1.55;}
+.stage-stat{display:inline-flex;align-items:baseline;gap:8px;background:var(--coral-soft);color:var(--coral-dark);padding:8px 18px;border-radius:30px;font-weight:600;font-size:15px;margin-bottom:28px;}
+.stage-stat b{font-size:22px;font-weight:800;}
+
+/* stage 1 relevance card */
+.relev-card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:30px 26px;width:100%;box-shadow:var(--shadow-md);text-align:center;
+  animation:cardIn .3s cubic-bezier(.32,.72,0,1);
+}
+@keyframes cardIn{from{opacity:0;transform:scale(.94) translateY(10px);}to{opacity:1;transform:scale(1) translateY(0);}}
+.relev-card .rc-age{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--coral);background:var(--coral-soft);padding:5px 13px;border-radius:20px;margin-bottom:18px;text-transform:uppercase;letter-spacing:.03em;}
+.relev-card .rc-title{font-size:22px;font-weight:700;line-height:1.35;letter-spacing:-.01em;margin-bottom:8px;word-break:break-word;}
+.relev-card .rc-list{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--text-2);font-weight:550;}
+.relev-card .rc-list .list-dot{width:9px;height:9px;}
+.relev-card .rc-note{font-size:14px;color:var(--text-3);margin-top:12px;line-height:1.5;}
+
+.triage-actions{display:flex;gap:12px;width:100%;margin-top:24px;}
+.ta-btn{flex:1;padding:18px;border-radius:var(--r-md);font-size:16px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:7px;transition:.14s;border:2px solid transparent;}
+.ta-btn svg{width:26px;height:26px;}
+.ta-btn:hover{transform:translateY(-2px);}
+.ta-yes{background:var(--sage-soft);color:#4E7B54;}
+.ta-yes:hover{background:var(--sage);color:#fff;}
+.ta-no{background:var(--bg-elevated);color:var(--text-2);border-color:var(--border);}
+.ta-no:hover{background:var(--coral-soft);color:var(--coral-dark);border-color:transparent;}
+
+/* spotlight stage (stage 3) */
+.spot-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%;margin-top:24px;}
+.spot-btn{padding:16px 8px;border-radius:var(--r-md);font-size:14px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:8px;transition:.14s;border:2px solid transparent;}
+.spot-btn svg{width:24px;height:24px;}
+.spot-btn:hover{transform:translateY(-2px);}
+.spot-done{background:var(--sage-soft);color:#4E7B54;}
+.spot-done:hover{background:var(--sage);color:#fff;}
+.spot-snooze{background:var(--violet-soft);color:var(--violet-dark);}
+.spot-snooze:hover{background:var(--violet);color:#fff;}
+.spot-del{background:var(--bg-elevated);color:var(--text-2);border-color:var(--border);}
+.spot-del:hover{background:var(--coral-soft);color:var(--coral-dark);border-color:transparent;}
+
+/* reschedule quick options */
+.resched-pop{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:18px;width:100%;animation:cardIn .2s;}
+.resched-opt{padding:11px 16px;border-radius:12px;background:var(--bg-elevated);border:1px solid var(--border);font-size:14px;font-weight:600;color:var(--text);transition:.12s;}
+.resched-opt:hover{background:var(--violet);color:#fff;border-color:transparent;}
+
+/* batch dismiss (stage 2) */
+.batch-list{width:100%;max-height:46vh;overflow-y:auto;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--card);}
+.batch-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);}
+.batch-row:last-child{border-bottom:none;}
+.batch-check{width:22px;height:22px;border-radius:6px;border:2px solid var(--border-2);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:.12s;}
+.batch-check svg{width:13px;height:13px;color:#fff;opacity:0;}
+.batch-row.sel .batch-check{background:var(--coral);border-color:var(--coral);}
+.batch-row.sel .batch-check svg{opacity:1;}
+.batch-info{flex:1;min-width:0;}
+.batch-title{font-size:14.5px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.batch-age{font-size:12px;color:var(--coral);font-weight:600;margin-top:1px;}
+.triage-stage-done{text-align:center;}
+
+.triage-foot{display:flex;gap:12px;width:100%;max-width:540px;margin:18px auto 0;}
+
+/* toast */
+#toast{
+  position:fixed;bottom:calc(96px + var(--safe-bottom));left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--text);color:#fff;padding:13px 20px;border-radius:14px;font-size:14.5px;font-weight:550;
+  box-shadow:var(--shadow-lg);z-index:70;opacity:0;pointer-events:none;transition:.26s;display:flex;align-items:center;gap:12px;
+  max-width:90vw;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast .toast-action{color:#9D92FF;font-weight:700;padding-left:6px;border-left:1px solid rgba(255,255,255,.2);margin-left:4px;}
+#toast .toast-icon{width:20px;height:20px;flex-shrink:0;}
+#toast .toast-icon svg{width:20px;height:20px;}
+
+/* sync status pill */
+.sync-pill{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:20px;font-size:12px;font-weight:600;color:var(--text-3);background:var(--bg);margin:0 6px;}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--text-3);}
+.sync-pill.local .sync-dot{background:var(--amber);}
+.sync-pill.synced .sync-dot{background:var(--sage);}
+.sync-pill.syncing .sync-dot{background:var(--violet);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+/* settings rows */
+.set-group{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;margin-bottom:18px;box-shadow:var(--shadow-sm);}
+.set-row{display:flex;align-items:center;gap:13px;padding:15px 17px;border-bottom:1px solid var(--border);}
+.set-row:last-child{border-bottom:none;}
+.set-row .sr-icon{width:34px;height:34px;border-radius:9px;background:var(--violet-soft);color:var(--violet);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.set-row .sr-icon svg{width:19px;height:19px;}
+.sr-text{flex:1;min-width:0;}
+.sr-title{font-size:15px;font-weight:600;}
+.sr-sub{font-size:12.5px;color:var(--text-3);margin-top:1px;}
+.toggle{width:50px;height:30px;border-radius:30px;background:var(--border-2);position:relative;transition:.2s;flex-shrink:0;}
+.toggle.on{background:var(--violet);}
+.toggle::after{content:'';position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+.toggle.on::after{transform:translateX(20px);}
+
+/* color picker for new list */
+.color-grid{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;}
+.color-opt{width:34px;height:34px;border-radius:50%;cursor:pointer;transition:.12s;border:3px solid transparent;}
+.color-opt.on{transform:scale(1.12);box-shadow:0 0 0 2px #fff,0 0 0 4px currentColor;}
+
+/* responsive */
+@media(max-width:860px){
+  #sidebar{display:none;}
+  #bottomnav{display:flex;}
+  .main-inner{padding:calc(20px + var(--safe-top)) 18px 130px;}
+  .view-title{font-size:26px;}
+  .fab{bottom:calc(80px + var(--safe-bottom));right:20px;width:56px;height:56px;}
+  .spot-actions{grid-template-columns:1fr;}
+}
+@media(max-width:400px){
+  .triage-actions{flex-direction:column;}
+}
+
+/* page transitions */
+.view{animation:viewIn .26s ease;}
+@keyframes viewIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.rcard.removing{animation:cardOut .25s forwards;}
+@keyframes cardOut{to{opacity:0;transform:translateX(40px) scale(.96);height:0;margin:0;padding-top:0;padding-bottom:0;}}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2C8.5 2 6 4.8 6 8.5c0 2.4-.6 4-1.4 5.2-.5.7 0 1.8.9 1.8h12.9c.9 0 1.4-1.1.9-1.8C18.6 12.5 18 10.9 18 8.5 18 4.8 15.5 2 12 2Z" fill="#fff"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <span class="brand-name">Nudge</span>
+    </div>
+
+    <button class="nav-item" data-view="all" data-list="all">
+      <span class="ni-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg></span>
+      All Reminders <span class="ni-count" id="cnt-all">0</span>
+    </button>
+    <button class="nav-item" data-view="today">
+      <span class="ni-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4" stroke-linecap="round"/></svg></span>
+      Today <span class="ni-count" id="cnt-today">0</span>
+    </button>
+    <button class="nav-item" data-view="scheduled">
+      <span class="ni-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></svg></span>
+      Scheduled <span class="ni-count" id="cnt-scheduled">0</span>
+    </button>
+
+    <div class="nav-section-label">Lists</div>
+    <div id="sidebar-lists"></div>
+    <button class="nav-item add-list-btn" id="addListBtn">
+      <span class="ni-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></span>
+      New List
+    </button>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sync-pill local" id="syncPill"><span class="sync-dot"></span><span id="syncLabel">Local only</span></div>
+    <button class="nav-item" data-view="settings">
+      <span class="ni-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H7a1.6 1.6 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      Settings
+    </button>
+  </aside>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div id="main-scroll">
+      <div class="main-inner">
+        <div class="topbar">
+          <h1 class="view-title" id="viewTitle">All Reminders</h1>
+          <button class="icon-btn" id="searchToggle" title="Search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="view-sub" id="viewSub"></div>
+
+        <div class="search-wrap hidden" id="searchWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
+          <input id="searchInput" placeholder="Search reminders…" autocomplete="off">
+          <button class="search-clear" id="searchClear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg></button>
+        </div>
+
+        <div id="content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab" title="New reminder (N)">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+</button>
+
+<!-- BOTTOM NAV -->
+<nav id="bottomnav">
+  <button class="bn-item active" data-view="all" data-list="all">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg>
+    <span class="bn-label">All</span>
+  </button>
+  <button class="bn-item" data-view="today">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4" stroke-linecap="round"/></svg>
+    <span class="bn-label">Today</span>
+  </button>
+  <button class="bn-item" data-view="lists">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+    <span class="bn-label">Lists</span>
+  </button>
+  <button class="bn-item" data-view="settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8M4.6 9a1.6 1.6 0 0 0-.3-1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="9"/></svg>
+    <span class="bn-label">Settings</span>
+  </button>
+</nav>
+
+<!-- QUICK ADD SHEET -->
+<div class="overlay" id="addOverlay">
+  <div class="sheet" id="addSheet">
+    <div class="sheet-handle"></div>
+    <input id="qaTitle" placeholder="What do you need to remember?" autocomplete="off">
+    <div class="qa-divider"></div>
+    <div class="qa-chips" id="qaChips">
+      <button class="qa-chip" id="chipDate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4" stroke-linecap="round"/></svg><span id="chipDateLabel">Date</span></button>
+      <button class="qa-chip" id="chipList"><span class="list-dot" id="chipListDot" style="background:var(--violet)"></span><span id="chipListLabel">Reminders</span></button>
+      <button class="qa-chip" id="chipPri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22V4M4 4h12l-2 4 2 4H4" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="chipPriLabel">Priority</span></button>
+    </div>
+
+    <button class="qa-more" id="qaMoreToggle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>More options</span>
+    </button>
+
+    <div class="qa-detail" id="qaDetail">
+      <div class="field-row">
+        <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4" stroke-linecap="round"/></svg></div>
+        <span class="field-label">Date</span>
+        <div class="field-control"><input type="date" id="qaDate"><input type="time" id="qaTime"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2v4M7 2v4M3 10h18M21 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="m9 16 2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <span class="field-label">Repeat</span>
+        <div class="field-control">
+          <div class="seg" id="qaRepeat">
+            <button class="on" data-rep="none">None</button>
+            <button data-rep="daily">Daily</button>
+            <button data-rep="weekly">Weekly</button>
+            <button data-rep="monthly">Monthly</button>
+            <button data-rep="yearly">Yearly</button>
+          </div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22V4M4 4h12l-2 4 2 4H4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <span class="field-label">Priority</span>
+        <div class="field-control">
+          <div class="seg" id="qaPriSeg">
+            <button data-pri="low">Low</button>
+            <button class="on" data-pri="normal">Normal</button>
+            <button data-pri="high">High</button>
+          </div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8" stroke-linecap="round"/></svg></div>
+        <span class="field-label">List</span>
+        <div class="field-control"><div class="list-select-pills" id="qaListPills"></div></div>
+      </div>
+      <div class="field-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div class="field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg></div>
+          <span class="field-label">Notes</span>
+        </div>
+        <textarea id="qaNotes" placeholder="Add notes…"></textarea>
+      </div>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" id="qaDelete" style="display:none;">Delete</button>
+      <button class="btn btn-primary" id="qaSave" disabled>Add Reminder</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW LIST SHEET -->
+<div class="overlay" id="listOverlay">
+  <div class="sheet" id="listSheet" style="max-width:440px;">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="listSheetTitle">New List</div>
+    <input id="newListName" placeholder="List name" autocomplete="off" style="width:100%;font-size:17px;font-weight:550;padding:12px 2px;border:none;border-bottom:1px solid var(--border);margin-bottom:18px;">
+    <div class="field-label" style="width:auto;margin-bottom:10px;color:var(--text-2);font-weight:600;">Choose a colour</div>
+    <div class="color-grid" id="colorGrid"></div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" id="deleteListBtn" style="display:none;">Delete</button>
+      <button class="btn btn-primary" id="saveListBtn" disabled>Create List</button>
+    </div>
+  </div>
+</div>
+
+<!-- TRIAGE FULLSCREEN -->
+<div id="triage">
+  <div class="triage-top">
+    <button class="triage-close" id="triageClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg></button>
+    <div class="triage-progress-wrap">
+      <div class="triage-stage-label" id="triageStageLabel">Stage 1 of 3 · Still relevant?</div>
+      <div class="triage-bar"><div class="triage-bar-fill" id="triageBar"></div></div>
+    </div>
+  </div>
+  <div class="triage-body" id="triageBody"></div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   NUDGE — reminders that don't get forgotten
+   Phase 1: localStorage-first, Supabase-ready
+   ===================================================================== */
+
+/* ---------- Supabase config (paste creds here to enable cloud sync) ---------- */
+const SUPABASE = {
+  url:  'https://epaiazxcdcseijkhrncm.supabase.co',                 // StudyTrack project (shared)
+  anon: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwYWlhenhjZGNzZWlqa2hybmNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjQ0MzQsImV4cCI6MjA5MjYwMDQzNH0.h2t_kFLZ_YPvuJlzPPiyXVbOnW4Ub_52hdaYosMoOus',
+  userKey: '2631e558-19f1-4961-9502-d701f4b15826'                   // secret row key (hardened)
+};
+const CLOUD = !!(SUPABASE.url && SUPABASE.anon);
+
+/* ---------- constants ---------- */
+const LIST_COLORS = ['#5B4FCF','#E85D4A','#E8A23D','#7CA982','#3D9BE8','#D45A9E','#8B5C3D','#6B6B78'];
+const DEFAULT_LISTS = [
+  {id:'reminders', name:'Reminders', color:'#5B4FCF', builtin:true},
+  {id:'shopping',  name:'Shopping',  color:'#E8A23D', builtin:true},
+  {id:'claude',    name:'Claude',    color:'#8B5CD6', builtin:true, special:'claude'},
+  {id:'study',     name:'Study',     color:'#3D9BE8', builtin:true, linked:'studytrack'},
+  {id:'finance',   name:'Finance',   color:'#7CA982', builtin:true, linked:'finance'},
+  {id:'work',      name:'Work',      color:'#E85D4A', builtin:true},
+  {id:'personal',  name:'Personal',  color:'#D45A9E', builtin:true},
+];
+
+/* ---------- state ---------- */
+let state = {
+  reminders: [],
+  lists: [],
+  settings: { notifs:false, escalate:true, sundayDigest:true, firstRun:true },
+};
+let ui = {
+  view:'all', list:'all', search:'',
+  editingId:null, editingListId:null,
+  qa:{ date:null, time:null, repeat:'none', pri:'normal', list:'reminders' },
+  newListColor:'#5B4FCF',
+  triage:{ active:false, stage:0, queue:[], idx:0, batchSel:new Set(), rescheduleId:null },
+};
+
+/* ---------- utils ---------- */
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const uuid = () => 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const startOfDay = d => { const x=new Date(d); x.setHours(0,0,0,0); return x; };
+const todayStart = () => startOfDay(new Date());
+function daysBetween(a,b){ return Math.round((startOfDay(a)-startOfDay(b))/864e5); }
+
+function fmtDue(iso, hasTime){
+  if(!iso) return '';
+  const d = new Date(iso), now = new Date();
+  const diff = daysBetween(d, now);
+  const timeStr = hasTime ? d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '';
+  let day;
+  if(diff===0) day='Today';
+  else if(diff===1) day='Tomorrow';
+  else if(diff===-1) day='Yesterday';
+  else if(diff<0 && diff>=-7) day=`${-diff} days ago`;
+  else if(diff<0) day=d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  else if(diff<=7) day=d.toLocaleDateString('en-GB',{weekday:'short'});
+  else day=d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  return timeStr ? `${day}, ${timeStr}` : day;
+}
+function ageText(iso){
+  const d = -daysBetween(new Date(iso), new Date());
+  if(d<=0) return 'Due today';
+  if(d===1) return '1 day overdue';
+  if(d<7) return `${d} days overdue`;
+  if(d<14) return '1 week overdue';
+  if(d<30) return `${Math.floor(d/7)} weeks overdue`;
+  if(d<60) return '1 month overdue';
+  return `${Math.floor(d/30)} months overdue`;
+}
+function isOverdue(r){ return r.dueDate && !r.completed && new Date(r.dueDate) < new Date() && !isSnoozed(r); }
+function isSnoozed(r){ return r.snoozedUntil && new Date(r.snoozedUntil) > new Date(); }
+function listById(id){ return state.lists.find(l=>l.id===id) || DEFAULT_LISTS[0]; }
+
+/* ---------- persistence (localStorage-first, Supabase-ready) ---------- */
+const LS_KEY = 'nudge.data.v1';
+let saveTimer=null, syncTimer=null;
+
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const d=JSON.parse(raw); state.reminders=d.reminders||[]; state.lists=d.lists||[]; state.settings={...state.settings,...(d.settings||{})}; }
+  }catch(e){ console.warn('load failed',e); }
+  if(!state.lists.length) state.lists = DEFAULT_LISTS.map(l=>({...l}));
+}
+function persist(){
+  localStorage.setItem(LS_KEY, JSON.stringify({reminders:state.reminders, lists:state.lists, settings:state.settings}));
+  if(CLOUD){ setSync('syncing'); clearTimeout(syncTimer); syncTimer=setTimeout(cloudPush, 800); }
+}
+async function cloudPush(){
+  try{
+    const res = await fetch(`${SUPABASE.url}/rest/v1/nudge_data?user_key=eq.${SUPABASE.userKey}`,{
+      method:'POST',
+      headers:{ apikey:SUPABASE.anon, Authorization:`Bearer ${SUPABASE.anon}`, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates' },
+      body: JSON.stringify({ user_key:SUPABASE.userKey, data:{reminders:state.reminders, lists:state.lists, settings:state.settings}, updated_at:new Date().toISOString() })
+    });
+    setSync(res.ok ? 'synced' : 'local');
+  }catch(e){ setSync('local'); }
+}
+async function cloudPull(){
+  try{
+    const res = await fetch(`${SUPABASE.url}/rest/v1/nudge_data?user_key=eq.${SUPABASE.userKey}&select=data`,{
+      headers:{ apikey:SUPABASE.anon, Authorization:`Bearer ${SUPABASE.anon}` }
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const rows = await res.json();
+    if(rows && rows[0] && rows[0].data){
+      const d = rows[0].data;
+      state.reminders=d.reminders||state.reminders; state.lists=d.lists||state.lists; state.settings={...state.settings,...(d.settings||{})};
+    }
+    setSync('synced');   // connection succeeded — synced even if the remote row is empty
+  }catch(e){ console.warn('cloud pull failed', e); setSync('local'); }
+}
+function setSync(status){
+  const pill=$('#syncPill'), label=$('#syncLabel');
+  if(!pill) return;
+  pill.className='sync-pill '+status;
+  label.textContent = status==='synced'?'Synced':status==='syncing'?'Syncing…':CLOUD?'Offline':'Local only';
+}
+
+/* ---------- recurrence ---------- */
+function nextOccurrence(r){
+  if(!r.recurrence || !r.dueDate) return null;
+  const d=new Date(r.dueDate), f=r.recurrence.freq;
+  if(f==='daily') d.setDate(d.getDate()+1);
+  else if(f==='weekly') d.setDate(d.getDate()+7);
+  else if(f==='monthly') d.setMonth(d.getMonth()+1);
+  else if(f==='yearly') d.setFullYear(d.getFullYear()+1);
+  // skip into the future if needed
+  while(d < new Date() && f==='daily') d.setDate(d.getDate()+1);
+  return d.toISOString();
+}
+
+/* ---------- CRUD ---------- */
+function addReminder(data){
+  const r = {
+    id:uuid(), title:data.title.trim(), notes:data.notes||'',
+    dueDate:data.dueDate||null, hasTime:!!data.hasTime, listId:data.listId||'reminders',
+    priority:data.priority||'normal', completed:false, completedAt:null,
+    recurrence: data.repeat&&data.repeat!=='none' ? {freq:data.repeat,interval:1} : null,
+    createdAt:new Date().toISOString(), source:data.source||'manual', snoozedUntil:null, dismissed:false,
+  };
+  state.reminders.unshift(r); persist(); return r;
+}
+function updateReminder(id, patch){
+  const r=state.reminders.find(x=>x.id===id); if(!r) return;
+  Object.assign(r, patch); persist();
+}
+function completeReminder(id){
+  const r=state.reminders.find(x=>x.id===id); if(!r) return;
+  if(!r.completed && r.recurrence && r.dueDate){
+    const next=nextOccurrence(r);
+    if(next){ addReminder({title:r.title,notes:r.notes,dueDate:next,hasTime:r.hasTime,listId:r.listId,priority:r.priority,repeat:r.recurrence.freq,source:r.source}); }
+  }
+  r.completed=!r.completed; r.completedAt=r.completed?new Date().toISOString():null; r.snoozedUntil=null;
+  persist();
+}
+function deleteReminder(id){ state.reminders=state.reminders.filter(x=>x.id!==id); persist(); }
+function snoozeReminder(id, days){
+  const r=state.reminders.find(x=>x.id===id); if(!r) return;
+  const base = r.dueDate && new Date(r.dueDate)>new Date() ? new Date(r.dueDate) : new Date();
+  base.setDate(base.getDate()+days); base.setHours(9,0,0,0);
+  r.dueDate=base.toISOString(); r.hasTime=true; r.snoozedUntil=null; persist();
+}
+
+/* ---------- filtering / grouping ---------- */
+function visibleReminders(){
+  let rs = state.reminders.filter(r=>!r.completed);
+  if(ui.search){ const q=ui.search.toLowerCase(); rs=rs.filter(r=>r.title.toLowerCase().includes(q)||(r.notes||'').toLowerCase().includes(q)); }
+  if(ui.view==='list-detail') rs=rs.filter(r=>r.listId===ui.list);
+  if(ui.view==='today'){ const t=todayStart(); rs=rs.filter(r=>r.dueDate && startOfDay(r.dueDate)<=t); }
+  if(ui.view==='scheduled') rs=rs.filter(r=>r.dueDate);
+  return rs;
+}
+function groupReminders(rs){
+  const now=new Date(), t=todayStart(), wk=new Date(t); wk.setDate(wk.getDate()+7);
+  const g={overdue:[],today:[],upcoming:[],nodate:[]};
+  rs.forEach(r=>{
+    if(!r.dueDate){ g.nodate.push(r); return; }
+    const d=new Date(r.dueDate);
+    if(isSnoozed(r)){ g.upcoming.push(r); return; }
+    if(d<now && startOfDay(d)<t){ g.overdue.push(r); }
+    else if(startOfDay(d).getTime()===t.getTime()){ d<now?g.overdue.push(r):g.today.push(r); }
+    else if(d<=wk){ g.upcoming.push(r); }
+    else g.upcoming.push(r);
+  });
+  const byDate=(a,b)=>new Date(a.dueDate)-new Date(b.dueDate);
+  g.overdue.sort(byDate); g.today.sort(byDate); g.upcoming.sort(byDate);
+  return g;
+}
+function allOverdue(){ return state.reminders.filter(isOverdue).sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate)); }
+
+/* ---------- ICONS ---------- */
+const IC = {
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5L20 7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></svg>',
+  repeat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  flame:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 3 4 4 4 8a4 4 0 0 1-8 0c0-1 .3-1.8.7-2.5C9 9 9 10.5 10 11c0-2 1-3.5 2-5 0 1.5 1 2 1.5 3 .3-2-1-3.8-1.5-7Z"/></svg>',
+  snooze:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6l-6 5h6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
+/* ---------- RENDER ---------- */
+function render(){
+  renderSidebar();
+  renderCounts();
+  const c=$('#content');
+  if(ui.view==='settings'){ c.innerHTML=renderSettings(); bindSettings(); $('#viewTitle').textContent='Settings'; $('#viewSub').textContent=''; setSearchVisible(false); return; }
+  if(ui.view==='lists'){ c.innerHTML=renderListsGrid(); bindListsGrid(); $('#viewTitle').textContent='Lists'; $('#viewSub').textContent=`${state.lists.length} lists`; setSearchVisible(false); return; }
+
+  // titles
+  let title='All Reminders', sub='', dot='';
+  if(ui.view==='today'){ title='Today'; sub=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}); }
+  else if(ui.view==='scheduled'){ title='Scheduled'; sub='Everything with a due date'; }
+  else if(ui.view==='list-detail'){ const l=listById(ui.list); title=l.name; dot=l.color; const n=state.reminders.filter(r=>r.listId===l.id&&!r.completed).length; sub=`${n} open`; }
+  else { const open=state.reminders.filter(r=>!r.completed).length; sub = open?`${open} open · stay on top of it`:'You\'re all caught up'; }
+  $('#viewTitle').innerHTML = (dot?`<span class="vt-dot" style="background:${dot}"></span>`:'') + title;
+  $('#viewSub').textContent = sub;
+
+  const rs = visibleReminders();
+  const g = groupReminders(rs);
+  let html='';
+
+  // triage banner (only on all/today views, when overdue exist, not searching)
+  const overdueCount = allOverdue().length;
+  if(overdueCount>0 && !ui.search && (ui.view==='all'||ui.view==='today')){
+    html += `<div class="triage-banner" id="triageBanner">
+      <div class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="tb-text">
+        <div class="tb-title">${overdueCount} overdue ${overdueCount===1?'reminder':'reminders'}</div>
+        <div class="tb-sub">Clear the backlog in a quick guided sweep</div>
+      </div>
+      <div class="tb-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    </div>`;
+  }
+
+  if(rs.length===0){
+    html += ui.search ? emptyState('🔍','No matches','Nothing matches "'+ui.search+'". Try another search.')
+      : emptyState('🌿','All clear','No reminders here. Tap + to add one and get it off your mind.');
+  } else {
+    if(g.overdue.length) html+=section('overdue','Overdue',g.overdue,true);
+    if(g.today.length) html+=section('today','Today',g.today);
+    if(g.upcoming.length) html+=section('upcoming','Upcoming',g.upcoming);
+    if(g.nodate.length) html+=section('nodate','No Date',g.nodate);
+  }
+
+  c.innerHTML = `<div class="view">${html}</div>`;
+  bindCards();
+  const tb=$('#triageBanner'); if(tb) tb.onclick=startTriage;
+}
+
+function section(key,label,items,overdue){
+  return `<div class="section ${overdue?'overdue':''}">
+    <div class="section-head">
+      <span class="section-title">${label}</span>
+      <span class="section-count">${items.length}</span>
+      <span class="section-line"></span>
+    </div>
+    ${items.map(cardHTML).join('')}
+  </div>`;
+}
+
+function cardHTML(r){
+  const l=listById(r.listId);
+  const od=isOverdue(r);
+  const dueCls = od?'due-overdue':(r.dueDate&&daysBetween(r.dueDate,new Date())===0?'due-today':'');
+  const meta=[];
+  if(r.dueDate) meta.push(`<span class="rmeta-item ${dueCls}">${IC.clock}${od?ageText(r.dueDate):fmtDue(r.dueDate,r.hasTime)}</span>`);
+  if(r.recurrence) meta.push(`<span class="rmeta-item">${IC.repeat}${r.recurrence.freq}</span>`);
+  if(ui.view==='all'||ui.view==='today'||ui.view==='scheduled'||ui.search) meta.push(`<span class="rlist-tag" style="color:${l.color}"><span class="list-dot" style="background:${l.color}"></span>${l.name}</span>`);
+  if(r.priority==='high') meta.push(`<span class="pri-flag high">${IC.flame}High</span>`);
+  if(r.source&&r.source!=='manual') meta.push(`<span class="auto-badge">${r.source==='finance'?'Finance':r.source==='studytrack'?'Study':'Auto'}</span>`);
+
+  return `<div class="rcard ${od?'overdue':''} p-${r.priority}" data-id="${r.id}">
+    <button class="check" data-act="complete">${IC.check}</button>
+    <div class="rbody" data-act="edit">
+      <div class="rtitle">${esc(r.title)}</div>
+      ${meta.length?`<div class="rmeta">${meta.join('')}</div>`:''}
+      ${r.notes?`<div class="rnote-preview">${esc(r.notes)}</div>`:''}
+    </div>
+    <div class="rcard-actions">
+      <button class="rmini-btn" data-act="edit" title="Edit">${IC.edit}</button>
+      <button class="rmini-btn" data-act="delete" title="Delete">${IC.trash}</button>
+    </div>
+  </div>`;
+}
+
+function emptyState(emoji,title,text){
+  return `<div class="empty"><div class="empty-emoji">${emoji}</div><div class="empty-title">${title}</div><div class="empty-text">${text}</div></div>`;
+}
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function bindCards(){
+  $$('.rcard').forEach(card=>{
+    const id=card.dataset.id;
+    card.querySelectorAll('[data-act]').forEach(el=>{
+      el.onclick=(e)=>{
+        e.stopPropagation();
+        const act=el.dataset.act;
+        if(act==='complete'){ animateComplete(card,id); }
+        else if(act==='edit'){ openEdit(id); }
+        else if(act==='delete'){ animateDelete(card,id,true); }
+      };
+    });
+  });
+}
+function animateComplete(card,id){
+  const r=state.reminders.find(x=>x.id===id);
+  card.classList.add('removing');
+  completeReminder(id);
+  showToast(r&&r.recurrence?'Done · next one scheduled':'Completed', 'Undo', ()=>{ completeReminder(id); render(); });
+  setTimeout(render, 240);
+}
+function animateDelete(card,id,confirm){
+  const r=state.reminders.find(x=>x.id===id);
+  card.classList.add('removing');
+  const snapshot={...r};
+  deleteReminder(id);
+  showToast('Deleted','Undo',()=>{ state.reminders.unshift(snapshot); persist(); render(); });
+  setTimeout(render, 240);
+}
+
+/* ---------- counts + sidebar ---------- */
+function renderCounts(){
+  const open=state.reminders.filter(r=>!r.completed);
+  $('#cnt-all').textContent=open.length;
+  $('#cnt-today').textContent=open.filter(r=>r.dueDate&&startOfDay(r.dueDate)<=todayStart()).length||'';
+  $('#cnt-scheduled').textContent=open.filter(r=>r.dueDate).length||'';
+  $$('#cnt-today,#cnt-scheduled').forEach(e=>{ if(e.textContent==='0'||e.textContent===''){ e.style.display='none'; } else e.style.display=''; });
+  // bottom nav badge
+  const od=allOverdue().length;
+  const bnToday=$('#bottomnav .bn-item[data-view=today]');
+  if(bnToday){ let b=bnToday.querySelector('.bn-badge'); if(od>0){ if(!b){b=document.createElement('span');b.className='bn-badge';bnToday.appendChild(b);} b.textContent=od; } else if(b) b.remove(); }
+}
+function renderSidebar(){
+  const wrap=$('#sidebar-lists'); if(!wrap) return;
+  wrap.innerHTML = state.lists.map(l=>{
+    const open=state.reminders.filter(r=>r.listId===l.id&&!r.completed);
+    const od=open.filter(isOverdue).length;
+    const active = ui.view==='list-detail'&&ui.list===l.id;
+    return `<button class="nav-item ${active?'active':''}" data-view="list-detail" data-list="${l.id}">
+      <span class="ni-icon"><span class="list-dot" style="background:${l.color}"></span></span>
+      ${esc(l.name)}
+      ${od>0?`<span class="nav-overdue-badge">${od}</span>`:`<span class="ni-count">${open.length||''}</span>`}
+    </button>`;
+  }).join('');
+  wrap.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>{ navTo('list-detail', b.dataset.list); });
+  // active states on top-level
+  $$('#sidebar .nav-item[data-view]').forEach(b=>{
+    if(!b.dataset.list || b.dataset.list==='all') b.classList.toggle('active', b.dataset.view===ui.view && ui.view!=='list-detail');
+  });
+  $('#sidebar .nav-item[data-list=all]')?.classList.toggle('active', ui.view==='all');
+}
+
+/* ---------- navigation ---------- */
+function navTo(view, list){
+  ui.view=view; if(list!==undefined) ui.list=list; ui.search=''; $('#searchInput').value='';
+  if(view!=='all'&&view!=='today') setSearchVisible(false);
+  // bottom nav active
+  $$('#bottomnav .bn-item').forEach(b=>{
+    const match = b.dataset.view===view || (b.dataset.view==='all'&&view==='list-detail'&&false);
+    b.classList.toggle('active', b.dataset.view===view);
+  });
+  $('#main-scroll').scrollTop=0;
+  render();
+}
+
+/* ---------- search ---------- */
+function setSearchVisible(v){
+  const w=$('#searchWrap');
+  w.classList.toggle('hidden',!v);
+  if(v){ $('#searchInput').focus(); } else { ui.search=''; $('#searchInput').value=''; $('#searchClear').style.display='none'; }
+}
+
+/* ============ QUICK ADD ============ */
+function openAdd(){
+  ui.editingId=null;
+  ui.qa={ date:null, time:null, repeat:'none', pri:'normal', list: ui.view==='list-detail'?ui.list:'reminders' };
+  $('#qaTitle').value=''; $('#qaNotes').value=''; $('#qaDate').value=''; $('#qaTime').value='';
+  $('#qaSave').textContent='Add Reminder'; $('#qaSave').disabled=true; $('#qaDelete').style.display='none';
+  $('#qaDetail').classList.remove('show'); $('#qaMoreToggle').classList.remove('open');
+  syncQAChips(); buildListPills(); setSeg('#qaRepeat','rep','none'); setSeg('#qaPriSeg','pri','normal');
+  showOverlay('#addOverlay'); setTimeout(()=>$('#qaTitle').focus(),250);
+}
+function openEdit(id){
+  const r=state.reminders.find(x=>x.id===id); if(!r) return;
+  ui.editingId=id;
+  ui.qa={
+    date: r.dueDate?r.dueDate.slice(0,10):null,
+    time: r.dueDate&&r.hasTime?new Date(r.dueDate).toTimeString().slice(0,5):null,
+    repeat: r.recurrence?r.recurrence.freq:'none', pri:r.priority, list:r.listId
+  };
+  $('#qaTitle').value=r.title; $('#qaNotes').value=r.notes||'';
+  $('#qaDate').value=ui.qa.date||''; $('#qaTime').value=ui.qa.time||'';
+  $('#qaSave').textContent='Save Changes'; $('#qaSave').disabled=false; $('#qaDelete').style.display='';
+  $('#qaDetail').classList.add('show'); $('#qaMoreToggle').classList.add('open');
+  syncQAChips(); buildListPills(); setSeg('#qaRepeat','rep',ui.qa.repeat); setSeg('#qaPriSeg','pri',ui.qa.pri);
+  showOverlay('#addOverlay'); setTimeout(()=>$('#qaTitle').focus(),250);
+}
+function syncQAChips(){
+  const dl=$('#chipDateLabel'), dc=$('#chipDate');
+  if(ui.qa.date){ const d=new Date(ui.qa.date+'T'+(ui.qa.time||'12:00')); dl.textContent=fmtDue(d.toISOString(),!!ui.qa.time); dc.classList.add('set'); }
+  else { dl.textContent='Date'; dc.classList.remove('set'); }
+  const l=listById(ui.qa.list); $('#chipListLabel').textContent=l.name; $('#chipListDot').style.background=l.color; $('#chipList').classList.add('set');
+  const pc=$('#chipPri'), pl=$('#chipPriLabel');
+  if(ui.qa.pri==='high'){ pl.textContent='High'; pc.classList.add('set'); }
+  else if(ui.qa.pri==='low'){ pl.textContent='Low'; pc.classList.add('set'); }
+  else { pl.textContent='Priority'; pc.classList.remove('set'); }
+}
+function buildListPills(){
+  $('#qaListPills').innerHTML = state.lists.map(l=>
+    `<button class="lpill ${ui.qa.list===l.id?'on':''}" style="color:${l.color}" data-list="${l.id}"><span class="list-dot" style="background:${l.color}"></span>${esc(l.name)}</button>`
+  ).join('');
+  $$('#qaListPills .lpill').forEach(b=>b.onclick=()=>{ ui.qa.list=b.dataset.list; buildListPills(); syncQAChips(); });
+}
+function setSeg(sel,attr,val){
+  $$(`${sel} button`).forEach(b=>b.classList.toggle('on', b.dataset[attr]===val));
+}
+function saveQA(){
+  const title=$('#qaTitle').value.trim(); if(!title) return;
+  let dueDate=null, hasTime=false;
+  if(ui.qa.date){
+    const t=ui.qa.time||'09:00'; hasTime=!!ui.qa.time;
+    dueDate=new Date(ui.qa.date+'T'+t).toISOString();
+  }
+  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat };
+  if(ui.editingId){
+    updateReminder(ui.editingId,{
+      title:payload.title, notes:payload.notes, dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri,
+      recurrence: ui.qa.repeat!=='none'?{freq:ui.qa.repeat,interval:1}:null
+    });
+    showToast('Saved');
+  } else { addReminder(payload); showToast('Added'); }
+  hideOverlay('#addOverlay'); render();
+}
+
+/* ============ NEW LIST ============ */
+function openNewList(editId){
+  ui.editingListId=editId||null;
+  const grid=$('#colorGrid');
+  grid.innerHTML=LIST_COLORS.map(c=>`<div class="color-opt" data-c="${c}" style="background:${c};color:${c}"></div>`).join('');
+  if(editId){
+    const l=listById(editId);
+    $('#listSheetTitle').textContent='Edit List'; $('#newListName').value=l.name; ui.newListColor=l.color;
+    $('#saveListBtn').textContent='Save'; $('#saveListBtn').disabled=false;
+    $('#deleteListBtn').style.display = l.builtin?'none':'';
+  } else {
+    $('#listSheetTitle').textContent='New List'; $('#newListName').value=''; ui.newListColor=LIST_COLORS[0];
+    $('#saveListBtn').textContent='Create List'; $('#saveListBtn').disabled=true; $('#deleteListBtn').style.display='none';
+  }
+  grid.querySelectorAll('.color-opt').forEach(o=>{
+    o.classList.toggle('on', o.dataset.c===ui.newListColor);
+    o.onclick=()=>{ ui.newListColor=o.dataset.c; grid.querySelectorAll('.color-opt').forEach(x=>x.classList.toggle('on',x===o)); };
+  });
+  showOverlay('#listOverlay'); setTimeout(()=>$('#newListName').focus(),250);
+}
+function saveList(){
+  const name=$('#newListName').value.trim(); if(!name) return;
+  if(ui.editingListId){ const l=listById(ui.editingListId); l.name=name; l.color=ui.newListColor; }
+  else { state.lists.push({id:uuid(),name,color:ui.newListColor,builtin:false}); }
+  persist(); hideOverlay('#listOverlay'); render(); showToast(ui.editingListId?'List updated':'List created');
+}
+function deleteList(){
+  if(!ui.editingListId) return;
+  const id=ui.editingListId;
+  state.reminders.forEach(r=>{ if(r.listId===id) r.listId='reminders'; });
+  state.lists=state.lists.filter(l=>l.id!==id);
+  persist(); hideOverlay('#listOverlay');
+  if(ui.list===id) navTo('all','all'); else render();
+  showToast('List deleted');
+}
+
+/* ============ LISTS GRID (mobile view) ============ */
+function renderListsGrid(){
+  return `<div class="view" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">${
+    state.lists.map(l=>{
+      const open=state.reminders.filter(r=>r.listId===l.id&&!r.completed);
+      const od=open.filter(isOverdue).length;
+      return `<button class="set-group" data-list="${l.id}" style="text-align:left;padding:18px;margin:0;display:flex;flex-direction:column;gap:10px;align-items:flex-start;">
+        <span class="list-dot" style="width:18px;height:18px;background:${l.color}"></span>
+        <span style="font-weight:700;font-size:16px;">${esc(l.name)}</span>
+        <span style="font-size:13px;color:var(--text-3);">${open.length} open${od?` · <span style="color:var(--coral);font-weight:600;">${od} overdue</span>`:''}</span>
+      </button>`;
+    }).join('')
+  }<button class="set-group" id="gridAddList" style="padding:18px;margin:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;color:var(--violet);border-style:dashed;min-height:110px;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:26px;height:26px;"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+    <span style="font-weight:600;font-size:14px;">New List</span>
+  </button></div>`;
+}
+function bindListsGrid(){
+  $$('#content [data-list]').forEach(b=>b.onclick=()=>navTo('list-detail',b.dataset.list));
+  $('#gridAddList').onclick=()=>openNewList();
+}
+
+/* ============ SETTINGS ============ */
+function renderSettings(){
+  const total=state.reminders.length, done=state.reminders.filter(r=>r.completed).length, od=allOverdue().length;
+  return `<div class="view">
+    <div class="set-group">
+      <div class="set-row">
+        <div class="sr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.5 2 6 4.8 6 8.5c0 2.4-.6 4-1.4 5.2-.5.7 0 1.8.9 1.8h12.9c.9 0 1.4-1.1.9-1.8C18.6 12.5 18 10.9 18 8.5 18 4.8 15.5 2 12 2Z"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0" stroke-linecap="round"/></svg></div>
+        <div class="sr-text"><div class="sr-title">Escalating nudges</div><div class="sr-sub">Alert when items go 3+ days overdue</div></div>
+        <button class="toggle ${state.settings.escalate?'on':''}" data-set="escalate"></button>
+      </div>
+      <div class="set-row">
+        <div class="sr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4" stroke-linecap="round"/></svg></div>
+        <div class="sr-text"><div class="sr-title">Sunday digest</div><div class="sr-sub">Weekly summary of overdue items</div></div>
+        <button class="toggle ${state.settings.sundayDigest?'on':''}" data-set="sundayDigest"></button>
+      </div>
+      <div class="set-row">
+        <div class="sr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="sr-text"><div class="sr-title">Notifications</div><div class="sr-sub">${Notification?.permission==='granted'?'Enabled on this device':'Tap to enable browser alerts'}</div></div>
+        <button class="toggle ${state.settings.notifs?'on':''}" data-set="notifs" id="notifToggle"></button>
+      </div>
+    </div>
+
+    <div class="set-group">
+      <div class="set-row"><div class="sr-text"><div class="sr-title">${total}</div><div class="sr-sub">Total reminders</div></div></div>
+      <div class="set-row"><div class="sr-text"><div class="sr-title" style="color:var(--sage)">${done}</div><div class="sr-sub">Completed</div></div></div>
+      <div class="set-row"><div class="sr-text"><div class="sr-title" style="color:var(--coral)">${od}</div><div class="sr-sub">Currently overdue</div></div></div>
+    </div>
+
+    <div class="set-group">
+      <button class="set-row" id="importApple" style="width:100%;text-align:left;">
+        <div class="sr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="sr-text"><div class="sr-title">Import from Apple Reminders</div><div class="sr-sub">Paste exported reminders (coming in iOS app)</div></div>
+      </button>
+      <div class="set-row">
+        <div class="sr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+        <div class="sr-text"><div class="sr-title">Cloud sync</div><div class="sr-sub">${CLOUD?'Connected to Supabase':'Add Supabase keys in index.html to sync across devices'}</div></div>
+      </div>
+    </div>
+
+    <div style="text-align:center;color:var(--text-3);font-size:12.5px;margin-top:30px;">Nudge · Phase 1 · made with Claude</div>
+  </div>`;
+}
+function bindSettings(){
+  $$('#content .toggle[data-set]').forEach(t=>t.onclick=async()=>{
+    const k=t.dataset.set;
+    if(k==='notifs' && !state.settings.notifs){
+      if('Notification' in window){ const p=await Notification.requestPermission(); if(p!=='granted'){ showToast('Notifications blocked in browser'); return; } }
+    }
+    state.settings[k]=!state.settings[k]; persist(); render();
+  });
+  const ia=$('#importApple'); if(ia) ia.onclick=()=>showToast('Apple Reminders sync arrives with the iOS app (Phase 3)');
+}
+
+/* ============ TRIAGE ENGINE ============ */
+function startTriage(){
+  const overdue=allOverdue();
+  if(!overdue.length){ showToast('Nothing overdue 🎉'); return; }
+  ui.triage={ active:true, stage:1, queue:overdue.slice(), idx:0, batchSel:new Set(), rescheduleId:null,
+    stats:{relevant:0,dismissed:0,done:0,rescheduled:0} };
+  $('#triage').classList.add('show');
+  renderTriage();
+}
+function endTriage(){
+  $('#triage').classList.remove('show'); ui.triage.active=false; render();
+}
+function renderTriage(){
+  const t=ui.triage;
+  const body=$('#triageBody'); const bar=$('#triageBar'); const label=$('#triageStageLabel');
+  if(t.stage===1){
+    label.textContent='Stage 1 of 3 · Still relevant?';
+    const remaining=t.queue.length-t.idx;
+    bar.style.width = `${33*(t.idx/Math.max(t.queue.length,1))}%`;
+    if(t.idx===0 && !t.started1){
+      t.started1=true;
+      body.innerHTML=`<div class="stage-intro">
+        <div class="si-emoji">🧹</div>
+        <h2>Quick relevance sweep</h2>
+        <p>One at a time — is this still worth keeping? Bin the dead weight fast, deal with the keepers after.</p>
+        <div class="stage-stat"><b>${t.queue.length}</b> overdue to sweep</div>
+        <div class="triage-foot"><button class="btn btn-primary" id="startSweep">Start sweeping →</button></div>
+      </div>`;
+      $('#startSweep').onclick=()=>{ renderTriage(); };
+      return;
+    }
+    if(t.idx>=t.queue.length){ enterStage2(); return; }
+    const r=t.queue[t.idx]; const l=listById(r.listId);
+    body.innerHTML=`<div style="width:100%;">
+      <div class="triage-stage-num" style="text-align:center;margin-bottom:14px;">${t.idx+1} of ${t.queue.length}</div>
+      <div class="relev-card">
+        <div class="rc-age">${IC.clock}${ageText(r.dueDate)}</div>
+        <div class="rc-title">${esc(r.title)}</div>
+        <div class="rc-list"><span class="list-dot" style="background:${l.color}"></span>${esc(l.name)}</div>
+        ${r.notes?`<div class="rc-note">${esc(r.notes)}</div>`:''}
+      </div>
+      <div class="triage-actions">
+        <button class="ta-btn ta-no" id="taNo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" stroke-linecap="round" stroke-linejoin="round"/></svg>Not anymore</button>
+        <button class="ta-btn ta-yes" id="taYes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7" stroke-linecap="round" stroke-linejoin="round"/></svg>Still relevant</button>
+      </div>
+    </div>`;
+    $('#taYes').onclick=()=>{ r._keep=true; t.stats.relevant++; t.idx++; renderTriage(); };
+    $('#taNo').onclick=()=>{ deleteReminder(r.id); t.stats.dismissed++; t.idx++; renderTriage(); };
+  }
+  else if(t.stage===2){ renderStage2(); }
+  else if(t.stage===3){ renderStage3(); }
+}
+
+function enterStage2(){
+  const t=ui.triage;
+  // keepers only
+  const keepers=t.queue.filter(r=>r._keep && state.reminders.find(x=>x.id===r.id));
+  // old = 14+ days overdue
+  const old=keepers.filter(r=> -daysBetween(new Date(r.dueDate),new Date()) >=14 );
+  if(old.length<2){ // not worth a batch stage
+    t.stage=3; t.queue3=keepers; t.idx=0; renderTriage(); return;
+  }
+  t.stage=2; t.batchItems=old; t.batchSel=new Set(old.map(r=>r.id)); t.keepers=keepers;
+  renderTriage();
+}
+function renderStage2(){
+  const t=ui.triage;
+  $('#triageStageLabel').textContent='Stage 2 of 3 · Clear the stale pile';
+  $('#triageBar').style.width='66%';
+  const body=$('#triageBody');
+  body.innerHTML=`<div style="width:100%;">
+    <div class="stage-intro" style="margin-bottom:8px;">
+      <div class="si-emoji" style="font-size:46px;margin-bottom:12px;">📦</div>
+      <h2 style="font-size:22px;">${t.batchItems.length} items are 2+ weeks old</h2>
+      <p style="margin-bottom:16px;">These have sat the longest. Untick anything you want to keep — the rest get cleared in one tap.</p>
+    </div>
+    <div class="batch-list" id="batchList">
+      ${t.batchItems.map(r=>`<div class="batch-row sel" data-id="${r.id}">
+        <div class="batch-check">${IC.check}</div>
+        <div class="batch-info"><div class="batch-title">${esc(r.title)}</div><div class="batch-age">${ageText(r.dueDate)}</div></div>
+      </div>`).join('')}
+    </div>
+    <div class="triage-foot">
+      <button class="btn btn-ghost" id="batchSkip">Keep all</button>
+      <button class="btn btn-danger" id="batchClear">Clear <span id="batchN">${t.batchSel.size}</span></button>
+    </div>
+  </div>`;
+  $$('#batchList .batch-row').forEach(row=>row.onclick=()=>{
+    const id=row.dataset.id;
+    if(t.batchSel.has(id)){ t.batchSel.delete(id); row.classList.remove('sel'); }
+    else { t.batchSel.add(id); row.classList.add('sel'); }
+    $('#batchN').textContent=t.batchSel.size;
+    $('#batchClear').style.display = t.batchSel.size?'':'none';
+  });
+  $('#batchSkip').onclick=()=>{ t.stage=3; t.queue3=t.keepers; t.idx=0; renderTriage(); };
+  $('#batchClear').onclick=()=>{
+    t.batchSel.forEach(id=>{ deleteReminder(id); t.stats.dismissed++; });
+    t.keepers=t.keepers.filter(r=>!t.batchSel.has(r.id));
+    t.stage=3; t.queue3=t.keepers; t.idx=0; renderTriage();
+  };
+}
+
+function renderStage3(){
+  const t=ui.triage;
+  $('#triageStageLabel').textContent='Stage 3 of 3 · Decide on the rest';
+  const total=t.queue3.length;
+  $('#triageBar').style.width = `${66+34*((t.idx)/Math.max(total,1))}%`;
+  const body=$('#triageBody');
+  // skip already-handled
+  while(t.idx<t.queue3.length && !state.reminders.find(x=>x.id===t.queue3[t.idx].id && isOverdue(x))) t.idx++;
+  if(t.idx>=t.queue3.length || total===0){ renderTriageDone(); return; }
+  const r=t.queue3[t.idx]; const l=listById(r.listId);
+  $('#triageBar').style.width = `${66+34*((t.idx)/Math.max(total,1))}%`;
+  body.innerHTML=`<div style="width:100%;">
+    <div class="triage-stage-num" style="text-align:center;margin-bottom:14px;">${t.idx+1} of ${total} keepers</div>
+    <div class="relev-card">
+      <div class="rc-age">${IC.clock}${ageText(r.dueDate)}</div>
+      <div class="rc-title">${esc(r.title)}</div>
+      <div class="rc-list"><span class="list-dot" style="background:${l.color}"></span>${esc(l.name)}</div>
+      ${r.notes?`<div class="rc-note">${esc(r.notes)}</div>`:''}
+    </div>
+    <div id="spotZone">
+      <div class="spot-actions">
+        <button class="spot-btn spot-done" id="spDone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7" stroke-linecap="round" stroke-linejoin="round"/></svg>Done</button>
+        <button class="spot-btn spot-snooze" id="spSnooze">${IC.snooze}Reschedule</button>
+        <button class="spot-btn spot-del" id="spDel">${IC.trash}Delete</button>
+      </div>
+    </div>
+  </div>`;
+  $('#spDone').onclick=()=>{ completeReminder(r.id); t.stats.done++; t.idx++; renderTriage(); };
+  $('#spDel').onclick=()=>{ deleteReminder(r.id); t.stats.dismissed++; t.idx++; renderTriage(); };
+  $('#spSnooze').onclick=()=>{
+    $('#spotZone').innerHTML=`<div class="resched-pop">
+      <button class="resched-opt" data-d="0">Today 9am</button>
+      <button class="resched-opt" data-d="1">Tomorrow</button>
+      <button class="resched-opt" data-d="3">In 3 days</button>
+      <button class="resched-opt" data-d="7">Next week</button>
+      <button class="resched-opt" data-d="14">In 2 weeks</button>
+    </div>`;
+    $$('#spotZone .resched-opt').forEach(o=>o.onclick=()=>{
+      snoozeReminder(r.id, parseInt(o.dataset.d)); t.stats.rescheduled++; t.idx++; renderTriage();
+    });
+  };
+}
+function renderTriageDone(){
+  const t=ui.triage, s=t.stats;
+  $('#triageStageLabel').textContent='Complete';
+  $('#triageBar').style.width='100%';
+  const cleared=s.dismissed, done=s.done, resch=s.rescheduled;
+  $('#triageBody').innerHTML=`<div class="stage-intro">
+    <div class="all-clear"><div class="ac-circle">${IC.check}</div></div>
+    <h2>Backlog cleared 🎉</h2>
+    <p>You just swept through your overdue pile. Here's the damage:</p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:26px;">
+      ${done?`<div class="stage-stat" style="background:var(--sage-soft);color:#4E7B54;"><b>${done}</b> done</div>`:''}
+      ${resch?`<div class="stage-stat" style="background:var(--violet-soft);color:var(--violet-dark);"><b>${resch}</b> rescheduled</div>`:''}
+      ${cleared?`<div class="stage-stat"><b>${cleared}</b> cleared</div>`:''}
+    </div>
+    <div class="triage-foot"><button class="btn btn-primary" id="triageFinish">Back to Nudge</button></div>
+  </div>`;
+  $('#triageFinish').onclick=endTriage;
+}
+
+/* ---------- overlay helpers ---------- */
+function showOverlay(sel){ $(sel).classList.add('show'); document.body.style.overflow='hidden'; }
+function hideOverlay(sel){ $(sel).classList.remove('show'); document.body.style.overflow=''; }
+
+/* ---------- toast ---------- */
+let toastTimer=null;
+function showToast(msg, actionLabel, actionFn){
+  const t=$('#toast');
+  t.innerHTML = `<span>${esc(msg)}</span>` + (actionLabel?`<button class="toast-action">${esc(actionLabel)}</button>`:'');
+  if(actionLabel){ t.querySelector('.toast-action').onclick=()=>{ actionFn&&actionFn(); hideToast(); }; }
+  t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(hideToast, actionLabel?5000:2400);
+}
+function hideToast(){ $('#toast').classList.remove('show'); }
+
+/* ---------- notifications (in-app check; push comes in Phase 2) ---------- */
+function checkNudges(){
+  if(!state.settings.notifs || !('Notification' in window) || Notification.permission!=='granted') return;
+  const overdue=allOverdue();
+  const esc3=overdue.filter(r=> -daysBetween(new Date(r.dueDate),new Date()) >=3 );
+  const last = state.settings._lastNudge ? new Date(state.settings._lastNudge) : null;
+  const now=new Date();
+  if(esc3.length && (!last || daysBetween(now,last)>=1)){
+    new Notification('Nudge', { body:`${esc3.length} reminder${esc3.length>1?'s are':' is'} 3+ days overdue. Time for a quick triage?`, tag:'nudge-escalate' });
+    state.settings._lastNudge=now.toISOString(); persist();
+  }
+}
+
+/* ============ EVENT BINDINGS ============ */
+function bindGlobal(){
+  $('#fab').onclick=openAdd;
+  $('#qaSave').onclick=saveQA;
+  $('#qaDelete').onclick=()=>{ if(ui.editingId){ deleteReminder(ui.editingId); hideOverlay('#addOverlay'); render(); showToast('Deleted'); } };
+  $('#qaTitle').oninput=()=>{ $('#qaSave').disabled = !$('#qaTitle').value.trim(); };
+  $('#qaTitle').onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); if($('#qaTitle').value.trim()) saveQA(); } };
+
+  $('#qaMoreToggle').onclick=()=>{ $('#qaDetail').classList.toggle('show'); $('#qaMoreToggle').classList.toggle('open'); };
+
+  // chips
+  $('#chipDate').onclick=()=>{ $('#qaDetail').classList.add('show'); $('#qaMoreToggle').classList.add('open'); $('#qaDate').showPicker?.(); $('#qaDate').focus(); };
+  $('#chipList').onclick=()=>{ $('#qaDetail').classList.add('show'); $('#qaMoreToggle').classList.add('open'); $('#qaListPills').scrollIntoView({block:'nearest'}); };
+  $('#chipPri').onclick=()=>{ const order=['normal','high','low']; const i=order.indexOf(ui.qa.pri); ui.qa.pri=order[(i+1)%3]; setSeg('#qaPriSeg','pri',ui.qa.pri); syncQAChips(); };
+
+  $('#qaDate').onchange=()=>{ ui.qa.date=$('#qaDate').value||null; syncQAChips(); };
+  $('#qaTime').onchange=()=>{ ui.qa.time=$('#qaTime').value||null; syncQAChips(); };
+  $$('#qaRepeat button').forEach(b=>b.onclick=()=>{ ui.qa.repeat=b.dataset.rep; setSeg('#qaRepeat','rep',ui.qa.repeat); });
+  $$('#qaPriSeg button').forEach(b=>b.onclick=()=>{ ui.qa.pri=b.dataset.pri; setSeg('#qaPriSeg','pri',ui.qa.pri); syncQAChips(); });
+
+  // list sheet
+  $('#addListBtn').onclick=()=>openNewList();
+  $('#newListName').oninput=()=>{ $('#saveListBtn').disabled=!$('#newListName').value.trim(); };
+  $('#newListName').onkeydown=(e)=>{ if(e.key==='Enter'&&$('#newListName').value.trim()) saveList(); };
+  $('#saveListBtn').onclick=saveList;
+  $('#deleteListBtn').onclick=deleteList;
+
+  // overlays: click outside / handle to close
+  $$('.overlay').forEach(o=>o.onclick=(e)=>{ if(e.target===o) hideOverlay('#'+o.id); });
+  $('#addSheet').querySelector('.sheet-handle').onclick=()=>hideOverlay('#addOverlay');
+  $('#listSheet').querySelector('.sheet-handle').onclick=()=>hideOverlay('#listOverlay');
+
+  // triage
+  $('#triageClose').onclick=()=>{ if(confirm('Exit triage? Your progress so far is saved.')) endTriage(); };
+
+  // nav
+  $$('#sidebar .nav-item[data-view]').forEach(b=>{ if(!b.dataset.list||b.dataset.list==='all'){ b.onclick=()=>navTo(b.dataset.view, b.dataset.list==='all'?'all':undefined); } });
+  $$('#bottomnav .bn-item').forEach(b=>b.onclick=()=>navTo(b.dataset.view, b.dataset.list||undefined));
+
+  // search
+  $('#searchToggle').onclick=()=>{ const hidden=$('#searchWrap').classList.contains('hidden'); setSearchVisible(hidden); };
+  $('#searchInput').oninput=()=>{ ui.search=$('#searchInput').value.trim(); $('#searchClear').style.display=ui.search?'flex':'none'; render(); };
+  $('#searchClear').onclick=()=>{ ui.search=''; $('#searchInput').value=''; $('#searchClear').style.display='none'; $('#searchInput').focus(); render(); };
+
+  // keyboard
+  document.addEventListener('keydown',(e)=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'){
+      if(e.key==='Escape') e.target.blur();
+      return;
+    }
+    if(e.key==='n'||e.key==='N'){ e.preventDefault(); openAdd(); }
+    else if(e.key==='/'){ e.preventDefault(); setSearchVisible(true); }
+    else if(e.key==='Escape'){ $$('.overlay.show').forEach(o=>hideOverlay('#'+o.id)); if(ui.triage.active && !$('.overlay.show')) {} }
+    else if(e.key==='t'||e.key==='T'){ if(allOverdue().length) startTriage(); }
+  });
+}
+
+/* ---------- seed sample data on first run ---------- */
+function seedSample(){
+  const now=new Date();
+  const mk=(t,dayOffset,opts={})=>{ const d=new Date(now); d.setDate(d.getDate()+dayOffset); d.setHours(opts.h??9,opts.m??0,0,0); return {title:t,dueDate:d.toISOString(),hasTime:opts.hasTime??true, listId:opts.list||'reminders', priority:opts.pri||'normal', repeat:opts.repeat||'none'}; };
+  [
+    mk('Find different running shoes',-22,{list:'personal'}),
+    mk('Update iPhone Home Screen widgets',-22,{list:'personal'}),
+    mk('Pay TFL outstanding payment',-1,{list:'finance',pri:'high'}),
+    mk('Buy Alby birthday gift',-1,{list:'shopping',pri:'high'}),
+    mk('Claude — discuss work schedule',-18,{list:'claude'}),
+    mk('Epiduo night',0,{repeat:'daily',list:'personal',h:21}),
+    mk('Renew Japanese passport',16,{list:'personal',pri:'high'}),
+    mk('Buy microfibre towel',15,{list:'shopping'}),
+    mk('Strip bed & mattress sheets',9,{list:'personal'}),
+    {title:'Study Japanese — 30 min', dueDate:null, listId:'study', priority:'normal', repeat:'none'},
+  ].forEach(addReminder);
+  state.settings.firstRun=false; persist();
+}
+
+/* ---------- init ---------- */
+async function init(){
+  loadLocal();
+  if(CLOUD){ await cloudPull(); }
+  else setSync('local');
+  if(state.settings.firstRun && state.reminders.length===0) seedSample();
+  bindGlobal();
+  render();
+  if('Notification' in window && state.settings.notifs && Notification.permission==='granted') setTimeout(checkNudges, 1500);
+  // register SW
+  if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+}
+init();
+</script>
+</body>
+</html>
