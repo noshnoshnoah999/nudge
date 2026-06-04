@@ -508,6 +508,56 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
 @keyframes viewIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .rcard.removing{animation:cardOut .25s forwards;}
 @keyframes cardOut{to{opacity:0;transform:translateX(40px) scale(.96);height:0;margin:0;padding-top:0;padding-bottom:0;}}
+
+/* ===================== MOTION LAYER ===================== */
+/* Staggered card + section entrance — only on view navigation (gated by .stagger). */
+@keyframes rcardIn{from{opacity:0;transform:translateY(16px) scale(.97);}to{opacity:1;transform:none;}}
+.view.stagger .rcard{animation:rcardIn .44s cubic-bezier(.22,.7,.2,1) both;}
+.view.stagger .section{animation:rcardIn .4s cubic-bezier(.22,.7,.2,1) both;}
+.view.stagger .triage-banner{animation:rcardIn .42s cubic-bezier(.22,.7,.2,1) both;}
+.view.stagger .empty,.view.stagger .all-clear{animation:cardIn .45s cubic-bezier(.22,.7,.2,1);}
+
+/* Tactile press feedback across interactive elements. */
+.rcard:active{transform:scale(.985);}
+.check:active{transform:scale(.82);}
+.lpill:active,.seg button:active,.btn:active,.resched-opt:active,.color-opt:active,
+.ta-btn:active,.spot-btn:active,.nav-item:active,.bn-item:active,.rmini-btn:active,.tag-chip:active{transform:scale(.94);}
+
+/* Completion burst — green fill + expanding ring, only on the completing card. */
+.check{position:relative;}
+.rcard.completing .check{background:var(--sage);border-color:var(--sage);animation:checkPop .36s cubic-bezier(.3,1.4,.5,1);}
+.rcard.completing .check svg{opacity:1;transform:scale(1);}
+.rcard.completing .check::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:2px solid var(--sage);animation:ringBurst .55s ease-out forwards;}
+@keyframes checkPop{0%{transform:scale(.5);}60%{transform:scale(1.2);}100%{transform:scale(1);}}
+@keyframes ringBurst{0%{opacity:.55;transform:scale(1);}100%{opacity:0;transform:scale(2.2);}}
+
+/* FAB — gentle idle float; the + spins on hover. */
+@keyframes fabFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}
+.fab{animation:fabFloat 3.4s ease-in-out infinite;}
+.fab:hover,.fab:active{animation:none;}
+.fab svg{transition:transform .35s cubic-bezier(.3,1.4,.5,1);}
+.fab:hover svg{transform:rotate(90deg);}
+
+/* Overdue triage banner — drifting light sheen + breathing count. */
+.triage-banner{position:relative;overflow:hidden;}
+.triage-banner::after{content:'';position:absolute;top:0;left:-60%;width:55%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.30),transparent);
+  transform:skewX(-18deg);animation:sheen 3.8s ease-in-out infinite;pointer-events:none;}
+@keyframes sheen{0%{left:-60%;}55%,100%{left:135%;}}
+.section.overdue .section-count{animation:countPulse 2.2s ease-in-out infinite;}
+@keyframes countPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.09);}}
+
+/* Hover micro-lifts. */
+.nav-item{transition:background .14s,transform .14s,color .14s;}
+.nav-item:hover{transform:translateX(2px);}
+.lpill{transition:transform .14s,box-shadow .14s,background .12s,color .12s,border-color .12s;}
+.lpill:hover{transform:translateY(-1px);box-shadow:var(--shadow-sm);}
+.rmini-btn{transition:background .12s,color .12s,transform .12s;}
+
+/* Honour reduced-motion preference. */
+@media(prefers-reduced-motion:reduce){
+  *,*::after,*::before{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.05ms!important;}
+}
 </style>
 </head>
 <body>
@@ -1073,11 +1123,17 @@ const IC = {
 };
 
 /* ---------- RENDER ---------- */
+let _lastViewKey=null;
 function render(){
   renderSidebar();
   renderCounts();
   if($('#smartEditBtn')) $('#smartEditBtn').classList.toggle('hidden', ui.view!=='smart');
   const c=$('#content');
+  // Stagger card entrance only when navigating to a new view, not on every
+  // data re-render (otherwise completing a task replays the whole cascade).
+  const _vk=JSON.stringify([ui.view,ui.list,ui.tag,ui.smartId,!!ui.board,!!ui.search]);
+  const viewCls = (_vk!==_lastViewKey) ? 'view stagger' : 'view';
+  _lastViewKey=_vk;
   if(ui.view==='settings'){ c.innerHTML=renderSettings(); bindSettings(); $('#viewTitle').textContent='Settings'; $('#viewSub').textContent=''; setSearchVisible(false); return; }
   if(ui.view==='lists'){ c.innerHTML=renderListsGrid(); bindListsGrid(); $('#viewTitle').textContent='Lists'; $('#viewSub').textContent=`${state.lists.length} lists`; setSearchVisible(false); return; }
 
@@ -1098,7 +1154,7 @@ function render(){
     let bhtml=''; const oc=allOverdue().length;
     if(oc>0 && !ui.search) bhtml+=triageBannerHTML(oc);
     bhtml+=renderBoard();
-    c.innerHTML=`<div class="view">${bhtml}</div>`;
+    c.innerHTML=`<div class="${viewCls}">${bhtml}</div>`;
     bindBoard();
     const tb=$('#triageBanner'); if(tb) tb.onclick=startTriage;
     return;
@@ -1122,7 +1178,7 @@ function render(){
     if(g.nodate.length) html+=section('nodate','No Date',g.nodate);
   }
 
-  c.innerHTML = `<div class="view">${html}</div>`;
+  c.innerHTML = `<div class="${viewCls}">${html}</div>`;
   bindCards();
   const tb=$('#triageBanner'); if(tb) tb.onclick=startTriage;
 }
@@ -1180,8 +1236,9 @@ function bindBoard(){
   });
 }
 
-function cardHTML(r){
+function cardHTML(r,i){
   const l=listById(r.listId);
+  const delay=`animation-delay:${Math.min((i||0)*0.035,0.45)}s`;
   const od=isOverdue(r);
   const dueCls = od?'due-overdue':(r.dueDate&&daysBetween(r.dueDate,new Date())===0?'due-today':'');
   const meta=[];
@@ -1194,7 +1251,7 @@ function cardHTML(r){
   if(r.priority==='high') meta.push(`<span class="pri-flag high">${IC.flame}High</span>`);
   if(r.source&&r.source!=='manual') meta.push(`<span class="auto-badge">${r.source==='finance'?'Finance':r.source==='studytrack'?'Study':'Auto'}</span>`);
 
-  return `<div class="rcard ${od?'overdue':''} p-${r.priority}" data-id="${r.id}">
+  return `<div class="rcard ${od?'overdue':''} p-${r.priority}" data-id="${r.id}" style="${delay}">
     <button class="check" data-act="complete">${IC.check}</button>
     <div class="rbody" data-act="edit">
       <div class="rtitle">${esc(displayTitle(r))}</div>
@@ -1235,7 +1292,7 @@ function bindCards(){
 }
 function animateComplete(card,id){
   const r=state.reminders.find(x=>x.id===id);
-  card.classList.add('removing');
+  card.classList.add('removing','completing');
   completeReminder(id);
   showToast(r&&r.recurrence?'Done · next one scheduled':'Completed', 'Undo', ()=>{ completeReminder(id); render(); });
   setTimeout(render, 240);
