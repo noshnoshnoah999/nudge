@@ -3,3 +3,5 @@ make_icons.py
 *.tsv
 *.err
 .DS_Store
+
+nudge_backup_*.json

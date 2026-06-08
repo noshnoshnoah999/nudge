@@ -1001,6 +1001,20 @@ async function cloudPull(){
     setSync('synced');   // connection succeeded — synced even if the remote row is empty
   }catch(e){ console.warn('cloud pull failed', e); setSync('local'); }
 }
+// Self-heal: collapse exact-duplicate reminders (same title + due + list + notes).
+// External imports (e.g. Apple Reminders) re-add the same item with brand-new ids,
+// which id-based de-dupe can't catch; this guarantees they never pile up again.
+function dedupeReminders(){
+  const seen=new Map(), out=[];
+  for(const r of state.reminders){
+    const k=[(r.title||'').trim(),(r.dueDate||''),(r.listId||''),((r.notes||'').trim())].join('');
+    if(!seen.has(k)){ seen.set(k,out.length); out.push(r); }
+    else { const i=seen.get(k); if(r.completed && !out[i].completed) out[i]=r; } // keep the done copy
+  }
+  const removed=state.reminders.length-out.length;
+  if(removed>0) state.reminders=out;
+  return removed;
+}
 function setSync(status){
   const pill=$('#syncPill'), label=$('#syncLabel');
   if(!pill) return;
@@ -1986,6 +2000,8 @@ async function init(){
   if(CLOUD){ await cloudPull(); }
   else setSync('local');
   if(state.settings.firstRun && state.reminders.length===0) seedSample();
+  const _dd=dedupeReminders();   // self-heal any duplicate pile-ups (e.g. repeated Apple imports)
+  if(_dd>0){ console.info('Nudge: collapsed '+_dd+' duplicate reminder(s)'); persist(); }
   ui.board = !!state.settings.boardView;
   bindGlobal();
   render();
