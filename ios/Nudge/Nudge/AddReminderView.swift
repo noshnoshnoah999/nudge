@@ -40,6 +40,8 @@ struct AddReminderView: View {
     @State private var hasDue = false
     @State private var due = Date()
     @State private var hasTime = true
+    enum SchedExpand { case none, date, time }   // which inline picker is open (accordion)
+    @State private var schedExpand: SchedExpand = .none
     @State private var listId = "reminders"
     @State private var priority = "normal"
     @State private var pinned = false
@@ -88,17 +90,38 @@ struct AddReminderView: View {
                     // Schedule
                     section("When") {
                         schedRow("calendar", "Date", subtitle: hasDue ? relativeDateText(due) : nil,
-                                 isOn: $hasDue.animation(Theme.spring))
+                                 isOn: Binding(
+                                    get: { hasDue },
+                                    set: { on in withAnimation(Theme.spring) {
+                                        hasDue = on
+                                        schedExpand = on ? .date : .none
+                                        if !on { hasTime = false }
+                                    } }),
+                                 onTap: {
+                                    guard hasDue else { return }
+                                    withAnimation(Theme.spring) { schedExpand = (schedExpand == .date) ? .none : .date }
+                                 })
                         if hasDue {
-                            divider
-                            DatePicker("", selection: $due, displayedComponents: [.date])
-                                .datePickerStyle(.graphical)
-                                .tint(Theme.accent).labelsHidden()
-                                .padding(.vertical, 2)
+                            if schedExpand == .date {
+                                divider
+                                DatePicker("", selection: $due, displayedComponents: [.date])
+                                    .datePickerStyle(.graphical)
+                                    .tint(Theme.accent).labelsHidden()
+                                    .padding(.vertical, 2)
+                            }
                             divider
                             schedRow("clock", "Time", subtitle: hasTime ? timeText(due) : nil,
-                                     isOn: $hasTime.animation(Theme.spring))
-                            if hasTime {
+                                     isOn: Binding(
+                                        get: { hasTime },
+                                        set: { on in withAnimation(Theme.spring) {
+                                            hasTime = on
+                                            schedExpand = on ? .time : (schedExpand == .time ? .none : schedExpand)
+                                        } }),
+                                     onTap: {
+                                        guard hasTime else { return }
+                                        withAnimation(Theme.spring) { schedExpand = (schedExpand == .time) ? .none : .time }
+                                     })
+                            if hasTime && schedExpand == .time {
                                 divider
                                 timePresetRow
                                 DatePicker("", selection: $due, displayedComponents: [.hourAndMinute])
@@ -454,16 +477,25 @@ struct AddReminderView: View {
     }
 
     // Apple-Reminders-style row: icon · title · blue value subtitle · toggle.
-    private func schedRow(_ icon: String, _ title: String, subtitle: String?, isOn: Binding<Bool>) -> some View {
+    // Tapping the label area runs `onTap` (used to expand/collapse the inline picker).
+    private func schedRow(_ icon: String, _ title: String, subtitle: String?,
+                          isOn: Binding<Bool>, onTap: (() -> Void)? = nil) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).foregroundStyle(Theme.accent).frame(width: 22)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).foregroundStyle(Theme.textMain)
-                if let s = subtitle {
-                    Text(s).font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
+            Button { onTap?() } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: icon).foregroundStyle(Theme.accent).frame(width: 22)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(title).foregroundStyle(Theme.textMain)
+                        if let s = subtitle {
+                            Text(s).font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
+                        }
+                    }
+                    Spacer()
                 }
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
+            .disabled(onTap == nil)
             Toggle("", isOn: isOn).labelsHidden().tint(Theme.accent)
         }
         .padding(.vertical, 8)
