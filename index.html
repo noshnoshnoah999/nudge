@@ -1935,35 +1935,7 @@ function seedSample(){
 }
 
 /* ============ INTEGRATIONS — auto-reminders from StudyTrack & Finance ============ */
-function monthsToOct2027(){ const n=new Date(); return (2027-n.getFullYear())*12 + (9-n.getMonth()); }
-async function stGet(key){
-  const res=await fetch(`${STUDYTRACK.url}/rest/v1/study_data?key=eq.${key}&select=value`,{headers:{apikey:STUDYTRACK.anon,Authorization:`Bearer ${STUDYTRACK.anon}`}});
-  if(!res.ok) throw new Error('st '+res.status);
-  const rows=await res.json(); return rows&&rows[0]?rows[0].value:null;
-}
-async function studytrackAuto(){
-  const subjs=await stGet('st_subjs'); if(!subjs||!Array.isArray(subjs)) return [];
-  const hours=(await stGet('st_hours'))||{};
-  let totalReq=0,totalDone=0; const behind=[];
-  subjs.forEach(s=>{
-    if(s.locked) return;
-    const done=Math.min((s.base||0)+(hours[s.id]||0), s.req||0);
-    totalReq+=(s.req||0); totalDone+=done;
-    const rem=(s.req||0)-done;
-    if(!s.done && !s.passive && rem>0.5) behind.push({name:s.name, rem});
-  });
-  behind.sort((a,b)=>b.rem-a.rem);
-  const pct=totalReq?Math.round(totalDone/totalReq*100):0;
-  const ym=new Date().toISOString().slice(0,7);
-  const due=new Date(); due.setHours(20,0,0,0);
-  const top=behind.slice(0,3).map(b=>`${b.name} (${Math.round(b.rem)}h left)`).join(' · ');
-  const ml=monthsToOct2027();
-  return [{
-    id:`auto-st-checkin-${ym}`, source:'studytrack', listId:'study', dueDate:due.toISOString(), hasTime:true,
-    title:`📚 Study check-in — ${pct}% to graduation`,
-    notes:`${Math.round(totalDone)}/${Math.round(totalReq)}h done · ${ml} month${ml===1?'':'s'} to Oct 2027.`+(top?`\nFocus next: ${top}.`:'')
-  }];
-}
+/* StudyTrack auto-reminders removed — app unlinked from Nudge 2026-06-11. */
 async function financeAuto(){
   if(!FINANCE.anon) return [];
   const res=await fetch(`${FINANCE.url}/rest/v1/finance_data?user_key=eq.${FINANCE.userKey}&select=data`,{headers:{apikey:FINANCE.anon,Authorization:`Bearer ${FINANCE.anon}`}});
@@ -1990,7 +1962,6 @@ async function financeAuto(){
 }
 async function syncIntegrations(){
   let adds=[];
-  try{ adds=adds.concat(await studytrackAuto()); }catch(e){ console.warn('studytrack sync failed', e); }
   try{ adds=adds.concat(await financeAuto()); }catch(e){ console.warn('finance sync failed', e); }
   if(!adds.length) return;
   const ids=new Set(state.reminders.map(r=>r.id));
