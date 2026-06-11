@@ -1458,6 +1458,20 @@ function saveQA(){
   let title=$('#qaTitle').value.trim(); if(!title) return;
   if(!ui.editingId && ui.qa.nlClean && ui.qa.nlSource===title && ui.qa.nlClean.length>1) title=ui.qa.nlClean;
   const tz = $('#qaTz') && $('#qaTz').value ? $('#qaTz').value : null;
+  // Buy-keyword rule (mirrors iOS): a NEW "buy …" reminder goes to Shopping at a
+  // fixed 9 AM, bumped to the next free 15-min slot if 9 AM is already taken.
+  if(!ui.editingId && /\bbuy\b/i.test(title)){
+    if(state.lists.some(l=>l.id==='shopping')) ui.qa.list='shopping';
+    const pad=n=>String(n).padStart(2,'0');
+    if(!ui.qa.date){ const d=new Date(); ui.qa.date=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+    const taken=new Set(state.reminders.filter(r=>!r.completed&&r.hasTime&&r.dueDate).map(r=>{
+      const dt=new Date(r.dueDate);
+      return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    }));
+    let h=9,m=0;
+    for(let i=0;i<96;i++){ if(!taken.has(`${ui.qa.date} ${pad(h)}:${pad(m)}`)) break; m+=15; if(m>=60){m-=60;h++;} }
+    ui.qa.time=`${pad(h)}:${pad(m)}`;
+  }
   let dueDate=null, hasTime=false;
   if(ui.qa.date){
     const t=ui.qa.time||'09:00'; hasTime=!!ui.qa.time;

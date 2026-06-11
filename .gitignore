@@ -5,3 +5,9 @@ make_icons.py
 .DS_Store
 
 nudge_backup_*.json
+
+# Xcode (native app)
+**/xcuserdata/
+**/*.xcuserstate
+**/DerivedData/
+.claude/
