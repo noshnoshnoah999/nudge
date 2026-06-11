@@ -19,6 +19,12 @@ struct NudgeApp: App {
                 .tint(settings.accent)
                 .preferredColorScheme(settings.colorScheme)
                 .task { sync.attach(store); notifier.attach(store) }
+                .onOpenURL { url in
+                    // Lock Screen quick-add widget deep link → open the New Reminder sheet.
+                    if url.scheme == "nudge", url.host == "quickadd" {
+                        AppRouter.shared.requestQuickAdd()
+                    }
+                }
         }
     }
 }

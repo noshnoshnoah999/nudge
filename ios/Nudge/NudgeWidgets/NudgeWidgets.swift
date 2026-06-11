@@ -154,9 +154,10 @@ struct QuickAddWidget: Widget {
 
 // MARK: - Quick add (Lock Screen accessory)
 
-/// Lock Screen / accessory widget: one tap drops you straight into Nudge's
-/// New Reminder sheet (via the same QuickAddReminderIntent the Control Centre
-/// button uses). Circular for the round slots, rectangular for the wide slot.
+/// Lock Screen / accessory widget: one tap opens Nudge straight into the New
+/// Reminder sheet. Uses `widgetURL` (not an interactive intent) because on the
+/// Lock Screen a tap launches the app via the widget's URL — WidgetKit delivers
+/// it to the app's `onOpenURL`. Circular for round slots, rectangular for wide.
 struct QuickAddLockWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "NudgeQuickAddLock", provider: NudgeProvider()) { _ in
@@ -172,7 +173,7 @@ private struct QuickAddLockView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        Button(intent: QuickAddReminderIntent()) {
+        Group {
             switch family {
             case .accessoryCircular:
                 ZStack {
@@ -190,7 +191,7 @@ private struct QuickAddLockView: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .widgetURL(URL(string: "nudge://quickadd"))
         .widgetAccentable()
         .containerBackground(.clear, for: .widget)
     }
