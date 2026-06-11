@@ -87,21 +87,25 @@ struct AddReminderView: View {
 
                     // Schedule
                     section("When") {
-                        toggleRow("Due date", systemImage: "calendar", isOn: $hasDue.animation(Theme.spring))
+                        schedRow("calendar", "Date", subtitle: hasDue ? relativeDateText(due) : nil,
+                                 isOn: $hasDue.animation(Theme.spring))
                         if hasDue {
                             divider
-                            DatePicker(selection: $due, displayedComponents: hasTime ? [.date, .hourAndMinute] : [.date]) {
-                                rowLabel("Date", "clock")
-                            }
-                            .tint(Theme.accent).padding(.vertical, 6)
+                            DatePicker("", selection: $due, displayedComponents: [.date])
+                                .datePickerStyle(.graphical)
+                                .tint(Theme.accent).labelsHidden()
+                                .padding(.vertical, 2)
                             divider
-                            datePresetRow
+                            schedRow("clock", "Time", subtitle: hasTime ? timeText(due) : nil,
+                                     isOn: $hasTime.animation(Theme.spring))
                             if hasTime {
                                 divider
                                 timePresetRow
+                                DatePicker("", selection: $due, displayedComponents: [.hourAndMinute])
+                                    .datePickerStyle(.wheel)
+                                    .tint(Theme.accent).labelsHidden()
+                                    .frame(maxWidth: .infinity)
                             }
-                            divider
-                            toggleRow("Include time", systemImage: "clock.badge", isOn: $hasTime.animation(Theme.spring))
                             divider
                             menuRow("Repeat", "repeat") {
                                 Picker("Repeat", selection: $repeatFreq.animation(Theme.spring)) {
@@ -449,59 +453,34 @@ struct AddReminderView: View {
         .padding(.vertical, 8)
     }
 
-    // Quick-date shortcuts (Apple-Reminders style). Each keeps the current time-of-day
-    // and just moves the day; the active one highlights.
-    private var datePresetRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                dateChip("Today", dayOffset(0))
-                dateChip("Tomorrow", dayOffset(1))
-                dateChip("This Weekend", upcomingWeekend())
-                dateChip("Next Week", nextWeekStart())
+    // Apple-Reminders-style row: icon · title · blue value subtitle · toggle.
+    private func schedRow(_ icon: String, _ title: String, subtitle: String?, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).foregroundStyle(Theme.accent).frame(width: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).foregroundStyle(Theme.textMain)
+                if let s = subtitle {
+                    Text(s).font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
+                }
             }
-            .padding(.vertical, 2)
+            Spacer()
+            Toggle("", isOn: isOn).labelsHidden().tint(Theme.accent)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
     }
 
-    private func dateChip(_ label: String, _ date: Date) -> some View {
-        let on = Calendar.current.isDate(due, inSameDayAs: date)
-        return Button { applyDate(date) } label: {
-            Text(label).font(.caption.weight(.semibold))
-                .foregroundStyle(on ? .white : Theme.accent)
-                .padding(.horizontal, 13).padding(.vertical, 7)
-                .background(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.accent.opacity(0.14)), in: Capsule())
-        }
-        .buttonStyle(PressableStyle())
-    }
-
-    private func applyDate(_ date: Date) {
+    private func relativeDateText(_ d: Date) -> String {
         let cal = Calendar.current
-        let t = cal.dateComponents([.hour, .minute], from: due)
-        var c = cal.dateComponents([.year, .month, .day], from: date)
-        c.hour = hasTime ? (t.hour ?? 9) : 0
-        c.minute = hasTime ? (t.minute ?? 0) : 0
-        withAnimation(Theme.snappy) { due = cal.date(from: c) ?? date }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if cal.isDateInToday(d) { return "Today" }
+        if cal.isDateInTomorrow(d) { return "Tomorrow" }
+        if cal.isDateInYesterday(d) { return "Yesterday" }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: d)).day ?? 0
+        let f = DateFormatter()
+        f.dateFormat = (days > 1 && days < 7) ? "EEEE" : "EEE d MMM"
+        return f.string(from: d)
     }
-
-    private func dayOffset(_ n: Int) -> Date {
-        Calendar.current.date(byAdding: .day, value: n, to: Calendar.current.startOfDay(for: Date())) ?? Date()
-    }
-    private func upcomingWeekend() -> Date {   // upcoming Saturday (or today if it's the weekend)
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let wd = cal.component(.weekday, from: today)   // 1=Sun … 7=Sat
-        if wd == 1 { return today }                      // Sunday → this weekend is today
-        return cal.date(byAdding: .day, value: (7 - wd) % 7, to: today) ?? today
-    }
-    private func nextWeekStart() -> Date {     // next Monday
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let wd = cal.component(.weekday, from: today)
-        var add = (2 - wd + 7) % 7
-        if add == 0 { add = 7 }
-        return cal.date(byAdding: .day, value: add, to: today) ?? today
+    private func timeText(_ d: Date) -> String {
+        let f = DateFormatter(); f.timeStyle = .short; return f.string(from: d)
     }
 
     private let timePresets: [(label: String, hour: Int, min: Int)] = [
