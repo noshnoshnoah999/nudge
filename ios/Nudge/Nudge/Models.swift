@@ -42,6 +42,13 @@ struct Recurrence: Codable, Hashable {
     var until: String?        // ISO date — stop repeating after this (optional)
 }
 
+/// One phase of a routine's escalating frequency, e.g. "every 3 days until 1 Jul".
+/// A step with `until == nil` is the final, open-ended phase.
+struct EscalationStep: Codable, Hashable {
+    var everyDays: Int        // repeat interval in days while this phase is active
+    var until: String?        // ISO date this phase ends (nil = final phase)
+}
+
 struct Subtask: Codable, Hashable, Identifiable {
     var id: String
     var title: String
@@ -73,6 +80,13 @@ struct Reminder: Codable, Identifiable, Hashable {
     var snoozedUntil: String?
     var dismissed: Bool?
     var pinned: Bool? = nil   // kept on the Home dashboard regardless of due date
+    // Nightly routine (e.g. KP / Epiduo): if not ticked by next morning, the app asks
+    // "did you do it last night?" on first open. Advances in place rather than spawning
+    // copies. `escalation` ramps the frequency over time; `escalateAskNext` is when to
+    // next prompt "ready to step up?" (adaptive, skin-based).
+    var routine: Bool? = nil
+    var escalation: [EscalationStep]? = nil
+    var escalateAskNext: String? = nil
 
     var isCompleted: Bool { completed ?? false }
     var listIdOrDefault: String { listId ?? "reminders" }

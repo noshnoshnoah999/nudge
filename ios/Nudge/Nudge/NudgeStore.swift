@@ -193,6 +193,12 @@ final class NudgeStore: ObservableObject {
     // MARK: - Mutations
     func toggleComplete(_ r: Reminder) {
         guard let i = reminders.firstIndex(where: { $0.id == r.id }) else { return }
+        // A nightly routine never "completes" — ticking it means "did it tonight", so it
+        // rolls forward in place (no spawned copies). Untick on a routine is a no-op.
+        if (reminders[i].routine ?? false) && !(reminders[i].completed ?? false) {
+            routineDidIt(r.id, night: Date())
+            return
+        }
         let nowComplete = !(reminders[i].completed ?? false)
         reminders[i].completed = nowComplete
         reminders[i].completedAt = nowComplete ? iso(Date()) : nil
@@ -237,6 +243,130 @@ final class NudgeStore: ObservableObject {
         // Respect an "end repeat" date.
         if let u = parseDate(rec.until), next > u { return nil }
         return iso(next)
+    }
+
+    // MARK: - Nightly routine (KP / Epiduo morning check-in)
+
+    /// Start of the day `n` days from today (for the check-in's quick reschedule buttons).
+    func dayFromNow(_ n: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: n, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+    }
+
+    /// Current repeat interval (in days) for a routine reminder, honouring escalation
+    /// phases (the first phase whose `until` is still in the future, else the open one).
+    func routineIntervalDays(_ r: Reminder) -> Int {
+        if let steps = r.escalation, !steps.isEmpty {
+            let now = Date()
+            for s in steps {
+                if let u = parseDate(s.until) { if now < u { return max(1, s.everyDays) } }
+                else { return max(1, s.everyDays) }
+            }
+            return max(1, steps.last?.everyDays ?? 1)
+        }
+        if let rec = r.recurrence {
+            switch rec.freq {
+            case "daily":  return max(1, rec.interval ?? 1)
+            case "weekly": return 7 * max(1, rec.interval ?? 1)
+            default: break
+            }
+        }
+        return 1
+    }
+
+    /// Routine reminders that lapsed on a PREVIOUS night (open, due before today) — the
+    /// ones the morning check-in asks about.
+    func lapsedRoutinesForCheckin() -> [Reminder] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        return reminders.filter { r in
+            (r.routine ?? false) && !(r.completed ?? false) && !(r.dismissed ?? false)
+                && (parseDate(r.dueDate).map { cal.startOfDay(for: $0) < today } ?? false)
+        }.sorted { (parseDate($0.dueDate) ?? .distantPast) < (parseDate($1.dueDate) ?? .distantPast) }
+    }
+
+    /// The evening time-of-day a routine fires at (from its current due date; default 21:00).
+    private func routineEveningComponents(_ r: Reminder) -> (h: Int, m: Int) {
+        if let d = parseDate(r.dueDate) {
+            let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+            return (c.hour ?? 21, c.minute ?? 0)
+        }
+        return (21, 0)
+    }
+
+    /// "I did it" → roll the routine forward to its next occurrence after `night`,
+    /// stepping by the current interval until the date is in the future.
+    func routineDidIt(_ id: String, night: Date) {
+        guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+        let cal = Calendar.current
+        let interval = routineIntervalDays(reminders[i])
+        let (h, m) = routineEveningComponents(reminders[i])
+        // Anchor on the night it was meant to be done, then step forward into the future.
+        var c = cal.dateComponents([.year, .month, .day], from: night)
+        c.hour = h; c.minute = m
+        var next = cal.date(from: c) ?? night
+        var guardN = 0
+        while next <= Date() && guardN < 2000 {
+            next = cal.date(byAdding: .day, value: interval, to: next) ?? next
+            guardN += 1
+        }
+        reminders[i].dueDate = iso(next)
+        reminders[i].completed = false
+        reminders[i].completedAt = iso(Date())
+        reminders[i].snoozedUntil = nil
+        reminders[i].updatedAt = iso(Date())
+        clearNotifications(for: id)
+        persist()
+    }
+
+    /// "Not yet" → move the routine to a chosen day, keeping its evening time.
+    func routineRescheduleTo(_ id: String, day: Date) {
+        guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+        let cal = Calendar.current
+        let (h, m) = routineEveningComponents(reminders[i])
+        var c = cal.dateComponents([.year, .month, .day], from: day)
+        c.hour = h; c.minute = m
+        reminders[i].dueDate = iso(cal.date(from: c) ?? day)
+        reminders[i].completed = false
+        reminders[i].snoozedUntil = nil
+        reminders[i].updatedAt = iso(Date())
+        clearNotifications(for: id)
+        persist()
+    }
+
+    /// Adaptive "skin's ready" step-up: shorten the current open-ended phase's interval
+    /// by one notch (e.g. every 3 days → 2 → 1) and schedule the next "ready?" check.
+    func routineStepUp(_ id: String, askAgainInDays: Int = 14) {
+        guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+        var steps = reminders[i].escalation ?? [EscalationStep(everyDays: routineIntervalDays(reminders[i]), until: nil)]
+        // Shorten the final (open) phase; if it has an explicit until, append a faster open phase.
+        if let last = steps.indices.last {
+            if steps[last].until == nil {
+                steps[last].everyDays = max(1, steps[last].everyDays - 1)
+            } else {
+                steps.append(EscalationStep(everyDays: max(1, steps[last].everyDays - 1), until: nil))
+            }
+        }
+        reminders[i].escalation = steps
+        reminders[i].escalateAskNext = iso(Calendar.current.date(byAdding: .day, value: askAgainInDays, to: Date()) ?? Date())
+        reminders[i].updatedAt = iso(Date())
+        persist()
+    }
+
+    /// Push the next "ready to step up?" prompt out without changing the interval.
+    func routineSnoozeAsk(_ id: String, days: Int = 14) {
+        guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+        reminders[i].escalateAskNext = iso(Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date())
+        reminders[i].updatedAt = iso(Date())
+        persist()
+    }
+
+    /// Routine reminders whose adaptive "ready to step up?" date has arrived.
+    func routinesDueForStepUpAsk() -> [Reminder] {
+        let now = Date()
+        return reminders.filter { r in
+            (r.routine ?? false) && !(r.dismissed ?? false)
+                && (parseDate(r.escalateAskNext).map { $0 <= now } ?? false)
+        }
     }
 
     /// Reinterpret a device-local wall time as the same wall time in `tz`.
@@ -445,7 +575,8 @@ final class NudgeStore: ObservableObject {
                       url: String? = nil, location: String? = nil,
                       lat: Double? = nil, lng: Double? = nil,
                       pinned: Bool = false, remindBefore: Int? = nil,
-                      subtasks: [Subtask] = [], idForNew: String? = nil) {
+                      subtasks: [Subtask] = [], routine: Bool = false,
+                      escalation: [EscalationStep] = [], idForNew: String? = nil) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         // With a pinned timezone, the picked wall time is interpreted in that zone.
         let dueStr: String?
@@ -478,6 +609,8 @@ final class NudgeStore: ObservableObject {
             reminders[i].pinned = pinned ? true : nil
             reminders[i].remindBefore = (remindBefore ?? 0) > 0 ? remindBefore : nil
             reminders[i].subtasks = subtasks.isEmpty ? nil : subtasks
+            reminders[i].routine = routine ? true : nil
+            reminders[i].escalation = escalation.isEmpty ? nil : escalation
             reminders[i].updatedAt = iso(Date())
         } else {
             let r = Reminder(
@@ -494,7 +627,9 @@ final class NudgeStore: ObservableObject {
                 lng: (cleanLoc?.isEmpty == false) ? lng : nil,
                 createdAt: iso(Date()), updatedAt: iso(Date()),
                 source: "manual", snoozedUntil: nil, dismissed: false,
-                pinned: pinned ? true : nil)
+                pinned: pinned ? true : nil,
+                routine: routine ? true : nil,
+                escalation: escalation.isEmpty ? nil : escalation)
             reminders.insert(r, at: 0)
         }
         persist()

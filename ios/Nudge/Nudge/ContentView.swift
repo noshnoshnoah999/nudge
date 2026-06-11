@@ -32,6 +32,9 @@ struct ContentView: View {
     @State private var rescheduleTarget: Reminder?
     @State private var showTimetable = false
     @State private var smartCollection: SmartCollection?
+    @State private var showRoutineCheckin = false
+    @State private var routineLapsed: [Reminder] = []
+    @State private var routineStepUps: [Reminder] = []
     @Namespace private var tabNS
 
     private let tabs: [(name: String, icon: String)] = [
@@ -101,6 +104,9 @@ struct ContentView: View {
         .sheet(isPresented: $showTimetable) { TimetableView().environmentObject(store) }
         .sheet(isPresented: $showCompleted) { CompletedHistoryView().environmentObject(store) }
         .sheet(item: $rescheduleTarget) { r in RescheduleOptionsView(reminder: r).environmentObject(store) }
+        .sheet(isPresented: $showRoutineCheckin) {
+            RoutineCheckInView(lapsed: routineLapsed, stepUps: routineStepUps).environmentObject(store)
+        }
         .tint(Theme.accent)
         .task {
             guard !didLoad else { return }
@@ -113,6 +119,7 @@ struct ContentView: View {
             await store.refresh()
             stuckCount = store.stuckCount()
             await sync.syncNow(); await notifier.reschedule()
+            maybeRoutineCheckin()
         }
         .task {
             // Live-ish polling: pull cloud changes (reminders added on the web app or
@@ -140,7 +147,8 @@ struct ContentView: View {
                 if isLocked { attemptUnlock() } else { LockShield.shared.hide() }
                 if didLoad {
                     Task { await store.refresh(); stuckCount = store.stuckCount()
-                           await sync.syncNow(); await notifier.reschedule() }
+                           await sync.syncNow(); await notifier.reschedule()
+                           maybeRoutineCheckin() }
                 }
             @unknown default: break
             }
@@ -723,6 +731,21 @@ struct ContentView: View {
                 LockShield.shared.hide()
             }
         }
+    }
+
+    /// First app-open of the day: if a nightly routine lapsed (or an Epiduo step-up is
+    /// due), present the check-in once. Skipped while locked (re-tried after unlock).
+    private func maybeRoutineCheckin() {
+        guard !isLocked, !showRoutineCheckin else { return }
+        let todayKey = ISO8601DateFormatter().string(from: Calendar.current.startOfDay(for: Date()))
+        guard UserDefaults.standard.string(forKey: "routineCheckinDay") != todayKey else { return }
+        let lapsed = store.lapsedRoutinesForCheckin()
+        let stepUps = store.routinesDueForStepUpAsk()
+        guard !lapsed.isEmpty || !stepUps.isEmpty else { return }
+        routineLapsed = lapsed
+        routineStepUps = stepUps
+        UserDefaults.standard.set(todayKey, forKey: "routineCheckinDay")
+        showRoutineCheckin = true
     }
 
     private var greeting: String {

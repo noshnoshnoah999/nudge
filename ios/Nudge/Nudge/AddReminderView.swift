@@ -46,6 +46,8 @@ struct AddReminderView: View {
     @State private var remindBefore = 0          // minutes before due; 0 = off
     @State private var subtasks: [Subtask] = []
     @State private var newSubtask = ""
+    @State private var routine = false           // nightly routine → morning check-in
+    @State private var escalation: [EscalationStep] = []
     @State private var repeatFreq = "none"
     @State private var repeatInterval = 1
     @State private var hasUntil = false
@@ -127,6 +129,13 @@ struct AddReminderView: View {
                                     }
                                     .tint(Theme.accent).padding(.vertical, 6)
                                 }
+                            }
+                            divider
+                            toggleRow("Nightly check-in", systemImage: "moon.stars",
+                                      isOn: $routine.animation(Theme.spring))
+                            if routine {
+                                divider
+                                routineEditor
                             }
                             if hasTime {
                                 divider
@@ -382,6 +391,8 @@ struct AddReminderView: View {
         lat = r.lat; lng = r.lng
         remindBefore = r.remindBefore ?? 0
         subtasks = r.subtasks ?? []
+        routine = r.routine ?? false
+        escalation = r.escalation ?? []
         existingURLs = ImageStore.urls(for: r.id)
     }
 
@@ -394,6 +405,50 @@ struct AddReminderView: View {
 
     // Quick time-of-day shortcuts. Tapping sets that time on the chosen day, then
     // nudges to the next free 15-min slot so it won't clash with another reminder.
+    // Nightly routine editor: explainer + optional escalating-frequency phases.
+    @ViewBuilder private var routineEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("If you don't tick this the night it's due, Nudge asks \"did you do it last night?\" the next morning — tap Yes to roll it forward, or move it to another day.")
+                .font(.caption).foregroundStyle(Theme.textMeta)
+
+            if escalation.isEmpty {
+                Text("Frequency: uses the Repeat above. Add phases to ramp it up over time (e.g. every 3 days → every other day → daily).")
+                    .font(.caption2).foregroundStyle(Theme.textMeta)
+            } else {
+                ForEach(escalation.indices, id: \.self) { i in
+                    HStack(spacing: 10) {
+                        Stepper(value: $escalation[i].everyDays, in: 1...30) {
+                            Text("Every \(escalation[i].everyDays) day\(escalation[i].everyDays == 1 ? "" : "s")")
+                                .font(.subheadline).foregroundStyle(Theme.textMain)
+                        }.tint(Theme.accent)
+                    }
+                    HStack(spacing: 8) {
+                        Toggle("Until a date", isOn: Binding(
+                            get: { escalation[i].until != nil },
+                            set: { on in escalation[i].until = on ? iso(Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()) : nil }
+                        )).font(.caption).tint(Theme.accent)
+                        Button { escalation.remove(at: i) } label: {
+                            Image(systemName: "minus.circle.fill").foregroundStyle(Theme.textMeta.opacity(0.6))
+                        }.buttonStyle(.plain)
+                    }
+                    if let u = escalation[i].until, let d = parseDate(u) {
+                        DatePicker("Ends", selection: Binding(
+                            get: { d },
+                            set: { escalation[i].until = iso(Calendar.current.startOfDay(for: $0)) }
+                        ), displayedComponents: .date).font(.caption).tint(Theme.accent)
+                    }
+                    divider
+                }
+            }
+            Button {
+                escalation.append(EscalationStep(everyDays: max(1, escalation.last?.everyDays ?? 3), until: nil))
+            } label: {
+                Label("Add frequency phase", systemImage: "plus.circle").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
     // Quick-date shortcuts (Apple-Reminders style). Each keeps the current time-of-day
     // and just moves the day; the active one highlights.
     private var datePresetRow: some View {
@@ -535,6 +590,7 @@ struct AddReminderView: View {
                            recurrence: rec, tz: tz.isEmpty ? nil : tz,
                            url: url, location: location, lat: lat, lng: lng,
                            pinned: pinned, remindBefore: remindBefore, subtasks: subtasks,
+                           routine: routine, escalation: escalation,
                            idForNew: editing == nil ? draftId : nil)
         if editing == nil, let p = ClaudeLink.prompt(from: title) {
             AppRouter.shared.pendingClaudePrompt = p

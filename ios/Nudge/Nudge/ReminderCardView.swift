@@ -131,6 +131,7 @@ struct ReminderCardView: View {
                         if (r.remindBefore ?? 0) > 0 {
                             metaIcon("bell.badge", text: earlyText(r.remindBefore ?? 0), color: Theme.textMeta)
                         }
+                        if r.routine == true { metaIcon("moon.stars", text: "nightly", color: settings.accent) }
                         if let u = r.url, !u.isEmpty { linkButton(u) }
                         if ImageStore.hasImages(for: r.id) { metaIcon("photo", text: nil) }
                         if let loc = r.location, !loc.isEmpty {
@@ -251,6 +252,7 @@ struct ReminderCardView: View {
             || (r.location?.isEmpty == false)
             || (r.subtasks?.isEmpty == false)
             || ((r.remindBefore ?? 0) > 0)
+            || (r.routine == true)
             || sourceBadge(r.source) != nil
             || ImageStore.hasImages(for: r.id)
     }
