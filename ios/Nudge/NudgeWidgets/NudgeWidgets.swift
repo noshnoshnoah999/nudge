@@ -152,6 +152,50 @@ struct QuickAddWidget: Widget {
     }
 }
 
+// MARK: - Quick add (Lock Screen accessory)
+
+/// Lock Screen / accessory widget: one tap drops you straight into Nudge's
+/// New Reminder sheet (via the same QuickAddReminderIntent the Control Centre
+/// button uses). Circular for the round slots, rectangular for the wide slot.
+struct QuickAddLockWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "NudgeQuickAddLock", provider: NudgeProvider()) { _ in
+            QuickAddLockView()
+        }
+        .configurationDisplayName("Add to Nudge")
+        .description("One tap on your Lock Screen to capture a reminder.")
+        .supportedFamilies([.accessoryCircular, .accessoryRectangular])
+    }
+}
+
+private struct QuickAddLockView: View {
+    @Environment(\.widgetFamily) private var family
+
+    var body: some View {
+        Button(intent: QuickAddReminderIntent()) {
+            switch family {
+            case .accessoryCircular:
+                ZStack {
+                    AccessoryWidgetBackground()
+                    Image(systemName: "plus").font(.system(size: 22, weight: .bold))
+                }
+            default:   // .accessoryRectangular
+                HStack(spacing: 9) {
+                    Image(systemName: "bell.badge.fill").font(.title3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Add to Nudge").font(.headline)
+                        Text("Tap to capture").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .widgetAccentable()
+        .containerBackground(.clear, for: .widget)
+    }
+}
+
 // MARK: - Today list (medium + large)
 
 struct TodayWidget: Widget {
@@ -224,6 +268,7 @@ struct NudgeWidgetBundle: WidgetBundle {
         OverdueWidget()
         ProgressWidget()
         QuickAddWidget()
+        QuickAddLockWidget()
         TodayWidget()
         #if !targetEnvironment(macCatalyst)
         NudgeQuickAddControl()   // Control Centre controls are iOS-only
