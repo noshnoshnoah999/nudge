@@ -92,6 +92,8 @@ struct AddReminderView: View {
                                 rowLabel("Date", "clock")
                             }
                             .tint(Theme.accent).padding(.vertical, 6)
+                            divider
+                            datePresetRow
                             if hasTime {
                                 divider
                                 timePresetRow
@@ -392,6 +394,61 @@ struct AddReminderView: View {
 
     // Quick time-of-day shortcuts. Tapping sets that time on the chosen day, then
     // nudges to the next free 15-min slot so it won't clash with another reminder.
+    // Quick-date shortcuts (Apple-Reminders style). Each keeps the current time-of-day
+    // and just moves the day; the active one highlights.
+    private var datePresetRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                dateChip("Today", dayOffset(0))
+                dateChip("Tomorrow", dayOffset(1))
+                dateChip("This Weekend", upcomingWeekend())
+                dateChip("Next Week", nextWeekStart())
+            }
+            .padding(.vertical, 2)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func dateChip(_ label: String, _ date: Date) -> some View {
+        let on = Calendar.current.isDate(due, inSameDayAs: date)
+        return Button { applyDate(date) } label: {
+            Text(label).font(.caption.weight(.semibold))
+                .foregroundStyle(on ? .white : Theme.accent)
+                .padding(.horizontal, 13).padding(.vertical, 7)
+                .background(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.accent.opacity(0.14)), in: Capsule())
+        }
+        .buttonStyle(PressableStyle())
+    }
+
+    private func applyDate(_ date: Date) {
+        let cal = Calendar.current
+        let t = cal.dateComponents([.hour, .minute], from: due)
+        var c = cal.dateComponents([.year, .month, .day], from: date)
+        c.hour = hasTime ? (t.hour ?? 9) : 0
+        c.minute = hasTime ? (t.minute ?? 0) : 0
+        withAnimation(Theme.snappy) { due = cal.date(from: c) ?? date }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func dayOffset(_ n: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: n, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+    }
+    private func upcomingWeekend() -> Date {   // upcoming Saturday (or today if it's the weekend)
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let wd = cal.component(.weekday, from: today)   // 1=Sun … 7=Sat
+        if wd == 1 { return today }                      // Sunday → this weekend is today
+        return cal.date(byAdding: .day, value: (7 - wd) % 7, to: today) ?? today
+    }
+    private func nextWeekStart() -> Date {     // next Monday
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let wd = cal.component(.weekday, from: today)
+        var add = (2 - wd + 7) % 7
+        if add == 0 { add = 7 }
+        return cal.date(byAdding: .day, value: add, to: today) ?? today
+    }
+
     private let timePresets: [(label: String, hour: Int, min: Int)] = [
         ("Morning", 9, 0), ("Midday", 12, 0), ("Afternoon", 15, 0), ("Evening", 18, 0), ("Night", 21, 0)
     ]

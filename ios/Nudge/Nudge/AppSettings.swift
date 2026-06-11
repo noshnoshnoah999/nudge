@@ -16,11 +16,17 @@ final class AppSettings: ObservableObject {
     @Published var appLock: Bool {
         didSet { UserDefaults.standard.set(appLock, forKey: K.appLock) }
     }
+    /// List ids the user has chosen to surface as their own sections on the Upcoming
+    /// tab, in display order (e.g. a "Subscriptions / Money" list pinned to the top).
+    @Published var upcomingSections: [String] {
+        didSet { UserDefaults.standard.set(upcomingSections, forKey: K.upcomingSections) }
+    }
 
     private enum K {
         static let theme = "pref.theme"
         static let compact = "pref.compact"
         static let appLock = "pref.appLock"
+        static let upcomingSections = "pref.upcomingSections"
     }
 
     init() {
@@ -28,6 +34,7 @@ final class AppSettings: ObservableObject {
         theme = t
         compact = (UserDefaults.standard.object(forKey: K.compact) as? Bool) ?? true
         appLock = UserDefaults.standard.bool(forKey: K.appLock)
+        upcomingSections = (UserDefaults.standard.array(forKey: K.upcomingSections) as? [String]) ?? []
         Theme.palette = Palettes.by(t)   // didSet doesn't fire on init's first assignment
     }
 

@@ -50,6 +50,19 @@ struct SyncSettingsView: View {
                     Text("Pick a colour theme. Compact fits more reminders on screen.")
                 }
 
+                // MARK: Upcoming
+                Section {
+                    NavigationLink {
+                        UpcomingSectionsView().environmentObject(settings).environmentObject(store)
+                    } label: {
+                        Label("Sections on Upcoming", systemImage: "rectangle.3.group")
+                    }
+                } header: {
+                    Text("Upcoming")
+                } footer: {
+                    Text("Pin lists (like Subscriptions or Money) to show as their own sections on the Upcoming tab, in your chosen order.")
+                }
+
                 // MARK: Overdue
                 Section {
                     NavigationLink {

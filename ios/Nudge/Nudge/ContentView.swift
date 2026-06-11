@@ -434,9 +434,28 @@ struct ContentView: View {
     // MARK: - Upcoming tab
 
     @ViewBuilder private var upcomingTab: some View {
-        let secs = store.sections().filter { $0.id == "upcoming" || $0.id == "nodate" }
-        if secs.isEmpty { emptyCard("calendar", "Nothing upcoming", "New reminders will show here.") }
-        ForEach(secs) { sectionView($0) }
+        // Lists the user pinned as their own sections (in their chosen order).
+        let chosen = settings.upcomingSections.compactMap { id in store.lists.first { $0.id == id } }
+        let chosenIds = Set(chosen.map { $0.id })
+        let byDate: (Reminder, Reminder) -> Bool = {
+            (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture)
+        }
+        // Default Upcoming + No-date buckets, minus anything already shown in a pinned list.
+        let defaults = store.sections().filter { $0.id == "upcoming" || $0.id == "nodate" }
+            .map { NudgeStore.ReminderSection(id: $0.id, title: $0.title,
+                                              items: $0.items.filter { !chosenIds.contains($0.listIdOrDefault) }) }
+            .filter { !$0.items.isEmpty }
+        let pinned: [NudgeStore.ReminderSection] = chosen.compactMap { l in
+            let items = store.open()
+                .filter { $0.listIdOrDefault == l.id && !store.isOverdue($0) }
+                .sorted(by: byDate)
+            return items.isEmpty ? nil : NudgeStore.ReminderSection(id: "list-\(l.id)", title: l.name, items: items)
+        }
+        if pinned.isEmpty && defaults.isEmpty {
+            emptyCard("calendar", "Nothing upcoming", "New reminders will show here.")
+        }
+        ForEach(pinned) { sectionView($0) }
+        ForEach(defaults) { sectionView($0) }
     }
 
     // MARK: - Lists tab
