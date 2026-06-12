@@ -12,6 +12,7 @@ final class AppRouter: ObservableObject {
     @Published var pendingQuickAdd: Bool = false
     @Published var pendingClaudePrompt: String? = nil   // set when a new "Claude - " reminder is saved
     @Published var pendingReschedule: String? = nil      // reminder id to reschedule (from a notification)
+    @Published var pendingShopping: Bool = false         // open the Shopping list (pay-day notification tap)
     private init() {}
     func requestQuickAdd() { pendingQuickAdd = true }
 }

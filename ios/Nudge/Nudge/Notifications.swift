@@ -94,6 +94,7 @@ final class NotificationManager: NSObject, ObservableObject {
         var pending: [(r: Reminder, fire: Date)] = []
         for r in nudge.reminders {
             if (r.completed ?? false) || (r.dismissed ?? false) { continue }
+            if r.listIdOrDefault == "shopping" { continue }   // covered by the single pay-day summary
             guard let due = parseDate(r.dueDate) else { continue }
             var fire = due.addingTimeInterval(-Double((r.remindBefore ?? 0) * 60))
             // Respect a snooze that lands later than the due-based fire, so snoozing
@@ -143,7 +144,28 @@ final class NotificationManager: NSObject, ObservableObject {
             try? await center.add(req)
         }
         await scheduleDigest(nudge: nudge, center: center)
+        await schedulePayday(nudge: nudge, center: center)
         scheduledCount = min(pending.count, 60)
+    }
+
+    /// One pay-day summary instead of a notification per buy reminder: fires at the next
+    /// payday 09:00 with how many things are waiting to be bought. Re-armed each
+    /// reschedule (payday shifts off weekends, so it can't be a fixed repeating day).
+    private func schedulePayday(nudge: NudgeStore, center: UNUserNotificationCenter) async {
+        center.removePendingNotificationRequests(withIdentifiers: ["nudge-payday"])
+        let pay = Payday.next()
+        let n = nudge.buyReminders().filter {
+            (parseDate($0.dueDate) ?? .distantFuture) <= Calendar.current.date(byAdding: .day, value: 1, to: pay)!
+        }.count
+        guard n > 0 else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "🛒 Pay day"
+        content.body = "You have \(n) thing\(n == 1 ? "" : "s") to buy — tap to open your Shopping list."
+        content.sound = .default
+        content.threadIdentifier = "nudge-payday"
+        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: pay)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+        try? await center.add(UNNotificationRequest(identifier: "nudge-payday", content: content, trigger: trigger))
     }
 
     /// A daily 9am digest of overdue + due-today counts. This is what makes
@@ -190,6 +212,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
 
     @MainActor private func handle(action: String, notifId: String) async {
         guard notifId.hasPrefix("nudge-"), let nudge else { return }
+        if notifId == "nudge-payday" { AppRouter.shared.pendingShopping = true; return }
         let rid = String(notifId.dropFirst("nudge-".count))
         guard let i = nudge.reminders.firstIndex(where: { $0.id == rid }) else { return }
         switch action {

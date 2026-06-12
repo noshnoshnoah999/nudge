@@ -567,20 +567,15 @@ struct AddReminderView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
-    /// Buy-keyword rule: a NEW reminder whose title contains "buy" goes to the
-    /// Shopping list at a fixed 9 AM — bumped to the next free slot if 9 AM is
-    /// already taken (so multiple buy reminders don't pile onto the same minute).
+    /// Buy-keyword rule: a NEW reminder whose title contains "buy" goes to the Shopping
+    /// list, due the next payday at 09:00 — this month's 15th (or the Friday before, if
+    /// it's a weekend) if it hasn't passed, otherwise next month's.
     private func applyBuyRule() {
         guard editing == nil else { return }
         guard title.range(of: "\\bbuy\\b", options: [.regularExpression, .caseInsensitive]) != nil else { return }
         if store.lists.contains(where: { $0.id == "shopping" }) { listId = "shopping" }
-        let cal = Calendar.current
-        let baseDay = hasDue ? due : Date()
         hasDue = true; hasTime = true
-        var c = cal.dateComponents([.year, .month, .day], from: baseDay)
-        c.hour = 9; c.minute = 0
-        let nine = cal.date(from: c) ?? due
-        due = store.nextFreeSlot(nine, excluding: nil)
+        due = Payday.next()
     }
 
     private func save() {

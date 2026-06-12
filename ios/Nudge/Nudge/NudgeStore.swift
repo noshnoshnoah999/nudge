@@ -247,6 +247,12 @@ final class NudgeStore: ObservableObject {
         return iso(next)
     }
 
+    /// Open reminders in the Shopping list (the "buy" reminders), soonest first.
+    func buyReminders() -> [Reminder] {
+        open().filter { $0.listIdOrDefault == "shopping" }
+            .sorted { (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture) }
+    }
+
     // MARK: - Nightly routine (KP / Epiduo morning check-in)
 
     /// Start of the day `n` days from today (for the check-in's quick reschedule buttons).

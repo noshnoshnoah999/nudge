@@ -156,6 +156,7 @@ struct ContentView: View {
         .onChange(of: store.reminders) { _, _ in stuckCount = store.stuckCount() }
         .onChange(of: showTriage) { _, open in if !open { stuckCount = store.stuckCount() } }
         .onChange(of: router.pendingQuickAdd) { _, v in if v { router.pendingQuickAdd = false; showAdd = true } }
+        .onChange(of: router.pendingShopping) { _, v in if v { router.pendingShopping = false; openShopping() } }
         .onChange(of: router.pendingReschedule) { _, id in
             guard let id, let r = store.reminders.first(where: { $0.id == id }) else { return }
             router.pendingReschedule = nil
@@ -271,6 +272,32 @@ struct ContentView: View {
         progressHero.popIn(0)
         if let nu = nextUp { nextUpCard(nu).popIn(1) }
 
+        // Pay day: surface the buy list right on Home (tickable), capped so it stays tidy.
+        if Payday.isToday() {
+            let buys = store.buyReminders()
+            if !buys.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "cart.fill").font(.caption2).foregroundStyle(Theme.accent)
+                    Text("PAY DAY · \(buys.count) TO BUY").font(.caption.weight(.bold))
+                        .tracking(0.8).foregroundStyle(Theme.textMeta)
+                    Spacer()
+                    Button("Shopping") { openShopping() }
+                        .font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                }
+                .padding(.top, 4).padding(.leading, 2).popIn(1)
+                let cap = 4
+                ForEach(Array(buys.prefix(cap).enumerated()), id: \.element.id) { i, r in
+                    ReminderCardView(reminder: r) { editingReminder = r }.popIn(2 + i)
+                }
+                if buys.count > cap {
+                    Button { openShopping() } label: {
+                        Text("+ \(buys.count - cap) more in Shopping")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+                    }.padding(.top, 2)
+                }
+            }
+        }
+
         let pinned = store.pinnedReminders()
         if !pinned.isEmpty {
             HStack(spacing: 6) {
@@ -322,6 +349,10 @@ struct ContentView: View {
     }
 
     private func switchTab(_ i: Int) { withAnimation(Theme.spring) { tab = i } }
+
+    private func openShopping() {
+        if let l = store.lists.first(where: { $0.id == "shopping" }) { listFilter = l }
+    }
 
     private var nextUp: Reminder? {
         let now = Date()

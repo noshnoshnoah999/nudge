@@ -1073,6 +1073,21 @@ function updateReminder(id, patch){
   const r=state.reminders.find(x=>x.id===id); if(!r) return;
   Object.assign(r, patch); persist();
 }
+/* Payday: 15th at 09:00, or the Friday before if the 15th is a weekend (mirror of iOS Payday.swift). */
+function paydayInMonth(date){
+  const d=new Date(date.getFullYear(), date.getMonth(), 15, 9, 0, 0, 0);
+  const wd=d.getDay();                 // 0=Sun … 6=Sat
+  if(wd===6) d.setDate(14);            // Sat → Fri 14
+  else if(wd===0) d.setDate(13);       // Sun → Fri 13
+  return d;
+}
+function nextPayday(from){
+  from=from||new Date();
+  const sod=x=>new Date(x.getFullYear(),x.getMonth(),x.getDate());
+  const thisP=paydayInMonth(from);
+  if(sod(thisP)>=sod(from)) return thisP;
+  return paydayInMonth(new Date(from.getFullYear(), from.getMonth()+1, 15));
+}
 function routineIntervalDays(r){
   if(Array.isArray(r.escalation) && r.escalation.length){
     const now=Date.now();
@@ -1476,19 +1491,13 @@ function saveQA(){
   let title=$('#qaTitle').value.trim(); if(!title) return;
   if(!ui.editingId && ui.qa.nlClean && ui.qa.nlSource===title && ui.qa.nlClean.length>1) title=ui.qa.nlClean;
   const tz = $('#qaTz') && $('#qaTz').value ? $('#qaTz').value : null;
-  // Buy-keyword rule (mirrors iOS): a NEW "buy …" reminder goes to Shopping at a
-  // fixed 9 AM, bumped to the next free 15-min slot if 9 AM is already taken.
+  // Buy-keyword rule (mirrors iOS): a NEW "buy …" reminder goes to Shopping, due the
+  // next payday at 09:00 (the 15th, or the Friday before if it's a weekend).
   if(!ui.editingId && /\bbuy\b/i.test(title)){
     if(state.lists.some(l=>l.id==='shopping')) ui.qa.list='shopping';
-    const pad=n=>String(n).padStart(2,'0');
-    if(!ui.qa.date){ const d=new Date(); ui.qa.date=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
-    const taken=new Set(state.reminders.filter(r=>!r.completed&&r.hasTime&&r.dueDate).map(r=>{
-      const dt=new Date(r.dueDate);
-      return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-    }));
-    let h=9,m=0;
-    for(let i=0;i<96;i++){ if(!taken.has(`${ui.qa.date} ${pad(h)}:${pad(m)}`)) break; m+=15; if(m>=60){m-=60;h++;} }
-    ui.qa.time=`${pad(h)}:${pad(m)}`;
+    const p=nextPayday(); const pad=n=>String(n).padStart(2,'0');
+    ui.qa.date=`${p.getFullYear()}-${pad(p.getMonth()+1)}-${pad(p.getDate())}`;
+    ui.qa.time='09:00';
   }
   let dueDate=null, hasTime=false;
   if(ui.qa.date){
