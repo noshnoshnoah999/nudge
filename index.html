@@ -1073,8 +1073,26 @@ function updateReminder(id, patch){
   const r=state.reminders.find(x=>x.id===id); if(!r) return;
   Object.assign(r, patch); persist();
 }
+function routineIntervalDays(r){
+  if(Array.isArray(r.escalation) && r.escalation.length){
+    const now=Date.now();
+    for(const s of r.escalation){ if(s.until==null) return Math.max(1,s.everyDays); if(now < Date.parse(s.until)) return Math.max(1,s.everyDays); }
+    return Math.max(1, r.escalation[r.escalation.length-1].everyDays||1);
+  }
+  if(r.recurrence){ if(r.recurrence.freq==='daily') return Math.max(1,r.recurrence.interval||1); if(r.recurrence.freq==='weekly') return 7*Math.max(1,r.recurrence.interval||1); }
+  return 1;
+}
 function completeReminder(id){
   const r=state.reminders.find(x=>x.id===id); if(!r) return;
+  // Nightly routines never "complete" — ticking = "did it", roll the due date forward
+  // in place (no spawned copy), matching the iOS app's morning check-in.
+  if(r.routine && !r.completed){
+    const base=r.dueDate?new Date(r.dueDate):new Date();
+    const step=routineIntervalDays(r);
+    do { base.setDate(base.getDate()+step); } while(base.getTime()<=Date.now());
+    r.dueDate=base.toISOString(); r.completed=false; r.completedAt=new Date().toISOString(); r.snoozedUntil=null;
+    persist(); return;
+  }
   if(!r.completed && r.recurrence && r.dueDate){
     const next=nextOccurrence(r);
     if(next){ addReminder({title:r.title,notes:r.notes,dueDate:next,hasTime:r.hasTime,listId:r.listId,priority:r.priority,repeat:r.recurrence.freq,source:r.source}); }

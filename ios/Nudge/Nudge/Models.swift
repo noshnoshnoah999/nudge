@@ -44,9 +44,21 @@ struct Recurrence: Codable, Hashable {
 
 /// One phase of a routine's escalating frequency, e.g. "every 3 days until 1 Jul".
 /// A step with `until == nil` is the final, open-ended phase.
-struct EscalationStep: Codable, Hashable {
+struct EscalationStep: Codable, Hashable, Identifiable {
+    var id: String            // stable id so SwiftUI ForEach edits/deletes are safe
     var everyDays: Int        // repeat interval in days while this phase is active
     var until: String?        // ISO date this phase ends (nil = final phase)
+
+    init(everyDays: Int, until: String? = nil, id: String = UUID().uuidString) {
+        self.id = id; self.everyDays = everyDays; self.until = until
+    }
+    // Decode tolerates old/foreign JSON missing `id` (web preserves unknown keys).
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        everyDays = try c.decode(Int.self, forKey: .everyDays)
+        until = try? c.decode(String.self, forKey: .until)
+        id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
+    }
 }
 
 struct Subtask: Codable, Hashable, Identifiable {

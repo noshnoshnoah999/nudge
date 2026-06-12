@@ -120,7 +120,11 @@ struct ReminderCardView: View {
                 // Secondary indicators: repeat · subtasks · early · open-link · photo · location · source.
                 if hasIndicators(r) {
                     HStack(spacing: 12) {
-                        if let rec = r.recurrence, rec.freq != "none" {
+                        if r.routine == true, !(r.escalation ?? []).isEmpty {
+                            // Escalation overrides the recurrence rule — show the live cadence.
+                            let d = store.routineIntervalDays(r)
+                            metaIcon("repeat", text: d == 1 ? "daily" : "every \(d)d", color: settings.accent)
+                        } else if let rec = r.recurrence, rec.freq != "none" {
                             metaIcon("repeat", text: recurText(rec), color: settings.accent)
                         }
                         if let subs = r.subtasks, !subs.isEmpty {

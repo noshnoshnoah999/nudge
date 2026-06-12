@@ -188,7 +188,7 @@ struct SyncSettingsView: View {
                 } header: {
                     Text("Safety")
                 } footer: {
-                    Text("Your reminders are snapshotted on-device before every sync and cloud refresh (last 40 kept), so a bad merge can always be rolled back.")
+                    Text("Your reminders are snapshotted on-device before every sync and cloud refresh (last 60 kept), so a bad merge can always be rolled back.")
                 }
 
                 // MARK: About

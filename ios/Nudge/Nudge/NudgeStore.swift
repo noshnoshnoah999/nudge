@@ -196,7 +196,9 @@ final class NudgeStore: ObservableObject {
         // A nightly routine never "completes" — ticking it means "did it tonight", so it
         // rolls forward in place (no spawned copies). Untick on a routine is a no-op.
         if (reminders[i].routine ?? false) && !(reminders[i].completed ?? false) {
-            routineDidIt(r.id, night: Date())
+            // Anchor on the night it was due (not "now") so a list-tick of a lapsed routine
+            // schedules the same next occurrence as the morning check-in.
+            routineDidIt(r.id, night: parseDate(reminders[i].dueDate) ?? Date())
             return
         }
         let nowComplete = !(reminders[i].completed ?? false)
@@ -293,27 +295,33 @@ final class NudgeStore: ObservableObject {
         return (21, 0)
     }
 
-    /// "I did it" → roll the routine forward to its next occurrence after `night`,
-    /// stepping by the current interval until the date is in the future.
-    func routineDidIt(_ id: String, night: Date) {
-        guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+    /// Roll a routine reminder forward one cycle: next occurrence after `night`, stepping
+    /// by the active interval AT LEAST ONCE (so ticking it before its due time still
+    /// advances), keeping its evening time-of-day. Stays open; `completedAt` is stamped so
+    /// the tick counts toward Done-today. Pure mutation — no persist (caller decides).
+    func advanceRoutine(_ r: inout Reminder, night: Date) {
         let cal = Calendar.current
-        let interval = routineIntervalDays(reminders[i])
-        let (h, m) = routineEveningComponents(reminders[i])
-        // Anchor on the night it was meant to be done, then step forward into the future.
+        let interval = routineIntervalDays(r)
+        let (h, m) = routineEveningComponents(r)
         var c = cal.dateComponents([.year, .month, .day], from: night)
         c.hour = h; c.minute = m
         var next = cal.date(from: c) ?? night
         var guardN = 0
-        while next <= Date() && guardN < 2000 {
+        repeat {
             next = cal.date(byAdding: .day, value: interval, to: next) ?? next
             guardN += 1
-        }
-        reminders[i].dueDate = iso(next)
-        reminders[i].completed = false
-        reminders[i].completedAt = iso(Date())
-        reminders[i].snoozedUntil = nil
-        reminders[i].updatedAt = iso(Date())
+        } while next <= Date() && guardN < 2000
+        r.dueDate = iso(next)
+        r.completed = false
+        r.completedAt = iso(Date())
+        r.snoozedUntil = nil
+        r.updatedAt = iso(Date())
+    }
+
+    /// "I did it" → advance and persist.
+    func routineDidIt(_ id: String, night: Date) {
+        guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+        advanceRoutine(&reminders[i], night: night)
         clearNotifications(for: id)
         persist()
     }
@@ -408,10 +416,15 @@ final class NudgeStore: ObservableObject {
     func snooze(_ r: Reminder, minutes: Int) {
         guard let i = reminders.firstIndex(where: { $0.id == r.id }) else { return }
         let when = Date().addingTimeInterval(Double(minutes) * 60)
-        reminders[i].dueDate = iso(when)
-        reminders[i].hasTime = true
+        // Routines derive their evening time from dueDate — moving it would permanently
+        // shift the schedule, so only set snoozedUntil (notifications fire at the later
+        // of due-based and snoozedUntil).
+        if !(reminders[i].routine ?? false) {
+            reminders[i].dueDate = iso(when)
+            reminders[i].hasTime = true
+            reminders[i].tz = nil
+        }
         reminders[i].snoozedUntil = iso(when)
-        reminders[i].tz = nil
         reminders[i].updatedAt = iso(Date())
         clearNotifications(for: r.id)
         persist()
@@ -511,7 +524,8 @@ final class NudgeStore: ObservableObject {
     /// Spreads all overdue reminders across the coming week; returns what moved.
     @discardableResult
     func smartReschedule(auto: Bool) -> [RescheduleChange] {
-        let overdue = reminders.filter { isOverdue($0) }
+        // Routines have their own morning check-in — never fling them into the week.
+        let overdue = reminders.filter { isOverdue($0) && !($0.routine ?? false) }
         let changes = SmartScheduler.plan(overdue)
         guard !changes.isEmpty else { return [] }
         for c in changes {
@@ -535,7 +549,7 @@ final class NudgeStore: ObservableObject {
         let kept = UserDefaults.standard.dictionary(forKey: "triageKeptAt") as? [String: Double] ?? [:]
         let now = Date().timeIntervalSince1970
         return reminders.compactMap { r -> (Reminder, Int)? in
-            if (r.completed ?? false) || (r.dismissed ?? false) { return nil }
+            if (r.completed ?? false) || (r.dismissed ?? false) || (r.routine ?? false) { return nil }
             let c = counts[r.id] ?? 0
             guard c >= threshold else { return nil }
             if let k = kept[r.id], now - k < 14 * 86400 { return nil }   // acknowledged in last 14 days

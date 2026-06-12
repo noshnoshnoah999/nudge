@@ -343,6 +343,12 @@ final class RemindersSync: ObservableObject {
                     // a reminder the user just edited in Nudge.
                     if eChanged && eTime > nTime {
                         var rr = cur; writeToNudge(&rr, from: ek)
+                        // A routine ticked in Apple Reminders would otherwise be marked
+                        // completed and stop forever — roll it forward instead. Next sync
+                        // pass writes the advanced/open state back to Apple.
+                        if (rr.routine ?? false) && (rr.completed ?? false) {
+                            nudge.advanceRoutine(&rr, night: parseDate(cur.dueDate) ?? Date())
+                        }
                         nudge.reminders[idx] = rr; nudgeChanged = true
                         links[nid]?.snap = snapshot(rr)
                     } else {

@@ -453,10 +453,14 @@ struct ContentView: View {
             .map { NudgeStore.ReminderSection(id: $0.id, title: $0.title,
                                               items: $0.items.filter { !chosenIds.contains($0.listIdOrDefault) }) }
             .filter { !$0.items.isEmpty }
+        let cal = Calendar.current
         let pinned: [NudgeStore.ReminderSection] = chosen.compactMap { l in
-            let items = store.open()
-                .filter { $0.listIdOrDefault == l.id && !store.isOverdue($0) }
-                .sorted(by: byDate)
+            let items = store.open().filter { r in
+                guard r.listIdOrDefault == l.id, !store.isOverdue(r) else { return false }
+                if parseDate(r.snoozedUntil).map({ $0 > Date() }) == true { return false }   // snoozed → Upcoming default bucket
+                if parseDate(r.dueDate).map({ cal.isDateInToday($0) }) == true { return false } // today → Today tab
+                return true
+            }.sorted(by: byDate)
             return items.isEmpty ? nil : NudgeStore.ReminderSection(id: "list-\(l.id)", title: l.name, items: items)
         }
         if pinned.isEmpty && defaults.isEmpty {
@@ -729,6 +733,7 @@ struct ContentView: View {
             if await BiometricLock.authenticate() {
                 withAnimation(Theme.spring) { isLocked = false }
                 LockShield.shared.hide()
+                maybeRoutineCheckin()   // was skipped while locked — try now we're in
             }
         }
     }

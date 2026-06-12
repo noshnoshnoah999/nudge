@@ -442,26 +442,24 @@ struct AddReminderView: View {
                 Text("Frequency: uses the Repeat above. Add phases to ramp it up over time (e.g. every 3 days → every other day → daily).")
                     .font(.caption2).foregroundStyle(Theme.textMeta)
             } else {
-                ForEach(escalation.indices, id: \.self) { i in
-                    HStack(spacing: 10) {
-                        Stepper(value: $escalation[i].everyDays, in: 1...30) {
-                            Text("Every \(escalation[i].everyDays) day\(escalation[i].everyDays == 1 ? "" : "s")")
-                                .font(.subheadline).foregroundStyle(Theme.textMain)
-                        }.tint(Theme.accent)
-                    }
+                ForEach($escalation) { $step in
+                    Stepper(value: $step.everyDays, in: 1...30) {
+                        Text("Every \(step.everyDays) day\(step.everyDays == 1 ? "" : "s")")
+                            .font(.subheadline).foregroundStyle(Theme.textMain)
+                    }.tint(Theme.accent)
                     HStack(spacing: 8) {
                         Toggle("Until a date", isOn: Binding(
-                            get: { escalation[i].until != nil },
-                            set: { on in escalation[i].until = on ? iso(Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()) : nil }
+                            get: { step.until != nil },
+                            set: { on in step.until = on ? iso(Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()) : nil }
                         )).font(.caption).tint(Theme.accent)
-                        Button { escalation.remove(at: i) } label: {
+                        Button { escalation.removeAll { $0.id == step.id } } label: {
                             Image(systemName: "minus.circle.fill").foregroundStyle(Theme.textMeta.opacity(0.6))
                         }.buttonStyle(.plain)
                     }
-                    if let u = escalation[i].until, let d = parseDate(u) {
+                    if let u = step.until, let d = parseDate(u) {
                         DatePicker("Ends", selection: Binding(
                             get: { d },
-                            set: { escalation[i].until = iso(Calendar.current.startOfDay(for: $0)) }
+                            set: { step.until = iso(Calendar.current.startOfDay(for: $0)) }
                         ), displayedComponents: .date).font(.caption).tint(Theme.accent)
                     }
                     divider
