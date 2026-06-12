@@ -160,10 +160,12 @@ struct ReminderCardView: View {
             Spacer(minLength: 0)
         }
         .padding(compact ? 13 : 15)
-        .background(overdue ? Theme.coral.opacity(0.07) : Theme.surface)
+        // Overdue: drop the red wash (harsh on the warm bg) — same card fill, just a
+        // gentle warm border + the due chip mark it.
+        .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .stroke(overdue ? Theme.coral.opacity(0.22) : Theme.hairline, lineWidth: 1))
+            .stroke(overdue ? Theme.coral.opacity(0.30) : Theme.hairline, lineWidth: 1))
         .cardElevation(compact ? 6 : 11, y: compact ? 2 : 5, opacity: done ? 0.02 : (compact ? 0.05 : 0.07))
         .opacity(done ? 0.6 : 1)
     }

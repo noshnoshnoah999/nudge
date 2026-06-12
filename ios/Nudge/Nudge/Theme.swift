@@ -73,8 +73,8 @@ enum Theme {
     static var violetSoft: Color { accentSoft }
 
     // Semantic colours used sparingly (overdue / done), kept readable on every tint.
-    static var coral: Color   { Color(hex: "C0392B") }
-    static var coralBg: Color { Color(hex: "C0392B").opacity(0.12) }
+    static var coral: Color   { Color(hex: "B14B3A") }   // muted brick — gentler on the warm bg
+    static var coralBg: Color { Color(hex: "B14B3A").opacity(0.12) }
     static var sage: Color    { Color(hex: "4E7B54") }
 
     // Flat fills (no gradients — those read as tacky). Kept as gradients for API compat.
