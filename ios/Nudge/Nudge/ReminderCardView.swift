@@ -165,7 +165,7 @@ struct ReminderCardView: View {
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .stroke(overdue ? Theme.coral.opacity(0.30) : Theme.hairline, lineWidth: 1))
+            .strokeBorder(overdue ? Theme.coral.opacity(0.85) : Theme.hairline, lineWidth: overdue ? 2.5 : 1))
         .cardElevation(compact ? 6 : 11, y: compact ? 2 : 5, opacity: done ? 0.02 : (compact ? 0.05 : 0.07))
         .opacity(done ? 0.6 : 1)
     }
