@@ -30,7 +30,8 @@ final class AppSettings: ObservableObject {
     }
 
     init() {
-        let t = UserDefaults.standard.string(forKey: K.theme) ?? "tan"
+        var t = UserDefaults.standard.string(forKey: K.theme) ?? "mocha"
+        if t == "tan" { t = "mocha" }    // renamed; keep existing installs on the brown theme
         theme = t
         compact = (UserDefaults.standard.object(forKey: K.compact) as? Bool) ?? true
         appLock = UserDefaults.standard.bool(forKey: K.appLock)

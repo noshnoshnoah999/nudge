@@ -124,7 +124,7 @@ enum Changelog {
             version: "2.0", title: "A whole new look", date: "6 Jun 2026",
             added: [
                 "Bottom tabs: Today · Upcoming · Lists · Search — jump around instead of one long scroll",
-                "Colour themes (Tan, Sage, Slate, Rose, Lavender, Graphite, Ocean) in Settings",
+                "Colour themes (Mocha, Sage, Slate, Rose, Lavender, Graphite, Ocean) in Settings",
                 "Lots more animation — sliding tabs, smooth transitions, springy taps"
             ],
             changed: [

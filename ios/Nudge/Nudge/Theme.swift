@@ -44,7 +44,7 @@ struct Palette: Identifiable {
 
 enum Palettes {
     static let all: [Palette] = [
-        Palette(id: "tan",      name: "Tan",      bg: "DAC5A6", card: "E7DAC4", cardStrong: "CBB290", hairline: "C9B492", text: "3B2A19", textSoft: "8A6E4C", accent: "6E4A29"),
+        Palette(id: "mocha",    name: "Mocha",    bg: "CDB088", card: "E0CEAF", cardStrong: "BFA274", hairline: "BC9F71", text: "2E1F12", textSoft: "7C6038", accent: "5E3A1E"),
         Palette(id: "sage",     name: "Sage",     bg: "CFE1C5", card: "DFEAD6", cardStrong: "BFD3B2", hairline: "BDD2B1", text: "23391E", textSoft: "5C7A53", accent: "3C6A34"),
         Palette(id: "slate",    name: "Slate",    bg: "D4DAE3", card: "E5E9F0", cardStrong: "C3CCD9", hairline: "C2CAD6", text: "212833", textSoft: "5C6A7C", accent: "3C5167"),
         Palette(id: "rose",     name: "Rose",     bg: "ECD8D6", card: "F4E7E5", cardStrong: "DCC2C0", hairline: "DCC5C3", text: "3A2426", textSoft: "8A5E60", accent: "8C4A50"),
