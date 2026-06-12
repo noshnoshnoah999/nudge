@@ -91,17 +91,21 @@ final class NotificationManager: NSObject, ObservableObject {
         center.removeAllPendingNotificationRequests()
 
         let now = Date()
-        var pending: [(r: Reminder, fire: Date)] = []
+        // Each reminder yields a due-time alert plus one alert per early-reminder offset.
+        var pending: [(r: Reminder, fire: Date, off: Int)] = []
         for r in nudge.reminders {
             if (r.completed ?? false) || (r.dismissed ?? false) { continue }
             if r.listIdOrDefault == "shopping" { continue }   // covered by the single pay-day summary
             guard let due = parseDate(r.dueDate) else { continue }
-            var fire = due.addingTimeInterval(-Double((r.remindBefore ?? 0) * 60))
-            // Respect a snooze that lands later than the due-based fire, so snoozing
-            // doesn't get silently dropped when this pass re-schedules everything.
-            if let s = parseDate(r.snoozedUntil), s > fire { fire = s }
-            if fire <= now { continue }
-            pending.append((r, fire))
+            // Due-time alert (respect a snooze that lands later).
+            var mainFire = due
+            if let s = parseDate(r.snoozedUntil), s > mainFire { mainFire = s }
+            if mainFire > now { pending.append((r, mainFire, 0)) }
+            // Early-reminder alerts (skipped once snoozed past their lead time).
+            for off in r.earlyAlerts {
+                let f = due.addingTimeInterval(-Double(off * 60))
+                if f > now && parseDate(r.snoozedUntil) == nil { pending.append((r, f, off)) }
+            }
         }
         pending.sort { $0.fire < $1.fire }
 
@@ -112,7 +116,7 @@ final class NotificationManager: NSObject, ObservableObject {
             let high = prio == "high"
             let low = prio == "low"
             let shopping = p.r.listId == "shopping"
-            let early = (p.r.remindBefore ?? 0) > 0
+            let early = p.off > 0
             // Shopping gets a cart; otherwise priority dot / bell.
             let emoji = shopping ? "🛒 " : (high ? "🔴 " : (low ? "" : "🔔 "))
             content.title = emoji + displayTitle(p.r)
@@ -122,8 +126,8 @@ final class NotificationManager: NSObject, ObservableObject {
             var detail: [String] = []
             if let due = parseDate(p.r.dueDate) {
                 let f = DateFormatter(); f.timeStyle = .short
-                // Early reminders read as a heads-up; on-time ones say "Due now".
-                detail.append(early ? "⏰ Heads-up · due at \(f.string(from: due))" : "Due now")
+                // Early reminders read as a heads-up with their lead time; on-time say "Due now".
+                detail.append(early ? "⏰ In \(Self.leadLabel(p.off)) · due \(f.string(from: due))" : "Due now")
             }
             if let loc = p.r.location, !loc.isEmpty { detail.append("📍 \(loc)") }
             let head = detail.joined(separator: "  ·  ")
@@ -140,7 +144,8 @@ final class NotificationManager: NSObject, ObservableObject {
             content.threadIdentifier = "nudge-\(p.r.listId ?? "reminders")"   // groups by list
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: p.fire)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-            let req = UNNotificationRequest(identifier: "nudge-\(p.r.id)", content: content, trigger: trigger)
+            let nid = p.off > 0 ? "nudge-\(p.r.id)~e\(p.off)" : "nudge-\(p.r.id)"
+            let req = UNNotificationRequest(identifier: nid, content: content, trigger: trigger)
             try? await center.add(req)
         }
         await scheduleDigest(nudge: nudge, center: center)
@@ -210,10 +215,21 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                      notifId: response.notification.request.identifier)
     }
 
+    /// "1 month" / "2 weeks" / "3 days" / "1 hour" / "45 min" for an early-alert lead time.
+    static func leadLabel(_ m: Int) -> String {
+        if m % 43200 == 0 { let n = m/43200; return "\(n) month\(n == 1 ? "" : "s")" }
+        if m % 10080 == 0 { let n = m/10080; return "\(n) week\(n == 1 ? "" : "s")" }
+        if m % 1440 == 0  { let n = m/1440;  return "\(n) day\(n == 1 ? "" : "s")" }
+        if m % 60 == 0    { let n = m/60;    return "\(n) hour\(n == 1 ? "" : "s")" }
+        return "\(m) min"
+    }
+
     @MainActor private func handle(action: String, notifId: String) async {
         guard notifId.hasPrefix("nudge-"), let nudge else { return }
         if notifId == "nudge-payday" { AppRouter.shared.pendingShopping = true; return }
-        let rid = String(notifId.dropFirst("nudge-".count))
+        // Early-alert ids carry a "~e<minutes>" suffix — strip it to get the reminder id.
+        let raw = String(notifId.dropFirst("nudge-".count))
+        let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
         guard let i = nudge.reminders.firstIndex(where: { $0.id == rid }) else { return }
         switch action {
         case Self.completeAction:

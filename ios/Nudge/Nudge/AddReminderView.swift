@@ -45,11 +45,15 @@ struct AddReminderView: View {
     @State private var listId = "reminders"
     @State private var priority = "normal"
     @State private var pinned = false
-    @State private var remindBefore = 0          // minutes before due; 0 = off
+    @State private var earlyAlerts: [Int] = []   // early-reminder offsets, minutes before due
+    @State private var showCustomEarly = false
+    @State private var customEarlyVal = 1
+    @State private var customEarlyUnit = 1440    // minutes per unit (days default)
     @State private var subtasks: [Subtask] = []
     @State private var newSubtask = ""
     @State private var routine = false           // nightly routine → morning check-in
     @State private var escalation: [EscalationStep] = []
+    @State private var askToReview = false       // adaptive "ready to step up?" prompt
     @State private var repeatFreq = "none"
     @State private var repeatInterval = 1
     @State private var hasUntil = false
@@ -166,16 +170,7 @@ struct AddReminderView: View {
                             }
                             if hasTime {
                                 divider
-                                menuRow("Early reminder", "bell.badge") {
-                                    Picker("Early reminder", selection: $remindBefore) {
-                                        Text("None").tag(0)
-                                        Text("5 min before").tag(5)
-                                        Text("15 min before").tag(15)
-                                        Text("30 min before").tag(30)
-                                        Text("1 hour before").tag(60)
-                                        Text("1 day before").tag(1440)
-                                    }.labelsHidden().tint(Theme.accent)
-                                }
+                                earlyAlertsEditor
                                 divider
                                 menuRow("Time zone", "globe") {
                                     Picker("Time zone", selection: $tz) {
@@ -305,6 +300,8 @@ struct AddReminderView: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
+            // Drop the keyboard when a date/time picker opens so it doesn't cover it.
+            .onChange(of: schedExpand) { _, v in if v != .none { titleFocused = false } }
             .navigationTitle(editing == nil ? "New Reminder" : "Edit Reminder")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -416,10 +413,11 @@ struct AddReminderView: View {
         url = r.url ?? ""
         location = r.location ?? ""
         lat = r.lat; lng = r.lng
-        remindBefore = r.remindBefore ?? 0
+        earlyAlerts = r.earlyAlerts
         subtasks = r.subtasks ?? []
         routine = r.routine ?? false
         escalation = r.escalation ?? []
+        askToReview = r.escalateAskNext != nil
         existingURLs = ImageStore.urls(for: r.id)
     }
 
@@ -430,48 +428,124 @@ struct AddReminderView: View {
         newSubtask = ""
     }
 
-    // Quick time-of-day shortcuts. Tapping sets that time on the chosen day, then
-    // nudges to the next free 15-min slot so it won't clash with another reminder.
-    // Nightly routine editor: explainer + optional escalating-frequency phases.
+    // Nightly routine editor: explainer + ordered escalating-frequency phases + the
+    // adaptive "ask me to review" prompt.
     @ViewBuilder private var routineEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("If you don't tick this the night it's due, Nudge asks \"did you do it last night?\" the next morning — tap Yes to roll it forward, or move it to another day.")
+            Text("If you don't tick this the night it's due, Nudge asks \"did you do it last night?\" the next morning — Yes rolls it forward, or move it to another day.")
                 .font(.caption).foregroundStyle(Theme.textMeta)
 
+            Text("FREQUENCY").font(.caption2.weight(.bold)).tracking(0.6).foregroundStyle(Theme.textMeta)
             if escalation.isEmpty {
-                Text("Frequency: uses the Repeat above. Add phases to ramp it up over time (e.g. every 3 days → every other day → daily).")
+                Text("Uses the Repeat above (every \(repeatInterval) \(unitLabel)). Add phases to ramp it up over time — e.g. every 3 nights until a date, then every 2.")
                     .font(.caption2).foregroundStyle(Theme.textMeta)
             } else {
                 ForEach($escalation) { $step in
-                    Stepper(value: $step.everyDays, in: 1...30) {
-                        Text("Every \(step.everyDays) day\(step.everyDays == 1 ? "" : "s")")
-                            .font(.subheadline).foregroundStyle(Theme.textMain)
-                    }.tint(Theme.accent)
-                    HStack(spacing: 8) {
-                        Toggle("Until a date", isOn: Binding(
-                            get: { step.until != nil },
-                            set: { on in step.until = on ? iso(Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()) : nil }
-                        )).font(.caption).tint(Theme.accent)
-                        Button { escalation.removeAll { $0.id == step.id } } label: {
-                            Image(systemName: "minus.circle.fill").foregroundStyle(Theme.textMeta.opacity(0.6))
-                        }.buttonStyle(.plain)
-                    }
-                    if let u = step.until, let d = parseDate(u) {
-                        DatePicker("Ends", selection: Binding(
-                            get: { d },
-                            set: { step.until = iso(Calendar.current.startOfDay(for: $0)) }
-                        ), displayedComponents: .date).font(.caption).tint(Theme.accent)
+                    let idx = escalation.firstIndex { $0.id == step.id } ?? 0
+                    let isLast = idx == escalation.count - 1
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Phase \(idx + 1)").font(.caption.weight(.bold)).foregroundStyle(Theme.accent)
+                            Spacer()
+                            Button { escalation.removeAll { $0.id == step.id } } label: {
+                                Image(systemName: "minus.circle.fill").foregroundStyle(Theme.textMeta.opacity(0.6))
+                            }.buttonStyle(.plain)
+                        }
+                        Stepper(value: $step.everyDays, in: 1...30) {
+                            Text("Every \(step.everyDays) night\(step.everyDays == 1 ? "" : "s")")
+                                .font(.subheadline).foregroundStyle(Theme.textMain)
+                        }.tint(Theme.accent)
+                        if isLast {
+                            Text("…then stays at this frequency").font(.caption2).foregroundStyle(Theme.textMeta)
+                        } else {
+                            HStack(spacing: 6) {
+                                Text("until").font(.caption).foregroundStyle(Theme.textMeta)
+                                DatePicker("", selection: Binding(
+                                    get: { parseDate(step.until) ?? (Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()) },
+                                    set: { step.until = iso(Calendar.current.startOfDay(for: $0)) }
+                                ), displayedComponents: .date).labelsHidden().tint(Theme.accent)
+                            }
+                        }
                     }
                     divider
                 }
             }
             Button {
-                escalation.append(EscalationStep(everyDays: max(1, escalation.last?.everyDays ?? 3), until: nil))
+                // The previous final phase now needs an end date; the new phase is the open one.
+                if !escalation.isEmpty, escalation[escalation.count - 1].until == nil {
+                    escalation[escalation.count - 1].until = iso(Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date())
+                }
+                escalation.append(EscalationStep(everyDays: max(1, (escalation.last?.everyDays ?? 3) - 1), until: nil))
             } label: {
-                Label("Add frequency phase", systemImage: "plus.circle").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                Label("Add a later phase", systemImage: "plus.circle").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
             }
+
+            divider
+            Toggle(isOn: $askToReview.animation(Theme.spring)) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ask me to review the frequency").font(.subheadline).foregroundStyle(Theme.textMain)
+                    Text("Don't know when to change it? Nudge checks in (~every 2 weeks) to step it up or down based on how your skin's reacting.")
+                        .font(.caption2).foregroundStyle(Theme.textMeta)
+                }
+            }.tint(Theme.accent)
         }
         .padding(.vertical, 8)
+    }
+
+    // Multiple, customisable early reminders (offsets in minutes before due).
+    private let earlyPresets: [(String, Int)] = [
+        ("5 min", 5), ("15 min", 15), ("30 min", 30), ("1 hour", 60), ("2 hours", 120),
+        ("1 day", 1440), ("2 days", 2880), ("1 week", 10080), ("2 weeks", 20160), ("1 month", 43200)
+    ]
+    private func earlyLabel(_ m: Int) -> String {
+        if m % 43200 == 0 { let n = m/43200; return "\(n) month\(n == 1 ? "" : "s")" }
+        if m % 10080 == 0 { let n = m/10080; return "\(n) week\(n == 1 ? "" : "s")" }
+        if m % 1440 == 0  { let n = m/1440;  return "\(n) day\(n == 1 ? "" : "s")" }
+        if m % 60 == 0    { let n = m/60;    return "\(n) hour\(n == 1 ? "" : "s")" }
+        return "\(m) min"
+    }
+    private func addEarly(_ m: Int) {
+        guard m > 0, !earlyAlerts.contains(m) else { return }
+        withAnimation(Theme.spring) { earlyAlerts.append(m); earlyAlerts.sort(by: >) }
+    }
+
+    @ViewBuilder private var earlyAlertsEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(earlyAlerts, id: \.self) { m in
+                HStack(spacing: 10) {
+                    Image(systemName: "bell.badge").foregroundStyle(Theme.accent).frame(width: 22)
+                    Text("\(earlyLabel(m)) before").foregroundStyle(Theme.textMain)
+                    Spacer()
+                    Button { withAnimation(Theme.spring) { earlyAlerts.removeAll { $0 == m } } } label: {
+                        Image(systemName: "minus.circle.fill").foregroundStyle(Theme.textMeta.opacity(0.6))
+                    }.buttonStyle(.plain)
+                }
+            }
+            Menu {
+                ForEach(earlyPresets, id: \.1) { p in Button("\(p.0) before") { addEarly(p.1) } }
+                Button("Custom…") { withAnimation(Theme.spring) { showCustomEarly = true } }
+            } label: {
+                Label(earlyAlerts.isEmpty ? "Add early reminder" : "Add another",
+                      systemImage: "plus.circle").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+            }
+            if showCustomEarly {
+                HStack(spacing: 8) {
+                    Stepper(value: $customEarlyVal, in: 1...99) {
+                        Text("\(customEarlyVal)").foregroundStyle(Theme.textMain)
+                    }.tint(Theme.accent).fixedSize()
+                    Picker("", selection: $customEarlyUnit) {
+                        Text("min").tag(1); Text("hours").tag(60); Text("days").tag(1440)
+                        Text("weeks").tag(10080); Text("months").tag(43200)
+                    }.pickerStyle(.menu).tint(Theme.accent)
+                    Spacer()
+                    Button("Add") {
+                        addEarly(customEarlyVal * customEarlyUnit)
+                        withAnimation(Theme.spring) { showCustomEarly = false }
+                    }.font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     // Apple-Reminders-style row: icon · title · blue value subtitle · toggle.
@@ -593,8 +667,8 @@ struct AddReminderView: View {
                            listId: listId, priority: priority,
                            recurrence: rec, tz: tz.isEmpty ? nil : tz,
                            url: url, location: location, lat: lat, lng: lng,
-                           pinned: pinned, remindBefore: remindBefore, subtasks: subtasks,
-                           routine: routine, escalation: escalation,
+                           pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
+                           routine: routine, escalation: escalation, reviewFrequency: askToReview,
                            idForNew: editing == nil ? draftId : nil)
         if editing == nil, let p = ClaudeLink.prompt(from: title) {
             AppRouter.shared.pendingClaudePrompt = p

@@ -132,8 +132,9 @@ struct ReminderCardView: View {
                             metaIcon("checklist", text: "\(done)/\(subs.count)",
                                      color: done == subs.count ? Theme.sage : Theme.textMeta)
                         }
-                        if (r.remindBefore ?? 0) > 0 {
-                            metaIcon("bell.badge", text: earlyText(r.remindBefore ?? 0), color: Theme.textMeta)
+                        if !r.earlyAlerts.isEmpty {
+                            let a = r.earlyAlerts
+                            metaIcon("bell.badge", text: a.count == 1 ? earlyText(a[0]) : "\(a.count) alerts", color: Theme.textMeta)
                         }
                         if r.routine == true { metaIcon("moon.stars", text: "nightly", color: settings.accent) }
                         if let u = r.url, !u.isEmpty { linkButton(u) }
@@ -257,7 +258,7 @@ struct ReminderCardView: View {
             || r.url?.isEmpty == false
             || (r.location?.isEmpty == false)
             || (r.subtasks?.isEmpty == false)
-            || ((r.remindBefore ?? 0) > 0)
+            || !r.earlyAlerts.isEmpty
             || (r.routine == true)
             || sourceBadge(r.source) != nil
             || ImageStore.hasImages(for: r.id)

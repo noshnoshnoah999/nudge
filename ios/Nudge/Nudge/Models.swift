@@ -79,7 +79,8 @@ struct Reminder: Codable, Identifiable, Hashable {
     var completedAt: String?
     var recurrence: Recurrence?
     var subtasks: [Subtask]?
-    var remindBefore: Int?    // minutes before due
+    var remindBefore: Int?    // legacy single early alert (minutes before due) — kept for back-compat
+    var remindBefores: [Int]? // multiple early alerts, minutes before due (e.g. [10080, 1440, 60])
     var tz: String?           // pinned IANA timezone, or nil = local
     var url: String?          // an attached link
     var location: String?     // a place / address (tap → Maps)
@@ -103,6 +104,13 @@ struct Reminder: Codable, Identifiable, Hashable {
     var isCompleted: Bool { completed ?? false }
     var listIdOrDefault: String { listId ?? "reminders" }
     var priorityOrNormal: String { priority ?? "normal" }
+
+    /// All early-alert offsets (minutes before due), newest field first, falling back to
+    /// the legacy single value. De-duplicated, positive, soonest-to-due last.
+    var earlyAlerts: [Int] {
+        let raw = remindBefores ?? remindBefore.map { [$0] } ?? []
+        return Array(Set(raw.filter { $0 > 0 })).sorted(by: >)
+    }
 }
 
 struct ReminderList: Codable, Identifiable, Hashable {

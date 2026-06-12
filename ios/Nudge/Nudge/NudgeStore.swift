@@ -594,9 +594,10 @@ final class NudgeStore: ObservableObject {
                       recurrence: Recurrence? = nil, tz: String? = nil,
                       url: String? = nil, location: String? = nil,
                       lat: Double? = nil, lng: Double? = nil,
-                      pinned: Bool = false, remindBefore: Int? = nil,
+                      pinned: Bool = false, remindBefores: [Int] = [],
                       subtasks: [Subtask] = [], routine: Bool = false,
-                      escalation: [EscalationStep] = [], idForNew: String? = nil) {
+                      escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
+                      idForNew: String? = nil) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         // With a pinned timezone, the picked wall time is interpreted in that zone.
         let dueStr: String?
@@ -627,10 +628,17 @@ final class NudgeStore: ObservableObject {
             reminders[i].lat = (cleanLoc?.isEmpty == false) ? lat : nil
             reminders[i].lng = (cleanLoc?.isEmpty == false) ? lng : nil
             reminders[i].pinned = pinned ? true : nil
-            reminders[i].remindBefore = (remindBefore ?? 0) > 0 ? remindBefore : nil
+            let early = Array(Set(remindBefores.filter { $0 > 0 })).sorted(by: >)
+            reminders[i].remindBefores = early.isEmpty ? nil : early
+            reminders[i].remindBefore = early.min()   // legacy mirror for older readers
             reminders[i].subtasks = subtasks.isEmpty ? nil : subtasks
             reminders[i].routine = routine ? true : nil
             reminders[i].escalation = escalation.isEmpty ? nil : escalation
+            if reviewFrequency {
+                if reminders[i].escalateAskNext == nil {   // start the review cycle; keep an existing pending date
+                    reminders[i].escalateAskNext = iso(Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date())
+                }
+            } else { reminders[i].escalateAskNext = nil }
             reminders[i].updatedAt = iso(Date())
         } else {
             let r = Reminder(
@@ -639,7 +647,8 @@ final class NudgeStore: ObservableObject {
                 hasTime: hasDue ? hasTime : nil, listId: listId, priority: priority,
                 completed: false, completedAt: nil, recurrence: rec,
                 subtasks: subtasks.isEmpty ? [] : subtasks,
-                remindBefore: (remindBefore ?? 0) > 0 ? remindBefore : nil,
+                remindBefore: Array(Set(remindBefores.filter { $0 > 0 })).min(),
+                remindBefores: { let e = Array(Set(remindBefores.filter { $0 > 0 })).sorted(by: >); return e.isEmpty ? nil : e }(),
                 tz: (hasDue && hasTime) ? tz : nil,
                 url: (cleanURL?.isEmpty == false) ? cleanURL : nil,
                 location: (cleanLoc?.isEmpty == false) ? cleanLoc : nil,
@@ -649,7 +658,8 @@ final class NudgeStore: ObservableObject {
                 source: "manual", snoozedUntil: nil, dismissed: false,
                 pinned: pinned ? true : nil,
                 routine: routine ? true : nil,
-                escalation: escalation.isEmpty ? nil : escalation)
+                escalation: escalation.isEmpty ? nil : escalation,
+                escalateAskNext: reviewFrequency ? iso(Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date()) : nil)
             reminders.insert(r, at: 0)
         }
         persist()
@@ -696,10 +706,17 @@ final class NudgeStore: ObservableObject {
         }
         // No-Date items have no date to tie-break on, but priority should still order them.
         let byPriority: (Reminder, Reminder) -> Bool = { prank($0) < prank($1) }
+        // Upcoming reads as a timeline — date first, priority only breaks ties — so a
+        // far-future High (e.g. a 2027 reminder) doesn't sit above next week's items.
+        let byDateThenPriority: (Reminder, Reminder) -> Bool = {
+            let da = parseDate($0.dueDate) ?? .distantFuture, db = parseDate($1.dueDate) ?? .distantFuture
+            if da != db { return da < db }
+            return prank($0) < prank($1)
+        }
         var out: [ReminderSection] = []
         if !overdue.isEmpty   { out.append(ReminderSection(id: "overdue",  title: "Overdue",  items: overdue.sorted(by: byDate))) }
         if !todayItems.isEmpty { out.append(ReminderSection(id: "today",   title: "Today",    items: todayItems.sorted(by: byDate))) }
-        if !upcoming.isEmpty  { out.append(ReminderSection(id: "upcoming", title: "Upcoming", items: upcoming.sorted(by: byDate))) }
+        if !upcoming.isEmpty  { out.append(ReminderSection(id: "upcoming", title: "Upcoming", items: upcoming.sorted(by: byDateThenPriority))) }
         if !nodate.isEmpty    { out.append(ReminderSection(id: "nodate",   title: "No Date",  items: nodate.sorted(by: byPriority))) }
         return out
     }

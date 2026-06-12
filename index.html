@@ -1054,6 +1054,8 @@ function remindBeforeText(m){
   if(m<10080){ const d=m/1440; return d+' day'+(d>1?'s':'')+' before'; }
   const w=m/10080; return w+' week'+(w>1?'s':'')+' before';
 }
+/* Effective early-alert offsets (multiple field, falling back to legacy single). */
+function effEarly(r){ return (r.remindBefores&&r.remindBefores.length)?r.remindBefores.slice():(r.remindBefore!=null?[r.remindBefore]:[]); }
 
 /* ---------- CRUD ---------- */
 function addReminder(data){
@@ -1064,14 +1066,17 @@ function addReminder(data){
     recurrence: data.repeat&&data.repeat!=='none' ? {freq:data.repeat,interval:1} : null,
     subtasks: data.subtasks||[],
     remindBefore: data.remindBefore??null,
+    remindBefores: data.remindBefores??null,
     tz: data.tz??null,
-    createdAt:new Date().toISOString(), source:data.source||'manual', snoozedUntil:null, dismissed:false,
+    createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(), source:data.source||'manual', snoozedUntil:null, dismissed:false,
   };
   state.reminders.unshift(r); persist(); return r;
 }
 function updateReminder(id, patch){
   const r=state.reminders.find(x=>x.id===id); if(!r) return;
-  Object.assign(r, patch); persist();
+  Object.assign(r, patch);
+  r.updatedAt=new Date().toISOString();   // so the Apple-sync sees this as the newest edit (was getting reverted)
+  persist();
 }
 /* Payday: 15th at 09:00, or the Friday before if the 15th is a weekend (mirror of iOS Payday.swift). */
 function paydayInMonth(date){
@@ -1105,14 +1110,14 @@ function completeReminder(id){
     const base=r.dueDate?new Date(r.dueDate):new Date();
     const step=routineIntervalDays(r);
     do { base.setDate(base.getDate()+step); } while(base.getTime()<=Date.now());
-    r.dueDate=base.toISOString(); r.completed=false; r.completedAt=new Date().toISOString(); r.snoozedUntil=null;
+    r.dueDate=base.toISOString(); r.completed=false; r.completedAt=new Date().toISOString(); r.snoozedUntil=null; r.updatedAt=new Date().toISOString();
     persist(); return;
   }
   if(!r.completed && r.recurrence && r.dueDate){
     const next=nextOccurrence(r);
     if(next){ addReminder({title:r.title,notes:r.notes,dueDate:next,hasTime:r.hasTime,listId:r.listId,priority:r.priority,repeat:r.recurrence.freq,source:r.source}); }
   }
-  r.completed=!r.completed; r.completedAt=r.completed?new Date().toISOString():null; r.snoozedUntil=null;
+  r.completed=!r.completed; r.completedAt=r.completed?new Date().toISOString():null; r.snoozedUntil=null; r.updatedAt=new Date().toISOString();
   persist();
 }
 function deleteReminder(id){ state.reminders=state.reminders.filter(x=>x.id!==id); persist(); }
@@ -1296,7 +1301,7 @@ function cardHTML(r,i){
   if(r.dueDate) meta.push(`<span class="rmeta-item ${dueCls}">${IC.clock}${od?ageText(r.dueDate):(r.tz?fmtDuePinned(r.dueDate,r.tz):fmtDue(r.dueDate,r.hasTime))}</span>`);
   if(r.recurrence) meta.push(`<span class="rmeta-item">${IC.repeat}${recurText(r.recurrence)}</span>`);
   if(r.subtasks&&r.subtasks.length){ const dn=r.subtasks.filter(s=>s.done).length; const all=dn===r.subtasks.length; meta.push(`<span class="rmeta-item" style="${all?'color:var(--sage);font-weight:600;':''}">${IC.check}${dn}/${r.subtasks.length}</span>`); }
-  if(r.remindBefore!=null && r.dueDate) meta.push(`<span class="rmeta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke-linecap="round" stroke-linejoin="round"/></svg>${remindBeforeText(r.remindBefore)}</span>`);
+  { const ea=effEarly(r); if(ea.length && r.dueDate) meta.push(`<span class="rmeta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke-linecap="round" stroke-linejoin="round"/></svg>${ea.length===1?remindBeforeText(ea[0]):ea.length+' alerts'}</span>`); }
   getTags(r).forEach(tg=>meta.push(`<button class="tag-chip" data-tag="${esc(tg)}">#${esc(tg)}</button>`));
   if(ui.view==='all'||ui.view==='today'||ui.view==='scheduled'||ui.search) meta.push(`<span class="rlist-tag" style="color:${l.color}"><span class="list-dot" style="background:${l.color}"></span>${l.name}</span>`);
   if(r.priority==='high') meta.push(`<span class="pri-flag high">${IC.flame}High</span>`);
@@ -1442,7 +1447,7 @@ function openEdit(id){
   };
   $('#qaTitle').value=r.title; $('#qaNotes').value=r.notes||'';
   $('#qaDate').value=ui.qa.date||''; $('#qaTime').value=ui.qa.time||'';
-  if($('#qaRemindBefore'))$('#qaRemindBefore').value=r.remindBefore!=null?String(r.remindBefore):'';
+  if($('#qaRemindBefore')){ const ea=effEarly(r); $('#qaRemindBefore').value=ea.length?String(ea[0]):''; }
   if($('#qaTz'))$('#qaTz').value=r.tz||'';
   $('#qaSave').textContent='Save Changes'; $('#qaSave').disabled=false; $('#qaDelete').style.display='';
   $('#qaDetail').classList.add('show'); $('#qaMoreToggle').classList.add('open');
@@ -1512,11 +1517,12 @@ function saveQA(){
         until:(sameFreq && existing.recurrence.until)?existing.recurrence.until:null }   // keep end-repeat date set on iOS
     : null;
   const remindBefore = $('#qaRemindBefore') && $('#qaRemindBefore').value ? +$('#qaRemindBefore').value : null;
-  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat, subtasks:ui.qa.subtasks, remindBefore, tz };
+  const remindBefores = remindBefore!=null ? [remindBefore] : null;   // web sets one; iOS can set many
+  const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat, subtasks:ui.qa.subtasks, remindBefore, remindBefores, tz };
   if(ui.editingId){
     updateReminder(ui.editingId,{
       title, notes:payload.notes, dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri,
-      recurrence, subtasks:ui.qa.subtasks, remindBefore, tz
+      recurrence, subtasks:ui.qa.subtasks, remindBefore, remindBefores, tz
     });
     showToast('Saved');
   } else { addReminder(payload); showToast('Added'); }

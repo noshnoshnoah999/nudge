@@ -26,5 +26,14 @@ struct NudgeApp: App {
                     }
                 }
         }
+        // Mac: ⌘N (and File ▸ New Reminder) opens quick-add — the closest Mac-native
+        // equivalent to the iOS Control Centre button (Apple doesn't allow third-party
+        // Control Centre modules on macOS; the QuickAdd widget also works in Notification Centre).
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Reminder") { AppRouter.shared.requestQuickAdd() }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
+        }
     }
 }
