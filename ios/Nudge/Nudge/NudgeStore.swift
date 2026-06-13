@@ -527,12 +527,16 @@ final class NudgeStore: ObservableObject {
     }
 
     // MARK: - Smart reschedule
-    /// Spreads all overdue reminders across the coming week; returns what moved.
-    @discardableResult
-    func smartReschedule(auto: Bool) -> [RescheduleChange] {
-        // Routines have their own morning check-in — never fling them into the week.
+    /// Propose new slots for all overdue (non-routine) reminders WITHOUT applying — the
+    /// preview sheet shows these and the user confirms. Routines have their own check-in.
+    func planSmartReschedule() -> [RescheduleChange] {
         let overdue = reminders.filter { isOverdue($0) && !($0.routine ?? false) }
-        let changes = SmartScheduler.plan(overdue)
+        return SmartScheduler.plan(overdue)
+    }
+
+    /// Apply a user-approved subset of proposed reschedule changes.
+    @discardableResult
+    func applyReschedule(_ changes: [RescheduleChange], auto: Bool = false) -> [RescheduleChange] {
         guard !changes.isEmpty else { return [] }
         for c in changes {
             guard let i = reminders.firstIndex(where: { $0.id == c.id }) else { continue }

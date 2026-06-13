@@ -95,12 +95,12 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showTriage) {
             TriageView(onSmartReschedule: {
                 showTriage = false
-                let c = store.smartReschedule(auto: false)
-                if !c.isEmpty { rescheduleResult = RescheduleResult(changes: c, auto: false) }
+                let plan = store.planSmartReschedule()
+                if !plan.isEmpty { rescheduleResult = RescheduleResult(changes: plan, auto: false) }
             }).environmentObject(store)
         }
         .sheet(item: $autoClaudeURL) { SafariView(url: $0.url, tint: Theme.accent) }
-        .sheet(item: $rescheduleResult) { TimetableView(undoChanges: $0.changes).environmentObject(store) }
+        .sheet(item: $rescheduleResult) { SmartReschedulePreviewView(proposed: $0.changes).environmentObject(store) }
         .sheet(isPresented: $showTimetable) { TimetableView().environmentObject(store) }
         .sheet(isPresented: $showCompleted) { CompletedHistoryView().environmentObject(store) }
         .sheet(item: $rescheduleTarget) { r in RescheduleOptionsView(reminder: r).environmentObject(store) }
@@ -433,12 +433,8 @@ struct ContentView: View {
     private var smartRescheduleButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            let c = withAnimation(Theme.spring) { store.smartReschedule(auto: false) }
-            if !c.isEmpty {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                    rescheduleResult = RescheduleResult(changes: c, auto: false)
-                }
-            }
+            let plan = store.planSmartReschedule()
+            if !plan.isEmpty { rescheduleResult = RescheduleResult(changes: plan, auto: false) }
         } label: {
             Label("Smart Reschedule overdue", systemImage: "sparkles")
                 .font(.subheadline.weight(.bold)).foregroundStyle(.white)

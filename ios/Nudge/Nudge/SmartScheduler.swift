@@ -105,6 +105,7 @@ enum SmartScheduler {
         }
 
         var changes: [RescheduleChange] = []
+        var used = Set<String>()   // "di-hour-min" → keep two reminders off the same slot
         var i = 0
         for (di, day) in days.enumerated() {
             let q = quota[di]
@@ -113,17 +114,51 @@ enum SmartScheduler {
             for k in 0..<q {
                 guard i < sorted.count else { break }
                 let r = sorted[i]; i += 1
-                // Even spacing within the day's free window.
-                let t = win.start + (win.end - win.start) * Double(k + 1) / Double(q + 1)
-                let hour = Int(t)
-                let minute = Int(((t - Double(hour)) * 60 / 15).rounded()) * 15
+                // Prefer the reminder's OWN time-of-day; else a keyword-based time;
+                // else fall back to an even slot in the day's free window.
+                var hour: Int; var minute: Int
+                if let (h, m) = preferredHourMinute(r) {
+                    hour = h; minute = m
+                } else {
+                    let t = win.start + (win.end - win.start) * Double(k + 1) / Double(q + 1)
+                    hour = Int(t); minute = Int(((t - Double(hour)) * 60 / 15).rounded()) * 15
+                }
+                hour = min(max(hour, 6), 22)
+                minute = min(max(minute, 0), 45)
+                var key = "\(di)-\(hour)-\(minute)"
+                var guardN = 0
+                while used.contains(key) && guardN < 64 {
+                    minute += 15; if minute >= 60 { minute -= 60; hour += 1 }
+                    if hour > 22 { hour = 22; minute = 45 }
+                    key = "\(di)-\(hour)-\(minute)"; guardN += 1
+                }
+                used.insert(key)
                 var comps = cal.dateComponents([.year, .month, .day], from: day.date)
-                comps.hour = min(hour, 23); comps.minute = min(minute, 45)
+                comps.hour = hour; comps.minute = minute
                 let newDate = cal.date(from: comps) ?? day.date
                 changes.append(RescheduleChange(id: r.id, title: displayTitle(r),
                                                 oldDue: r.dueDate, newDue: iso(newDate), newDate: newDate))
             }
         }
         return changes
+    }
+
+    /// The time-of-day to keep a reminder at when rescheduling: its own time if it had
+    /// one, else a sensible hour inferred from its title, else nil (use the day window).
+    private static func preferredHourMinute(_ r: Reminder) -> (Int, Int)? {
+        if (r.hasTime ?? false), let d = parseDate(r.dueDate) {
+            let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+            return (c.hour ?? 18, c.minute ?? 0)
+        }
+        let t = r.title.lowercased()
+        let hints: [([String], Int)] = [
+            (["breakfast", "wake", "gym", "run", "jog", "morning", "med", "vitamin", "shower", "walk"], 8),
+            (["lunch", "midday", "noon"], 12),
+            (["work", "study", "meeting", "call", "email", "errand", "afternoon"], 15),
+            (["dinner", "cook", "groceries", "evening"], 18),
+            (["night", "bed", "sleep", "skincare", "stretch", "journal", "read"], 21),
+        ]
+        for (words, h) in hints where words.contains(where: { t.contains($0) }) { return (h, 0) }
+        return nil
     }
 }
