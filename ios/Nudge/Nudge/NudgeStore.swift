@@ -87,12 +87,14 @@ final class NudgeStore: ObservableObject {
         if let d = try? JSONEncoder().encode(blob) { try? d.write(to: cacheURL) }
     }
 
-    private var backupDir: URL {
+    // Created once on first access — backupSnapshot + lastBackup hit this on every
+    // sync, so re-creating the dir each time was flagged as excessive I/O.
+    private lazy var backupDir: URL = {
         let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("backups", isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
-    }
+    }()
 
     /// Most recent local backup time + how many backups are retained — surfaced in
     /// Settings so the safety net is visible.

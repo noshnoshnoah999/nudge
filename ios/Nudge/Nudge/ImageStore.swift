@@ -6,12 +6,15 @@
 import UIKit
 
 enum ImageStore {
-    private static var root: URL {
+    // Created once (lazily, thread-safe) — not on every access. Reading image lists for
+    // card rendering hits this constantly, so re-creating the dir each time was flagged
+    // as excessive I/O.
+    private static let root: URL = {
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("nudge_images", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
-    }
+    }()
 
     static func dir(for id: String) -> URL {
         let d = root.appendingPathComponent(id, isDirectory: true)
