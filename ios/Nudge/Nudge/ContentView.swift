@@ -199,7 +199,17 @@ struct ContentView: View {
                 }
             }
             if tab == 0 {
-                Text(statusLine(stats)).font(.subheadline).foregroundStyle(Theme.textMeta)
+                let actionable = store.overdueCount() > 0 || stuckCount > 0
+                Button { if actionable { showTriage = true } } label: {
+                    HStack(spacing: 5) {
+                        Text(statusLine(stats)).font(.subheadline).foregroundStyle(Theme.textMeta)
+                        if actionable {
+                            Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(Theme.accent)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!actionable)
             }
         }
         .padding(.horizontal, 18)

@@ -15,27 +15,15 @@ struct ReminderCardView: View {
     @State private var claudeURL: IdentifiableURL?
     @State private var isPolishing = false
     @State private var showReschedule = false
-    @State private var dragX: CGFloat = 0
 
     private var radius: CGFloat { settings.compact ? 14 : 18 }
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            // Delete affordance revealed as the card slides left.
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(Theme.coral)
-                .overlay(alignment: .trailing) {
-                    Image(systemName: "trash.fill").font(.headline).foregroundStyle(.white)
-                        .padding(.trailing, 28)
-                        .opacity(Double(min(1, -dragX / 70)))
-                }
-                .opacity(dragX < 0 ? 1 : 0)
-
-            cardBody
-                .offset(x: dragX)
-                .simultaneousGesture(swipeGesture)
-        }
-        .sheet(item: $claudeURL) { SafariView(url: $0.url, tint: settings.accent) }
+        // No swipe-to-delete drag gesture: a per-card DragGesture fights the ScrollView's
+        // pan and made scrolling glitchy with many cards. Delete is on the long-press menu
+        // and the edit sheet (both with undo).
+        cardBody
+            .sheet(item: $claudeURL) { SafariView(url: $0.url, tint: settings.accent) }
         .sheet(isPresented: $showReschedule) { RescheduleOptionsView(reminder: reminder).environmentObject(store) }
         .contextMenu {
             Button { store.toggleComplete(reminder) } label: { Label("Complete", systemImage: "checkmark.circle") }
@@ -45,25 +33,6 @@ struct ReminderCardView: View {
             Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
             Button(role: .destructive) { withAnimation { store.deleteReminder(reminder) } } label: { Label("Delete", systemImage: "trash") }
         }
-    }
-
-    /// Swipe left past a threshold to delete; a short pull snaps back.
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 20)
-            .onChanged { v in
-                // Engage only for a clearly horizontal swipe; let vertical scroll pass.
-                if dragX == 0 && abs(v.translation.width) < abs(v.translation.height) { return }
-                dragX = max(min(v.translation.width, 0), -120)
-            }
-            .onEnded { v in
-                if v.translation.width < -90 {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    withAnimation(.easeIn(duration: 0.18)) { dragX = -600 }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { store.deleteReminder(reminder) }
-                } else {
-                    withAnimation(Theme.spring) { dragX = 0 }
-                }
-            }
     }
 
     private var cardBody: some View {
