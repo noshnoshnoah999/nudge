@@ -65,6 +65,7 @@ struct AddReminderView: View {
     @State private var lng: Double?
     @State private var showLocationPicker = false
     @FocusState private var titleFocused: Bool
+    @FocusState private var notesFocused: Bool
 
     private let zones: [(String, String)] = [
         ("Local (device)", ""),
@@ -82,14 +83,19 @@ struct AddReminderView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    // Title
-                    TextField("What do you need to remember?", text: $title, axis: .vertical)
+                    // Title — plain (single-line) TextField: a vertical-axis TextField
+                    // inside a ScrollView won't become first responder on iOS (no keyboard
+                    // on tap), though it works on Mac Catalyst. This focuses reliably.
+                    TextField("What do you need to remember?", text: $title)
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                         .foregroundStyle(Theme.textMain)
+                        .submitLabel(.done)
                         .focused($titleFocused)
                         .padding(16)
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        // Belt-and-braces: also force focus on tap (doesn't steal the tap).
+                        .simultaneousGesture(TapGesture().onEnded { titleFocused = true })
 
                     // Schedule
                     section("When") {
@@ -278,6 +284,8 @@ struct AddReminderView: View {
                     section("Notes") {
                         TextField("Add notes…", text: $notes, axis: .vertical)
                             .lineLimit(2...6).foregroundStyle(Theme.textMain).padding(.vertical, 10)
+                            .focused($notesFocused)
+                            .simultaneousGesture(TapGesture().onEnded { notesFocused = true })
                     }
 
                     if let e = editing {
