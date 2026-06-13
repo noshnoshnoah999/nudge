@@ -29,6 +29,7 @@ struct ContentView: View {
     @State private var showCompleted = false
     @State private var isLocked = false
     @State private var signingDaysLeft: Int?
+    @State private var expiryDismissedAtDays: Int?   // hide the expiry banner until it gets more urgent
     @State private var rescheduleTarget: Reminder?
     @State private var showTimetable = false
     @State private var smartCollection: SmartCollection?
@@ -48,7 +49,7 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 header
-                if let d = signingDaysLeft, d <= 2 { expiryBanner(d) }
+                if let d = signingDaysLeft, d <= 2, expiryDismissedAtDays != d { expiryBanner(d) }
                 ScrollView {
                     VStack(alignment: .leading, spacing: settings.compact ? 14 : 20) {
                         switch tab {
@@ -755,6 +756,9 @@ struct ContentView: View {
                     .font(.caption).foregroundStyle(.white.opacity(0.9))
             }
             Spacer()
+            Button { withAnimation(Theme.spring) { expiryDismissedAtDays = days } } label: {
+                Image(systemName: "xmark").font(.subheadline.weight(.bold)).foregroundStyle(.white.opacity(0.9))
+            }.buttonStyle(.plain)
         }
         .padding(12)
         .background(Theme.coral, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
