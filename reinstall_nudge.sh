@@ -40,6 +40,22 @@ fi
 [ "$INTERACTIVE" = "1" ] && notify "Nudge" "All set — rebuilding & reinstalling (~1 min)…" "Pop"
 echo "Preflight OK."
 
+# ---------- Force a fresh 7-day profile ----------
+# Xcode reuses any still-valid cached profile, so reinstalling never reset the free-team
+# 7-day clock. Delete the cached Nudge profiles so -allowProvisioningUpdates mints fresh
+# ones (expiry = today + 7), which is what the in-app "expires in X days" banner reads.
+# Profiles live in different folders across Xcode versions — purge Nudge's from both.
+for PROF_DIR in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" \
+                "$HOME/Library/MobileDevice/Provisioning Profiles"; do
+  [ -d "$PROF_DIR" ] || continue
+  for p in "$PROF_DIR"/*.mobileprovision; do
+    [ -f "$p" ] || continue
+    if security cms -D -i "$p" 2>/dev/null | grep -qi "flouty"; then
+      rm -f "$p"; echo "Cleared cached profile $(basename "$p")"
+    fi
+  done
+done
+
 # ---------- iPhone ----------
 cd "$PROJ" || { report "Nudge reinstall failed" "Project folder not found."; exit 1; }
 if ! xcodebuild -project Nudge.xcodeproj -scheme Nudge -destination 'generic/platform=iOS' -allowProvisioningUpdates build 2>&1 | tail -4; then
