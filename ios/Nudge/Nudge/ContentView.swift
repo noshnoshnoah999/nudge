@@ -128,6 +128,9 @@ struct ContentView: View {
             // changed and won't clobber un-pushed local edits.
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
+                // Don't pull/re-render while the user is in the add/edit sheet — a
+                // mid-edit store change can drop the title field's keyboard focus.
+                if showAdd || editingReminder != nil || showSettings { continue }
                 await store.refresh()
                 stuckCount = store.stuckCount()
             }

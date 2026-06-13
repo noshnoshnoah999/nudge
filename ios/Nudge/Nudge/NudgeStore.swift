@@ -60,17 +60,22 @@ final class NudgeStore: ObservableObject {
                 if hasPendingPush || (blob.reminders == reminders && blob.lists == lists) {
                     // Either we have un-uploaded local edits (the older cloud copy
                     // would stomp them), or nothing actually changed — don't churn.
-                    syncState = "Synced"
+                    setSync("Synced")
                 } else {
                     backupSnapshot("cloud")   // preserve current local before the cloud copy replaces it
-                    apply(blob); cache(blob); syncState = "Synced"
+                    apply(blob); cache(blob); setSync("Synced")
                     WidgetCenter.shared.reloadAllTimelines()
                 }
             }
         } catch {
-            syncState = "Offline"
+            setSync("Offline")
         }
     }
+
+    /// Publish syncState only when it actually changes — otherwise the 15s background
+    /// poll re-renders every view observing the store (including an open edit sheet,
+    /// which was dropping the title field's keyboard focus mid-edit).
+    private func setSync(_ s: String) { if syncState != s { syncState = s } }
 
     private func apply(_ blob: NudgeData) {
         reminders = blob.reminders
@@ -163,7 +168,7 @@ final class NudgeStore: ObservableObject {
     func persist(notify: Bool = true) {
         let blob = NudgeData(reminders: reminders, lists: lists, smartLists: smartLists, settings: settings)
         cache(blob)
-        syncState = "Syncing…"
+        setSync("Syncing…")
         hasPendingPush = true
         pushTask?.cancel()
         pushTask = Task { [weak self] in
@@ -186,8 +191,8 @@ final class NudgeStore: ObservableObject {
         req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
         let payload = Payload(user_key: userKey, data: blob, updated_at: iso(Date()))
         req.httpBody = try? JSONEncoder().encode(payload)
-        do { _ = try await URLSession.shared.data(for: req); syncState = "Synced" }
-        catch { syncState = "Offline" }
+        do { _ = try await URLSession.shared.data(for: req); setSync("Synced") }
+        catch { setSync("Offline") }
     }
 
     // MARK: - Mutations
