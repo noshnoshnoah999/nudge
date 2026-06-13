@@ -30,6 +30,7 @@ struct ContentView: View {
     @State private var isLocked = false
     @State private var signingDaysLeft: Int?
     @State private var expiryDismissedAtDays: Int?   // hide the expiry banner until it gets more urgent
+    @State private var isAuthenticating = false      // a Face ID prompt is in flight (prevents double-trigger)
     @State private var rescheduleTarget: Reminder?
     @State private var showTimetable = false
     @State private var smartCollection: SmartCollection?
@@ -773,11 +774,22 @@ struct ContentView: View {
     }
 
     private func attemptUnlock() {
+        // Only one Face ID prompt at a time. On launch this is called from both the
+        // .task (lock()) and scenePhase == .active; two concurrent evaluatePolicy calls
+        // make Face ID glitch/stick. Guard so the second is a no-op.
+        guard isLocked, !isAuthenticating else { return }
+        isAuthenticating = true
         Task {
-            if await BiometricLock.authenticate() {
+            let ok = await BiometricLock.authenticate()
+            isAuthenticating = false
+            if ok {
                 withAnimation(Theme.spring) { isLocked = false }
                 LockShield.shared.hide()
                 maybeRoutineCheckin()   // was skipped while locked — try now we're in
+            } else {
+                // Cancelled/failed (e.g. backgrounded mid-scan) — keep the shield up so
+                // the Unlock button (or the next foreground) can retry cleanly.
+                LockShield.shared.show(interactive: true)
             }
         }
     }
