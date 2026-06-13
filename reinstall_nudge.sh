@@ -20,8 +20,10 @@ if ! security find-identity -p codesigning -v 2>/dev/null | grep -q "Apple Devel
   P="${P}• Xcode isn't signed in — open Xcode, Settings, Accounts and add your Apple ID.
 "
 fi
-if ! xcrun devicectl list devices 2>/dev/null | grep "$DEV" | grep -qi "connected"; then
-  P="${P}• iPhone not connected — plug it in (or same Wi-Fi) and trust this Mac.
+# A network-paired iPhone shows as "available (paired)", a cabled one as "connected" —
+# both are reachable and installable, so accept either.
+if ! xcrun devicectl list devices 2>/dev/null | grep "$DEV" | grep -qiE "connected|available"; then
+  P="${P}• iPhone not reachable — unlock it on the same Wi-Fi (or plug it in) and trust this Mac.
 "
 else
   if xcrun devicectl device info lockState --device "$DEV" 2>/dev/null | grep -qi "passcodeRequired: true"; then
