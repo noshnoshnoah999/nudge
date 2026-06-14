@@ -57,11 +57,17 @@ struct NudgeProvider: TimelineProvider {
         var overdue = 0, todayDone = 0, todayOpen = 0
         var items: [WItem] = []
         for r in data.reminders {
+            // Today progress — mirror the app's todayStats exactly: done = completed today;
+            // the total also counts open items DUE today even if their time has already
+            // passed. (The widget used to drop those via !isOver, so late at night it read
+            // 11/11 instead of the app's 11/17.)
             if let ca = wParseDate(r.completedAt), cal.isDateInToday(ca) { todayDone += 1 }
+            else if !(r.completed ?? false), let dd = wParseDate(r.dueDate), cal.isDateInToday(dd) { todayOpen += 1 }
+
+            // Overdue count + the items list keep their own open/not-snoozed logic.
             guard open(r), !snoozed(r), let d = wParseDate(r.dueDate) else { continue }
             let isOver = d < now
             if isOver { overdue += 1 }
-            if cal.isDateInToday(d) && !isOver { todayOpen += 1 }
             if isOver || cal.isDateInToday(d) {
                 items.append(WItem(id: r.id, title: wDisplay(r.title), due: d,
                                    hasTime: r.hasTime ?? false, overdue: isOver, color: color(r.listId)))
