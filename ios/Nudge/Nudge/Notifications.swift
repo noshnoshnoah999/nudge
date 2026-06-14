@@ -234,10 +234,12 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         switch action {
         case Self.completeAction:
             nudge.toggleComplete(nudge.reminders[i])
+            await nudge.persistNow()   // flush before iOS suspends us, else it's lost
         case Self.snoozeAction:
             // Same model as the card menu: push the due date out an hour. persist()
             // → reschedule() then re-arms the alert for the new time automatically.
             nudge.snooze(nudge.reminders[i], minutes: 60)
+            await nudge.persistNow()
         case Self.rescheduleAction:
             AppRouter.shared.pendingReschedule = rid   // app opens → reschedule sheet
         default:

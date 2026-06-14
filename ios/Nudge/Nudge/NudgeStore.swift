@@ -183,6 +183,19 @@ final class NudgeStore: ObservableObject {
         if notify { NotificationCenter.default.post(name: .nudgeDataChanged, object: nil) }
         WidgetCenter.shared.reloadAllTimelines()
     }
+    /// Push the current state to the cloud RIGHT NOW, awaited. The debounced persist()
+    /// is fine for foreground edits, but a notification action (Complete/Snooze) is
+    /// handled in the background — iOS suspends the app the moment the async handler
+    /// returns, before the 700ms debounce fires, so that change would be lost and then
+    /// stomped by the next refresh(). Call this to flush before the handler returns.
+    func persistNow() async {
+        pushTask?.cancel()
+        let blob = NudgeData(reminders: reminders, lists: lists, smartLists: smartLists, settings: settings)
+        cache(blob)
+        hasPendingPush = true
+        await push(blob)
+    }
+
     private func push(_ blob: NudgeData) async {
         defer { hasPendingPush = false }
         guard let u = URL(string: "\(baseURL)/rest/v1/nudge_data") else { return }
