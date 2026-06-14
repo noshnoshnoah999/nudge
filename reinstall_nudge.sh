@@ -20,6 +20,14 @@ if ! security find-identity -p codesigning -v 2>/dev/null | grep -q "Apple Devel
   P="${P}• Xcode isn't signed in — open Xcode, Settings, Accounts and add your Apple ID.
 "
 fi
+# The signing certificate can linger in the keychain after Xcode drops the Apple ID
+# account, which is the real cause of the "No Accounts" build failure. Check Xcode's own
+# account list directly (one identifier per signed-in Apple ID) and bail BEFORE touching
+# any profiles, so a signed-out Xcode fails fast with a clear message.
+if [ "$(defaults read com.apple.dt.Xcode DVTDeveloperAccountManagerAppleIDLists 2>/dev/null | grep -c 'identifier =')" -eq 0 ]; then
+  P="${P}• No Apple ID in Xcode — open Xcode ▸ Settings ▸ Accounts, click +, add your Apple ID, then click again.
+"
+fi
 # A network-paired iPhone shows as "available (paired)", a cabled one as "connected" —
 # both are reachable and installable, so accept either.
 if ! xcrun devicectl list devices 2>/dev/null | grep "$DEV" | grep -qiE "connected|available"; then
