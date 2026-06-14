@@ -65,6 +65,7 @@ struct AddReminderView: View {
     @State private var lng: Double?
     @State private var showLocationPicker = false
     @FocusState private var titleFocused: Bool
+    @State private var buyRuleApplied = false   // so the live "buy" rule fires once per appearance of the word
     @FocusState private var notesFocused: Bool
 
     private let zones: [(String, String)] = [
@@ -310,6 +311,20 @@ struct AddReminderView: View {
             .scrollDismissesKeyboard(.interactively)
             // Drop the keyboard when a date/time picker opens so it doesn't cover it.
             .onChange(of: schedExpand) { _, v in if v != .none { titleFocused = false } }
+            // Live "buy" rule: the moment the title contains the word "buy", drop it into
+            // Shopping (+ payday date) so the user sees it land there as they type —
+            // no need to wait for Save. Fires once per appearance; re-arms if "buy" is
+            // removed, and never fights a manual change made afterwards.
+            .onChange(of: title) { _, newValue in
+                guard editing == nil else { return }
+                let hasBuy = newValue.range(of: "\\bbuy\\b", options: [.regularExpression, .caseInsensitive]) != nil
+                if hasBuy && !buyRuleApplied {
+                    buyRuleApplied = true
+                    withAnimation(Theme.snappy) { applyBuyRule() }
+                } else if !hasBuy {
+                    buyRuleApplied = false
+                }
+            }
             .navigationTitle(editing == nil ? "New Reminder" : "Edit Reminder")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

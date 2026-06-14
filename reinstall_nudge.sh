@@ -42,25 +42,36 @@ echo "Preflight OK."
 
 # ---------- Force a fresh 7-day profile ----------
 # Xcode reuses any still-valid cached profile, so reinstalling never reset the free-team
-# 7-day clock. Delete the cached Nudge profiles so -allowProvisioningUpdates mints fresh
-# ones (expiry = today + 7), which is what the in-app "expires in X days" banner reads.
-# Profiles live in different folders across Xcode versions — purge Nudge's from both.
-for PROF_DIR in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" \
-                "$HOME/Library/MobileDevice/Provisioning Profiles"; do
+# 7-day clock. Move the cached Nudge profiles ASIDE so -allowProvisioningUpdates mints
+# fresh ones (expiry = today + 7). We keep the old ones in a temp dir and RESTORE them if
+# the build fails — otherwise a failure (e.g. Xcode signed out) would leave zero profiles.
+# Profiles live in different folders across Xcode versions — handle both.
+PROF_BK="$(mktemp -d)"
+PRIMARY_PROF="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"   # modern Xcode location
+for PROF_DIR in "$PRIMARY_PROF" "$HOME/Library/MobileDevice/Provisioning Profiles"; do
   [ -d "$PROF_DIR" ] || continue
   for p in "$PROF_DIR"/*.mobileprovision; do
     [ -f "$p" ] || continue
     if security cms -D -i "$p" 2>/dev/null | grep -qi "flouty"; then
-      rm -f "$p"; echo "Cleared cached profile $(basename "$p")"
+      mv "$p" "$PROF_BK/"; echo "Set aside profile $(basename "$p")"   # UUID names, no collision
     fi
   done
 done
+restore_profiles() {  # put the old profiles back if a fresh build couldn't be made
+  mkdir -p "$PRIMARY_PROF"
+  cp "$PROF_BK"/*.mobileprovision "$PRIMARY_PROF/" 2>/dev/null
+}
 
 # ---------- iPhone ----------
 cd "$PROJ" || { report "Nudge reinstall failed" "Project folder not found."; exit 1; }
-if ! xcodebuild -project Nudge.xcodeproj -scheme Nudge -destination 'generic/platform=iOS' -allowProvisioningUpdates build 2>&1 | tail -4; then
-  notify "Nudge reinstall failed" "iPhone build/signing failed — check Xcode is signed in." "Basso"; exit 1
+# pipefail so a build failure isn't masked by the trailing `tail` (which previously let
+# the script march on and install a STALE app).
+if ! ( set -o pipefail; xcodebuild -project Nudge.xcodeproj -scheme Nudge -destination 'generic/platform=iOS' -allowProvisioningUpdates build 2>&1 | tail -6 ); then
+  restore_profiles   # don't leave the user with no signing profiles
+  report "Nudge reinstall failed" "iPhone build/signing failed. Open Xcode ▸ Settings ▸ Accounts and make sure your Apple ID is added, then click again."
+  echo "iPhone build FAILED — not installing (would be a stale app). Check Xcode ▸ Settings ▸ Accounts."; exit 1
 fi
+rm -rf "$PROF_BK"   # fresh build succeeded; the old profiles aren't needed
 APP=$(find "$HOME/Library/Developer/Xcode/DerivedData/Nudge-"*/Build/Products/Debug-iphoneos -maxdepth 1 -name Nudge.app 2>/dev/null | head -1)
 [ -z "$APP" ] && { notify "Nudge reinstall failed" "No iPhone build output." "Basso"; exit 1; }
 OUT=$(xcrun devicectl device install app --device "$DEV" "$APP" 2>&1); echo "$OUT" | tail -2
