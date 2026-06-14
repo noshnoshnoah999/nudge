@@ -1015,6 +1015,18 @@ function dedupeReminders(){
   if(removed>0) state.reminders=out;
   return removed;
 }
+// Auto-tidy: drop reminders completed more than `days` ago (default 3 weeks). Routines
+// never "complete" (they roll forward), so completed:false keeps them safe. Items with
+// no completedAt are left alone (age unknown). Mirrors iOS purgeOldCompleted().
+function purgeOldCompleted(days=21){
+  const cutoff=Date.now()-days*86400000;
+  const before=state.reminders.length;
+  state.reminders=state.reminders.filter(r=>{
+    if(!r.completed || !r.completedAt) return true;
+    return new Date(r.completedAt).getTime()>=cutoff;
+  });
+  return before-state.reminders.length;
+}
 function setSync(status){
   const pill=$('#syncPill'), label=$('#syncLabel');
   if(!pill) return;
@@ -2020,6 +2032,8 @@ async function init(){
   if(state.settings.firstRun && state.reminders.length===0) seedSample();
   const _dd=dedupeReminders();   // self-heal any duplicate pile-ups (e.g. repeated Apple imports)
   if(_dd>0){ console.info('Nudge: collapsed '+_dd+' duplicate reminder(s)'); persist(); }
+  const _pc=purgeOldCompleted(); // clear reminders completed >3 weeks ago
+  if(_pc>0){ console.info('Nudge: cleared '+_pc+' old completed reminder(s)'); persist(); }
   ui.board = !!state.settings.boardView;
   bindGlobal();
   render();

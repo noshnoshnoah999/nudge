@@ -119,6 +119,7 @@ struct ContentView: View {
             withAnimation(Theme.spring) { shown = true }
             if router.pendingQuickAdd { router.pendingQuickAdd = false; showAdd = true }
             await store.refresh()
+            store.purgeOldCompleted()      // clear reminders completed >3 weeks ago
             stuckCount = store.stuckCount()
             await sync.syncNow(); await notifier.reschedule()
             maybeRoutineCheckin()
@@ -151,7 +152,8 @@ struct ContentView: View {
             case .active:
                 if isLocked { attemptUnlock() } else { LockShield.shared.hide() }
                 if didLoad {
-                    Task { await store.refresh(); stuckCount = store.stuckCount()
+                    Task { await store.refresh(); store.purgeOldCompleted()
+                           stuckCount = store.stuckCount()
                            await sync.syncNow(); await notifier.reschedule()
                            maybeRoutineCheckin() }
                 }

@@ -424,6 +424,25 @@ final class NudgeStore: ObservableObject {
         if let r = recentlyDeleted { ImageStore.deleteAll(for: r.id); recentlyDeleted = nil }
     }
 
+    /// Auto-tidy: drop reminders that were COMPLETED more than `days` ago (default 3
+    /// weeks). Nightly routines are never "completed" (they roll forward), so they're
+    /// untouched. Completed reminders with no completedAt timestamp are left alone (we
+    /// can't tell their age). Mirrors a manual delete: clears photos + alerts + pushes.
+    @discardableResult
+    func purgeOldCompleted(olderThan days: Int = 21) -> Int {
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86_400)
+        let stale = reminders.filter { r in
+            guard r.isCompleted, let done = parseDate(r.completedAt) else { return false }
+            return done < cutoff
+        }
+        guard !stale.isEmpty else { return 0 }
+        for r in stale { ImageStore.deleteAll(for: r.id); clearNotifications(for: r.id) }
+        let ids = Set(stale.map { $0.id })
+        reminders.removeAll { ids.contains($0.id) }
+        persist()
+        return stale.count
+    }
+
     /// Snooze a reminder forward by `minutes` from now — it drops out of Overdue and
     /// re-alerts when the time arrives. Clears any alert already sitting in the centre.
     func snooze(_ r: Reminder, minutes: Int) {
