@@ -66,6 +66,30 @@ final class NotificationManager: NSObject, ObservableObject {
         authStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
 
+    /// Remove already-DELIVERED notifications (sitting in Notification Centre) whose
+    /// reminder is now completed / dismissed / gone — including its early-alert variants.
+    /// Notifications are local to each device, so when a reminder is completed on the Mac,
+    /// the iPhone must clear its own delivered copy on the next sync (rescheduling only
+    /// drops PENDING ones). Cheap; safe to call often.
+    func clearStaleDelivered() async {
+        guard let nudge else { return }
+        let center = UNUserNotificationCenter.current()
+        let delivered = await center.deliveredNotifications()
+        var stale: [String] = []
+        for n in delivered {
+            let id = n.request.identifier
+            guard id.hasPrefix("nudge-"), id != "nudge-payday" else { continue }
+            let raw = String(id.dropFirst("nudge-".count))
+            let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
+            if let r = nudge.reminders.first(where: { $0.id == rid }) {
+                if (r.completed ?? false) || (r.dismissed ?? false) { stale.append(id) }
+            } else {
+                stale.append(id)   // reminder no longer exists
+            }
+        }
+        if !stale.isEmpty { center.removeDeliveredNotifications(withIdentifiers: stale) }
+    }
+
     /// Toggle on: ask the OS, then schedule. Returns to off if denied.
     func enable() async {
         let granted = (try? await UNUserNotificationCenter.current()
@@ -162,6 +186,7 @@ final class NotificationManager: NSObject, ObservableObject {
         }
         await scheduleDigest(nudge: nudge, center: center)
         await schedulePayday(nudge: nudge, center: center)
+        await clearStaleDelivered()   // drop delivered alerts for now-completed reminders
         scheduledCount = min(pending.count, 60)
     }
 

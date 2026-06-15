@@ -2,6 +2,7 @@
 // Settings sheet: Apple Reminders two-way sync + local reminder notifications.
 
 import SwiftUI
+import UIKit
 
 struct SyncSettingsView: View {
     @EnvironmentObject var sync: RemindersSync
@@ -110,7 +111,14 @@ struct SyncSettingsView: View {
                 Section {
                     Toggle("Reminder notifications", isOn: Binding(
                         get: { notifier.enabled },
-                        set: { on in Task { if on { await notifier.enable() } else { notifier.disable() } } }
+                        set: { on in Task {
+                            if on {
+                                // If permission was already denied, the in-app prompt won't
+                                // re-appear — send the user to the OS settings to allow it.
+                                if notifier.authStatus == .denied { openOSNotificationSettings() }
+                                else { await notifier.enable() }
+                            } else { notifier.disable() }
+                        } }
                     ))
                     if notifier.enabled {
                         HStack {
@@ -119,9 +127,14 @@ struct SyncSettingsView: View {
                             Text("\(notifier.scheduledCount) upcoming").foregroundStyle(Theme.textMeta)
                         }
                     }
+                    // When notifications aren't authorised the in-app toggle can't grant them
+                    // (iOS/macOS only prompt once) — guide the user to the right settings pane.
                     if notifier.authStatus == .denied {
-                        Label("Notifications are off in iOS Settings → Nudge", systemImage: "exclamationmark.triangle.fill")
+                        Label(osDeniedHint, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption).foregroundStyle(Theme.coral)
+                        Button { openOSNotificationSettings() } label: {
+                            Label("Open \(osSettingsName) ▸ Notifications", systemImage: "arrow.up.forward.app")
+                        }
                     }
                 } header: {
                     Text("Notifications")
@@ -251,5 +264,26 @@ struct SyncSettingsView: View {
         case .denied:       Text("Access denied — enable in Settings").foregroundStyle(Theme.coral)
         case .error(let m): Text(m).foregroundStyle(Theme.coral)
         }
+    }
+
+    // Notification permission must be granted in the OS settings once it's been denied.
+    // These differ between Mac (System Settings) and iPhone (Settings app).
+    private var osSettingsName: String {
+        #if targetEnvironment(macCatalyst)
+        return "System Settings"
+        #else
+        return "Settings"
+        #endif
+    }
+    private var osDeniedHint: String {
+        "Notifications are turned off for Nudge in \(osSettingsName) → Notifications."
+    }
+    private func openOSNotificationSettings() {
+        #if targetEnvironment(macCatalyst)
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications")
+        #else
+        let url = URL(string: UIApplication.openSettingsURLString)
+        #endif
+        if let url { UIApplication.shared.open(url) }
     }
 }

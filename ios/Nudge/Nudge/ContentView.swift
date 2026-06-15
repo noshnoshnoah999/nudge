@@ -136,6 +136,7 @@ struct ContentView: View {
                 if showAdd || editingReminder != nil || showSettings { continue }
                 await store.refresh()
                 stuckCount = store.stuckCount()
+                await notifier.clearStaleDelivered()   // clear alerts for reminders completed elsewhere
             }
         }
         .onChange(of: scenePhase) { _, p in
