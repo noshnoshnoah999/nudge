@@ -31,8 +31,15 @@ final class NotificationManager: NSObject, ObservableObject {
     static let snoozeAction = "SNOOZE"
     static let rescheduleAction = "RESCHEDULE"
 
-    func attach(_ store: NudgeStore) {
-        nudge = store
+    /// Shared instance — the app's @StateObject and the AppDelegate both use this one, so
+    /// the notification delegate set at launch is the same object the UI talks to.
+    static let shared = NotificationManager()
+
+    /// Register the notification delegate + action categories. MUST run at app launch
+    /// (from the AppDelegate), BEFORE any SwiftUI view appears — otherwise a Complete/
+    /// Snooze tap that launches the app from a fully-quit state isn't delivered, and the
+    /// default tap doesn't open the app. Idempotent.
+    func registerForLaunch() {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         // Actionable buttons on every reminder notification.
@@ -42,6 +49,11 @@ final class NotificationManager: NSObject, ObservableObject {
         let cat = UNNotificationCategory(identifier: Self.categoryId, actions: [complete, snooze, rescheduleBtn],
                                          intentIdentifiers: [], options: [])
         center.setNotificationCategories([cat])
+    }
+
+    func attach(_ store: NudgeStore) {
+        nudge = store
+        registerForLaunch()   // idempotent; the AppDelegate already did this at launch
         NotificationCenter.default.addObserver(forName: .nudgeDataChanged, object: nil, queue: .main) { _ in
             Task { @MainActor [weak self] in self?.scheduleDebounced() }
         }
@@ -225,28 +237,35 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
 
     @MainActor private func handle(action: String, notifId: String) async {
-        guard notifId.hasPrefix("nudge-"), let nudge else { return }
+        guard notifId.hasPrefix("nudge-") else { return }
         if notifId == "nudge-payday" { AppRouter.shared.pendingShopping = true; return }
         // Early-alert ids carry a "~e<minutes>" suffix — strip it to get the reminder id.
         let raw = String(notifId.dropFirst("nudge-".count))
         let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
-        guard let i = nudge.reminders.firstIndex(where: { $0.id == rid }) else { return }
+        // Use the live store if the app is running; otherwise (a Complete/Snooze tap that
+        // woke the app from fully-quit) spin up one from cache. For data-changing actions
+        // pull the latest cloud state first so we don't push a stale blob over newer edits.
+        let store = nudge ?? NudgeStore()
+        if action == Self.completeAction || action == Self.snoozeAction {
+            await store.refresh()
+        }
+        guard let i = store.reminders.firstIndex(where: { $0.id == rid }) else { return }
         switch action {
         case Self.completeAction:
-            nudge.toggleComplete(nudge.reminders[i])
-            await nudge.persistNow()   // flush before iOS suspends us, else it's lost
+            store.toggleComplete(store.reminders[i])
+            await store.persistNow()   // flush before iOS suspends us, else it's lost
         case Self.snoozeAction:
             // Same model as the card menu: push the due date out an hour. persist()
             // → reschedule() then re-arms the alert for the new time automatically.
-            nudge.snooze(nudge.reminders[i], minutes: 60)
-            await nudge.persistNow()
+            store.snooze(store.reminders[i], minutes: 60)
+            await store.persistNow()
         case Self.rescheduleAction:
             AppRouter.shared.pendingReschedule = rid   // app opens → reschedule sheet
         default:
             // Tapping a "Claude - …" reminder's notification opens the app and
             // starts the Claude chat (so a Claude reminder set for later acts as
             // "ask Claude at this time"). Other reminders just open the app.
-            if let p = ClaudeLink.prompt(from: nudge.reminders[i].title) {
+            if let p = ClaudeLink.prompt(from: store.reminders[i].title) {
                 AppRouter.shared.pendingClaudePrompt = p
             }
         }
