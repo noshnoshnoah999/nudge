@@ -70,6 +70,7 @@ final class NudgeStore: ObservableObject {
         } catch {
             setSync("Offline")
         }
+        syncPrepReminders()   // keep linked "prep" reminders (e.g. buy ginger ingredients) aligned
     }
 
     /// Publish syncState only when it actually changes — otherwise the 15s background
@@ -350,6 +351,7 @@ final class NudgeStore: ObservableObject {
         advanceRoutine(&reminders[i], night: night)
         clearNotifications(for: id)
         persist()
+        syncPrepReminders()   // a prep linked to this routine follows its new date
     }
 
     /// "Not yet" → move the routine to a chosen day, keeping its evening time.
@@ -365,6 +367,7 @@ final class NudgeStore: ObservableObject {
         reminders[i].updatedAt = iso(Date())
         clearNotifications(for: id)
         persist()
+        syncPrepReminders()   // a prep linked to this routine follows its new date
     }
 
     /// Adaptive "skin's ready" step-up: shorten the current open-ended phase's interval
@@ -454,6 +457,47 @@ final class NudgeStore: ObservableObject {
         reminders.removeAll { ids.contains($0.id) }
         persist()
         return stale.count
+    }
+
+    /// Keep every "prep" reminder (one with `prepFor` set) parked `prepDaysBefore` days
+    /// before its target's due date, at prepHour:prepMinute. If that lands in the past
+    /// (the target is due very soon / overdue), roll forward by the target's interval to
+    /// the next future window — so we never surface a useless overdue prep. When the date
+    /// actually changes (target advanced or was rescheduled), re-open it for the new cycle.
+    func syncPrepReminders() {
+        let cal = Calendar.current
+        let now = Date()
+        var changed = false
+        for i in reminders.indices {
+            guard let tid = reminders[i].prepFor,
+                  let target = reminders.first(where: { $0.id == tid }),
+                  let tdue = parseDate(target.dueDate) else { continue }
+            let days = max(0, reminders[i].prepDaysBefore ?? 2)
+            let hour = reminders[i].prepHour ?? 17
+            let minute = reminders[i].prepMinute ?? 30
+            let interval = max(1, routineIntervalDays(target))   // weekly make → 7
+            var anchor = tdue
+            var want = now
+            for _ in 0..<366 {   // safety bound
+                let base = cal.date(byAdding: .day, value: -days, to: cal.startOfDay(for: anchor)) ?? anchor
+                var c = cal.dateComponents([.year, .month, .day], from: base)
+                c.hour = hour; c.minute = minute
+                want = cal.date(from: c) ?? base
+                if want > now { break }
+                anchor = cal.date(byAdding: .day, value: interval, to: anchor) ?? anchor
+            }
+            let wantIso = iso(want)
+            if reminders[i].dueDate != wantIso {
+                reminders[i].dueDate = wantIso
+                reminders[i].hasTime = true
+                reminders[i].completed = false        // new cycle → buy again
+                reminders[i].completedAt = nil
+                reminders[i].snoozedUntil = nil
+                reminders[i].updatedAt = iso(now)
+                changed = true
+            }
+        }
+        if changed { persist() }
     }
 
     /// Snooze a reminder forward by `minutes` from now — it drops out of Overdue and

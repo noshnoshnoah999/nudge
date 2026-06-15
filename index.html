@@ -1015,6 +1015,31 @@ function dedupeReminders(){
   if(removed>0) state.reminders=out;
   return removed;
 }
+// Keep every "prep" reminder (prepFor set) parked prepDaysBefore days before its target's
+// due date at prepHour:prepMinute; roll forward by the target's interval if that's already
+// past, and re-open it for the new cycle when the date changes. Mirrors iOS.
+function syncPrepReminders(){
+  const now=new Date(); let changed=false;
+  for(const r of state.reminders){
+    if(!r.prepFor) continue;
+    const t=state.reminders.find(x=>x.id===r.prepFor); if(!t||!t.dueDate) continue;
+    const days=Math.max(0, r.prepDaysBefore??2), hour=r.prepHour??17, minute=r.prepMinute??30;
+    const interval=Math.max(1, routineIntervalDays(t));
+    let anchor=new Date(t.dueDate), want=new Date(now);
+    for(let k=0;k<366;k++){
+      const b=new Date(anchor); b.setHours(0,0,0,0); b.setDate(b.getDate()-days); b.setHours(hour,minute,0,0);
+      want=b;
+      if(want>now) break;
+      anchor=new Date(anchor); anchor.setDate(anchor.getDate()+interval);
+    }
+    const wantIso=want.toISOString();
+    if(r.dueDate!==wantIso){
+      r.dueDate=wantIso; r.hasTime=true; r.completed=false; r.completedAt=null;
+      r.snoozedUntil=null; r.updatedAt=new Date().toISOString(); changed=true;
+    }
+  }
+  return changed;
+}
 // Auto-tidy: drop reminders completed more than `days` ago (default 3 weeks). Routines
 // never "complete" (they roll forward), so completed:false keeps them safe. Items with
 // no completedAt are left alone (age unknown). Mirrors iOS purgeOldCompleted().
@@ -1123,6 +1148,7 @@ function completeReminder(id){
     const step=routineIntervalDays(r);
     do { base.setDate(base.getDate()+step); } while(base.getTime()<=Date.now());
     r.dueDate=base.toISOString(); r.completed=false; r.completedAt=new Date().toISOString(); r.snoozedUntil=null; r.updatedAt=new Date().toISOString();
+    syncPrepReminders();   // a prep linked to this routine follows its new date
     persist(); return;
   }
   if(!r.completed && r.recurrence && r.dueDate){
@@ -2034,6 +2060,7 @@ async function init(){
   if(_dd>0){ console.info('Nudge: collapsed '+_dd+' duplicate reminder(s)'); persist(); }
   const _pc=purgeOldCompleted(); // clear reminders completed >3 weeks ago
   if(_pc>0){ console.info('Nudge: cleared '+_pc+' old completed reminder(s)'); persist(); }
+  if(syncPrepReminders()){ persist(); }   // align linked prep reminders (buy ginger ingredients)
   ui.board = !!state.settings.boardView;
   bindGlobal();
   render();

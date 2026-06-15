@@ -100,6 +100,14 @@ struct Reminder: Codable, Identifiable, Hashable {
     var routine: Bool? = nil
     var escalation: [EscalationStep]? = nil
     var escalateAskNext: String? = nil
+    // "Prep" link: this reminder is kept `prepDaysBefore` days before another reminder's
+    // (`prepFor`) due date, at prepHour:prepMinute. When the target moves (e.g. a weekly
+    // routine rolls forward), this one's date follows and it re-opens for the new cycle.
+    // Used for "Buy Ginger Shot Ingredients" → "Make Ginger Shots".
+    var prepFor: String? = nil
+    var prepDaysBefore: Int? = nil
+    var prepHour: Int? = nil
+    var prepMinute: Int? = nil
 
     var isCompleted: Bool { completed ?? false }
     var listIdOrDefault: String { listId ?? "reminders" }
