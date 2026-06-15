@@ -91,7 +91,11 @@ else
 fi
 
 # ---------- Mac (Catalyst) ----------
-if xcodebuild -project Nudge.xcodeproj -scheme Nudge -destination 'platform=macOS,variant=Mac Catalyst' -allowProvisioningUpdates CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build 2>&1 | tail -3; then
+# Build PROPERLY SIGNED (not ad-hoc): macOS silently refuses notification registration for
+# an ad-hoc-signed app, so the notifications toggle could never turn on. Real Apple
+# Development signing fixes that. Trade-off: the Mac app now also carries the free-team
+# 7-day expiry — but this script resets that clock on every run anyway.
+if xcodebuild -project Nudge.xcodeproj -scheme Nudge -destination 'platform=macOS,variant=Mac Catalyst' -allowProvisioningUpdates build 2>&1 | tail -3; then
   MACAPP=$(find "$HOME/Library/Developer/Xcode/DerivedData/Nudge-"*/Build/Products/Debug-maccatalyst -maxdepth 1 -name Nudge.app 2>/dev/null | head -1)
   [ -n "$MACAPP" ] && { pkill -x Nudge >/dev/null 2>&1; sleep 1; /usr/bin/open "$MACAPP"; }
   echo "Mac refreshed."
