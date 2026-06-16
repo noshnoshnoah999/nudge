@@ -13,6 +13,7 @@ struct SyncSettingsView: View {
     @State private var confirmDedup = false
     @State private var dedupResult: String?
     @State private var deduping = false
+    @State private var showCleanUp = false
 
     var body: some View {
         NavigationStack {
@@ -49,6 +50,16 @@ struct SyncSettingsView: View {
                     Text("Appearance")
                 } footer: {
                     Text("Pick a colour theme. Compact fits more reminders on screen.")
+                }
+
+                // MARK: Clean up
+                Section {
+                    Button { showCleanUp = true } label: {
+                        Label("Clean up reminders", systemImage: "trash")
+                            .foregroundStyle(Theme.textMain)
+                    }
+                } footer: {
+                    Text("Quickly delete reminders you don't need — swipe a row, or tap Select to remove several at once.")
                 }
 
                 // MARK: Upcoming
@@ -230,6 +241,7 @@ struct SyncSettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showCleanUp) { CleanUpView().environmentObject(store) }
             .confirmationDialog("Remove duplicate reminders?", isPresented: $confirmDedup, titleVisibility: .visible) {
                 Button("Remove duplicates", role: .destructive) {
                     deduping = true
