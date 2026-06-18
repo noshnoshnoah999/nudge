@@ -1542,6 +1542,10 @@ function saveQA(){
     ui.qa.date=`${p.getFullYear()}-${pad(p.getMonth()+1)}-${pad(p.getDate())}`;
     ui.qa.time='09:00';
   }
+  // Claude rule (mirrors iOS): a NEW "Claude - …" reminder files into the Claude list.
+  if(!ui.editingId && /^claude\s*-/i.test(title.trim())){
+    if(state.lists.some(l=>l.id==='claude')) ui.qa.list='claude';
+  }
   let dueDate=null, hasTime=false;
   if(ui.qa.date){
     const t=ui.qa.time||'09:00'; hasTime=!!ui.qa.time;

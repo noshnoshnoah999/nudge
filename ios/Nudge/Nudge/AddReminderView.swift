@@ -66,6 +66,7 @@ struct AddReminderView: View {
     @State private var showLocationPicker = false
     @FocusState private var titleFocused: Bool
     @State private var buyRuleApplied = false   // so the live "buy" rule fires once per appearance of the word
+    @State private var claudeRuleApplied = false   // same, for the "Claude - " → Claude list rule
     @FocusState private var notesFocused: Bool
 
     private let zones: [(String, String)] = [
@@ -323,6 +324,14 @@ struct AddReminderView: View {
                     withAnimation(Theme.snappy) { applyBuyRule() }
                 } else if !hasBuy {
                     buyRuleApplied = false
+                }
+                // Live "Claude" rule: a title starting "Claude - " files into the Claude list.
+                let hasClaude = isClaudeTitle(newValue)
+                if hasClaude && !claudeRuleApplied {
+                    claudeRuleApplied = true
+                    withAnimation(Theme.snappy) { applyClaudeRule() }
+                } else if !hasClaude {
+                    claudeRuleApplied = false
                 }
             }
             .navigationTitle(editing == nil ? "New Reminder" : "Edit Reminder")
@@ -675,11 +684,22 @@ struct AddReminderView: View {
         due = Payday.next()
     }
 
+    /// "Claude - …" reminders (the Ask-Claude ones) file into the Claude list.
+    private func isClaudeTitle(_ t: String) -> Bool {
+        let s = t.trimmingCharacters(in: .whitespaces).lowercased()
+        return s.hasPrefix("claude -") || s.hasPrefix("claude-")
+    }
+    private func applyClaudeRule() {
+        guard editing == nil, isClaudeTitle(title) else { return }
+        if store.lists.contains(where: { $0.id == "claude" }) { listId = "claude" }
+    }
+
     private func save() {
         for u in removedURLs { ImageStore.delete(u) }
         for n in newImages { ImageStore.save(n.data, for: reminderId) }
         addSubtask()   // commit any half-typed subtask still in the field
         applyBuyRule()
+        applyClaudeRule()
         var rec: Recurrence? = nil
         if repeatFreq != "none" {
             rec = Recurrence(freq: repeatFreq, interval: repeatInterval,
