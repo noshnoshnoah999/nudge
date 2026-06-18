@@ -16,6 +16,59 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.17", title: "Overdue page & safer cleanup", date: "18 Jun 2026",
+            added: [
+                "New Overdue tab — reminders from before today live here. Anything due today stays on the Today tab until midnight, then moves over",
+                "Clean Up (Settings) — swipe a row, or tap Select, to bulk-delete reminders you don't need"
+            ],
+            changed: [
+                "Today now shows only today's reminders (overdue has its own tab)",
+                "Remove duplicates now shows you exactly what it'll remove and waits for you to confirm — and always keeps an unfinished copy",
+                "Fixed a cleanup bug that could delete the very copy it just kept"
+            ]),
+        ChangelogEntry(
+            version: "2.16", title: "Notifications that just work", date: "18 Jun 2026",
+            added: [
+                "\"Make Ginger Shots\" is now a weekly routine, and a \"Buy Ginger Shot Ingredients\" reminder is auto-created 2 days before — it follows along if the date moves"
+            ],
+            changed: [
+                "Completing a reminder from its notification now sticks — even when the app was fully closed",
+                "Completing on one device clears the alert on your other device",
+                "The Mac can now turn notifications on",
+                "The progress widget's Today count now matches the app"
+            ]),
+        ChangelogEntry(
+            version: "2.15", title: "Payday, routines & tidy-up", date: "14 Jun 2026",
+            added: [
+                "Buy reminders auto-schedule to your next payday, with a payday Home section and one payday notification",
+                "Nightly routine check-in (KP / Epiduo) — miss one and Nudge asks you the next morning",
+                "Type \"buy\" in a title and the reminder drops straight into Shopping as you type"
+            ],
+            changed: [
+                "Completed reminders older than 3 weeks now clear themselves automatically"
+            ]),
+        ChangelogEntry(
+            version: "2.14", title: "Stability fixes", date: "14 Jun 2026",
+            added: [],
+            changed: [
+                "Fixed not being able to edit a reminder's title on iPhone (no keyboard appeared)",
+                "Face ID no longer glitches or sticks when opening the app",
+                "On Mac, the lock no longer re-asks for Touch ID every time you switch apps (Stage Manager)",
+                "Fixed duplicate reminders from Apple sync — and the app no longer recreates them",
+                "Smoother, less glitchy scrolling"
+            ]),
+        ChangelogEntry(
+            version: "2.13", title: "Smart Reschedule preview", date: "13 Jun 2026",
+            added: [
+                "Smart Reschedule now shows a preview of every move before it applies — tap any to leave it where it is"
+            ],
+            changed: [
+                "Rescheduled reminders keep their own time of day (or a sensible time guessed from the title)",
+                "Overdue cards have a clearer coral border",
+                "The \"expires in X days\" banner can be dismissed, and only comes back when it's urgent",
+                "Triage is easier to find — tap the status line on Home"
+            ]),
+        ChangelogEntry(
             version: "2.12", title: "Timetable & per-reminder reschedule", date: "10 Jun 2026",
             added: [
                 "Timetable — a draggable day-by-day schedule (calendar icon up top, or it opens after Smart Reschedule). Drag a reminder up/down to change its time",
