@@ -172,6 +172,16 @@ struct ContentView: View {
             @unknown default: break
             }
         }
+        // Mac: prompt off the real "app became frontmost" signal so Touch ID fires when you
+        // actually switch TO Nudge — never while it's just visible in a Stage Manager group.
+        #if targetEnvironment(macCatalyst)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NSApplicationDidBecomeActiveNotification"))) { _ in
+            if settings.appLock && isLocked { attemptUnlock() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NSApplicationDidResignActiveNotification"))) { _ in
+            if settings.appLock { isLocked = true; LockShield.shared.show(interactive: true) }
+        }
+        #endif
         .onChange(of: store.reminders) { _, _ in stuckCount = store.stuckCount() }
         .onChange(of: showTriage) { _, open in if !open { stuckCount = store.stuckCount() } }
         .onChange(of: router.pendingQuickAdd) { _, v in if v { router.pendingQuickAdd = false; showAdd = true } }
@@ -784,12 +794,7 @@ struct ContentView: View {
     private func lock() {
         isLocked = true
         LockShield.shared.show(interactive: true)
-        // On Mac, don't auto-prompt — Stage Manager / focus changes call this while Nudge
-        // is merely visible, popping Touch ID over another app. The shield's Unlock button
-        // authenticates only when the user actually switches to Nudge. iOS auto-prompts.
-        #if !targetEnvironment(macCatalyst)
-        attemptUnlock()
-        #endif
+        attemptUnlock()   // prompt on genuine launch (Mac re-focus is handled below)
     }
 
     private func attemptUnlock() {
