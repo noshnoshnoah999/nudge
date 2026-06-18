@@ -784,7 +784,12 @@ struct ContentView: View {
     private func lock() {
         isLocked = true
         LockShield.shared.show(interactive: true)
+        // On Mac, don't auto-prompt — Stage Manager / focus changes call this while Nudge
+        // is merely visible, popping Touch ID over another app. The shield's Unlock button
+        // authenticates only when the user actually switches to Nudge. iOS auto-prompts.
+        #if !targetEnvironment(macCatalyst)
         attemptUnlock()
+        #endif
     }
 
     private func attemptUnlock() {
