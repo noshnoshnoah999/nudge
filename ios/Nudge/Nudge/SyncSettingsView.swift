@@ -10,10 +10,10 @@ struct SyncSettingsView: View {
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var store: NudgeStore
     @Environment(\.dismiss) private var dismiss
-    @State private var confirmDedup = false
     @State private var dedupResult: String?
-    @State private var deduping = false
     @State private var showCleanUp = false
+    @State private var showDupPreview = false
+    @State private var dupGroups: [DuplicateGroup] = []
 
     var body: some View {
         NavigationStack {
@@ -103,19 +103,16 @@ struct SyncSettingsView: View {
                 // MARK: Maintenance
                 Section {
                     Button {
-                        confirmDedup = true
+                        dupGroups = sync.planDuplicates()
+                        if dupGroups.isEmpty { dedupResult = "No duplicates found." }
+                        else { showDupPreview = true }
                     } label: {
-                        HStack {
-                            Label("Remove duplicates", systemImage: "rectangle.stack.badge.minus")
-                            Spacer()
-                            if deduping { ProgressView() }
-                        }
+                        Label("Remove duplicates", systemImage: "rectangle.stack.badge.minus")
                     }
-                    .disabled(deduping)
                 } header: {
                     Text("Maintenance")
                 } footer: {
-                    Text("Collapse identical reminders (same title and time) to a single copy — on both Nudge and Apple Reminders. Use this to clean up duplicates from earlier sync issues.")
+                    Text("Finds identical reminders (same title and time) and shows you exactly what it will remove — nothing is deleted until you confirm. Keeps one copy of each (an unfinished one where possible).")
                 }
 
                 // MARK: Notifications
@@ -242,18 +239,11 @@ struct SyncSettingsView: View {
                 }
             }
             .sheet(isPresented: $showCleanUp) { CleanUpView().environmentObject(store) }
-            .confirmationDialog("Remove duplicate reminders?", isPresented: $confirmDedup, titleVisibility: .visible) {
-                Button("Remove duplicates", role: .destructive) {
-                    deduping = true
-                    Task {
-                        let n = await sync.deduplicate()
-                        deduping = false
-                        dedupResult = n == 0 ? "No duplicates found." : "Removed \(n) duplicate\(n == 1 ? "" : "s")."
-                    }
+            .sheet(isPresented: $showDupPreview) {
+                DedupPreviewView(groups: dupGroups) { n in
+                    dedupResult = n == 0 ? "No duplicates removed." : "Removed \(n) duplicate\(n == 1 ? "" : "s")."
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Keeps one copy of each identical reminder, on both Nudge and Apple Reminders. This can't be undone.")
+                .environmentObject(sync)
             }
             .alert("Cleanup", isPresented: Binding(get: { dedupResult != nil }, set: { if !$0 { dedupResult = nil } })) {
                 Button("OK") { dedupResult = nil }

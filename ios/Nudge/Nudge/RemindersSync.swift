@@ -20,6 +20,14 @@ import EventKit
 import SwiftUI
 import Combine
 
+/// A set of identical reminders (same title + due-to-minute) found during cleanup:
+/// one to keep, the rest to remove. Shown in the confirm-first review sheet.
+struct DuplicateGroup: Identifiable {
+    let id = UUID()
+    let keep: Reminder
+    let remove: [Reminder]
+}
+
 @MainActor
 final class RemindersSync: ObservableObject {
     enum Status: Equatable {
@@ -113,50 +121,44 @@ final class RemindersSync: ObservableObject {
         return "\(count) item\(count == 1 ? "" : "s") · \(n.syncState == "Offline" ? "cloud offline" : "synced")"
     }
 
-    // MARK: - One-time duplicate cleanup
+    // MARK: - Duplicate cleanup (confirm-first)
 
-    /// Collapse exact-duplicate reminders (same title + due) to a single copy on
-    /// both the Nudge and Apple sides, then rebuild links. Returns how many Nudge
-    /// duplicates were removed.
-    func deduplicate() async -> Int {
+    private func dedupKey(_ r: Reminder) -> String {
+        r.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + "|" + canonDue(r)
+    }
+
+    /// Find duplicate reminders WITHOUT changing anything — for the review-before-remove
+    /// UI. Groups live reminders by title + due-to-minute; each group keeps an UNFINISHED
+    /// copy where possible (then the oldest) and lists the rest as removable.
+    func planDuplicates() -> [DuplicateGroup] {
+        guard let nudge else { return [] }
+        var groups: [String: [Reminder]] = [:]
+        for r in nudge.reminders where !(r.dismissed ?? false) {
+            groups[dedupKey(r), default: []].append(r)
+        }
+        var out: [DuplicateGroup] = []
+        for (_, rs) in groups where rs.count > 1 {
+            let sorted = rs.sorted { a, b in
+                let ac = a.completed ?? false, bc = b.completed ?? false
+                if ac != bc { return !ac }   // keep an incomplete copy if any exists
+                return (parseDate(a.createdAt) ?? .distantPast) < (parseDate(b.createdAt) ?? .distantPast)
+            }
+            out.append(DuplicateGroup(keep: sorted[0], remove: Array(sorted.dropFirst())))
+        }
+        return out.sorted { displayTitle($0.keep).lowercased() < displayTitle($1.keep).lowercased() }
+    }
+
+    /// Remove exactly the duplicates the user confirmed. Deletes only from Nudge — the
+    /// next sync removes each one's linked Apple twin (and the reconcile re-link fix stops
+    /// re-import), so we never do a blind Apple-side scan that could delete the wrong item.
+    @discardableResult
+    func applyDuplicates(_ groups: [DuplicateGroup]) -> Int {
         guard let nudge else { return 0 }
-        func key(_ title: String, _ due: String) -> String {
-            title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + "|" + due
-        }
-
-        // Nudge side — keep one per key, preferring a not-completed copy.
-        var keepIndexByKey: [String: Int] = [:]
-        var removeIds = Set<String>()
-        for (i, r) in nudge.reminders.enumerated() where !(r.dismissed ?? false) {
-            let k = key(r.title, canonDue(r))
-            if let j = keepIndexByKey[k] {
-                if !(r.completed ?? false) && (nudge.reminders[j].completed ?? false) {
-                    removeIds.insert(nudge.reminders[j].id); keepIndexByKey[k] = i
-                } else {
-                    removeIds.insert(r.id)
-                }
-            } else {
-                keepIndexByKey[k] = i
-            }
-        }
-        let removed = removeIds.count
-        if !removeIds.isEmpty { nudge.reminders.removeAll { removeIds.contains($0.id) } }
-
-        // Apple side — keep the first per key, remove the rest.
-        if enabled, hasAccess, let res = try? ensureCalendar() {
-            let eks = await fetchReminders(in: res.0)
-            var seen = Set<String>(); var commit = false
-            for e in eks {
-                let k = key(e.title ?? "", canonDue(e))
-                if seen.contains(k) { try? ek.remove(e, commit: false); commit = true } else { seen.insert(k) }
-            }
-            if commit { try? ek.commit() }
-        }
-
-        // Rebuild links so the next reconcile re-links survivors cleanly.
-        loadLinks(); links = [:]; saveLinks()
-        nudge.persist()
-        return removed
+        let removeIds = Set(groups.flatMap { $0.remove.map(\.id) })
+        guard !removeIds.isEmpty else { return 0 }
+        nudge.reminders.removeAll { removeIds.contains($0.id) }
+        nudge.persist()   // reconcile mirrors the deletions to Apple Reminders
+        return removeIds.count
     }
 
     // MARK: - Access
