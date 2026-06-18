@@ -809,7 +809,8 @@ final class NudgeStore: ObservableObject {
     }
 
     /// Every open reminder dated today — including ones already past their time
-    /// (still "today", just overdue). High priority first, then by time of day.
+    /// (still "today", just overdue). Sorted EARLIEST DUE FIRST so the day reads top-to-
+    /// bottom in time order; priority only breaks ties between same-time reminders.
     func todayReminders() -> [Reminder] {
         let cal = Calendar.current
         let prank: (Reminder) -> Int = { $0.priorityOrNormal == "high" ? 0 : $0.priorityOrNormal == "low" ? 2 : 1 }
@@ -818,9 +819,9 @@ final class NudgeStore: ObservableObject {
             if let s = parseDate($0.snoozedUntil), s > Date() { return false }
             return cal.isDateInToday(d)
         }.sorted {
-            let ra = prank($0), rb = prank($1)
-            if ra != rb { return ra < rb }
-            return (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture)
+            let da = parseDate($0.dueDate) ?? .distantFuture, db = parseDate($1.dueDate) ?? .distantFuture
+            if da != db { return da < db }
+            return prank($0) < prank($1)
         }
     }
 
