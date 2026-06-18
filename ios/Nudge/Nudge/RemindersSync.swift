@@ -407,6 +407,13 @@ final class RemindersSync: ObservableObject {
             let f = fp(snapshot(r))
             if unlinkedNudgeByFP[f] == nil { unlinkedNudgeByFP[f] = i }
         }
+        // Every live Nudge reminder by fingerprint, LINKED OR NOT — so an Apple item whose
+        // Nudge twin is already linked to a now-dead Apple id gets RE-LINKED, not imported
+        // as a duplicate. (This was the cause of the Apple-sync duplicate reminders.)
+        var liveNudgeIdxByFP: [String: Int] = [:]
+        for (i, r) in nudge.reminders.enumerated() where isLive(r) {
+            let f = fp(snapshot(r)); if liveNudgeIdxByFP[f] == nil { liveNudgeIdxByFP[f] = i }
+        }
         for e in eks where !knownEKIds.contains(e.calendarItemExternalIdentifier)
                           && !consumedEK.contains(e.calendarItemExternalIdentifier) {
             let f = fp(snapshot(e))
@@ -414,6 +421,14 @@ final class RemindersSync: ObservableObject {
                 let rid = nudge.reminders[i].id
                 links[rid] = Link(nudgeId: rid, ekExternalId: e.calendarItemExternalIdentifier, snap: snapshot(e))
                 unlinkedNudgeByFP[f] = nil
+            } else if let i = liveNudgeIdxByFP[f] {
+                // Same content already exists in Nudge. If that reminder's Apple link is
+                // stale/missing, adopt THIS Apple item; otherwise `e` is an Apple-side
+                // duplicate — skip it. Either way, never create a second Nudge copy.
+                let rid = nudge.reminders[i].id
+                if links[rid] == nil || ekByExt[links[rid]!.ekExternalId] == nil {
+                    links[rid] = Link(nudgeId: rid, ekExternalId: e.calendarItemExternalIdentifier, snap: snapshot(e))
+                }
             } else {
                 let r = newNudgeReminder(from: e)
                 nudge.reminders.insert(r, at: 0); nudgeChanged = true
