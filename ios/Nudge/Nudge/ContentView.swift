@@ -16,7 +16,6 @@ struct ContentView: View {
     @State private var showAdd = false
     @State private var editingReminder: Reminder?
     @State private var showTriage = false
-    @State private var showOverdue = false
     @State private var showSettings = false
     @State private var collapsed: Set<String> = []
     @State private var search = ""
@@ -41,8 +40,8 @@ struct ContentView: View {
     @Namespace private var tabNS
 
     private let tabs: [(name: String, icon: String)] = [
-        ("Home", "square.grid.2x2"), ("Today", "tray.full"), ("Upcoming", "calendar"),
-        ("Lists", "square.stack.3d.up"), ("Search", "magnifyingglass")
+        ("Home", "square.grid.2x2"), ("Today", "tray.full"), ("Overdue", "exclamationmark.triangle"),
+        ("Upcoming", "calendar"), ("Lists", "square.stack.3d.up"), ("Search", "magnifyingglass")
     ]
 
     var body: some View {
@@ -57,8 +56,9 @@ struct ContentView: View {
                         switch tab {
                         case 0: dashboardTab
                         case 1: todayTab
-                        case 2: upcomingTab
-                        case 3: listsTab
+                        case 2: overdueTab
+                        case 3: upcomingTab
+                        case 4: listsTab
                         default: searchTab
                         }
                     }
@@ -101,9 +101,6 @@ struct ContentView: View {
                 let plan = store.planSmartReschedule()
                 if !plan.isEmpty { rescheduleResult = RescheduleResult(changes: plan, auto: false) }
             }).environmentObject(store)
-        }
-        .fullScreenCover(isPresented: $showOverdue) {
-            OverdueView().environmentObject(store).environmentObject(settings)
         }
         .sheet(item: $autoClaudeURL) { SafariView(url: $0.url, tint: Theme.accent) }
         .sheet(item: $rescheduleResult) { SmartReschedulePreviewView(proposed: $0.changes).environmentObject(store) }
@@ -234,7 +231,7 @@ struct ContentView: View {
             if tab == 0 {
                 let hasOverdue = store.pastDayOverdueCount() > 0
                 let actionable = hasOverdue || stuckCount > 0
-                Button { if hasOverdue { showOverdue = true } else if stuckCount > 0 { showTriage = true } } label: {
+                Button { if hasOverdue { switchTab(2) } else if stuckCount > 0 { showTriage = true } } label: {
                     HStack(spacing: 5) {
                         Text(statusLine(stats)).font(.subheadline).foregroundStyle(Theme.textMeta)
                         if actionable {
@@ -288,8 +285,9 @@ struct ContentView: View {
         switch tab {
         case 0: return greeting
         case 1: return "Today"
-        case 2: return "Upcoming"
-        case 3: return "Lists"
+        case 2: return "Overdue"
+        case 3: return "Upcoming"
+        case 4: return "Lists"
         default: return "Search"
         }
     }
@@ -297,8 +295,9 @@ struct ContentView: View {
         switch tab {
         case 0: return Date().formatted(.dateTime.weekday(.wide).day().month(.wide))
         case 1: return "What's due"
-        case 2: return "What's coming up"
-        case 3: return "\(store.lists.count) lists"
+        case 2: return "From before today"
+        case 3: return "What's coming up"
+        case 4: return "\(store.lists.count) lists"
         default: return "Find a reminder"
         }
     }
@@ -358,9 +357,9 @@ struct ContentView: View {
 
         let od = store.pastDayOverdueCount()
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            statCard("Overdue", od, "exclamationmark.triangle", od > 0 ? Theme.coral : Theme.accent) { if od > 0 { showOverdue = true } }
+            statCard("Overdue", od, "exclamationmark.triangle", od > 0 ? Theme.coral : Theme.accent) { if od > 0 { switchTab(2) } }
             statCard("Due today", dueTodayCount, "sun.max", Theme.accent) { switchTab(1) }
-            statCard("This week", thisWeekCount, "calendar", Theme.accent) { switchTab(2) }
+            statCard("This week", thisWeekCount, "calendar", Theme.accent) { switchTab(3) }
             statCard("Done today", todayStats.done, "checkmark.circle", Theme.sage) { showCompleted = true }
         }
         .popIn(2)
@@ -486,7 +485,7 @@ struct ContentView: View {
         let items = store.todayReminders()
         let odCount = store.pastDayOverdueCount()
         if odCount > 0 {
-            Button { showOverdue = true } label: {
+            Button { switchTab(2) } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                     Text("\(odCount) overdue from before today").fontWeight(.semibold)
@@ -502,6 +501,21 @@ struct ContentView: View {
         if items.isEmpty {
             emptyCard("checkmark.circle.fill", "Nothing due today", "You're on top of it.")
         } else {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, r in
+                ReminderCardView(reminder: r) { editingReminder = r }.popIn(i)
+            }
+        }
+    }
+
+    // MARK: - Overdue tab — reminders due on a PREVIOUS calendar day (today's stay on
+    // the Today tab until midnight, then roll in here).
+    @ViewBuilder private var overdueTab: some View {
+        let items = store.pastDayOverdue()
+        if items.isEmpty {
+            emptyCard("checkmark.circle.fill", "Nothing overdue",
+                      "Reminders from before today land here. Anything due today stays on the Today tab until midnight.")
+        } else {
+            smartRescheduleButton
             ForEach(Array(items.enumerated()), id: \.element.id) { i, r in
                 ReminderCardView(reminder: r) { editingReminder = r }.popIn(i)
             }
