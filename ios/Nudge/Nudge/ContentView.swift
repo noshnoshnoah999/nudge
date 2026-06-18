@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var showAdd = false
     @State private var editingReminder: Reminder?
     @State private var showTriage = false
+    @State private var showOverdue = false
     @State private var showSettings = false
     @State private var collapsed: Set<String> = []
     @State private var search = ""
@@ -100,6 +101,9 @@ struct ContentView: View {
                 let plan = store.planSmartReschedule()
                 if !plan.isEmpty { rescheduleResult = RescheduleResult(changes: plan, auto: false) }
             }).environmentObject(store)
+        }
+        .fullScreenCover(isPresented: $showOverdue) {
+            OverdueView().environmentObject(store).environmentObject(settings)
         }
         .sheet(item: $autoClaudeURL) { SafariView(url: $0.url, tint: Theme.accent) }
         .sheet(item: $rescheduleResult) { SmartReschedulePreviewView(proposed: $0.changes).environmentObject(store) }
@@ -228,8 +232,9 @@ struct ContentView: View {
                 }
             }
             if tab == 0 {
-                let actionable = store.overdueCount() > 0 || stuckCount > 0
-                Button { if actionable { showTriage = true } } label: {
+                let hasOverdue = store.pastDayOverdueCount() > 0
+                let actionable = hasOverdue || stuckCount > 0
+                Button { if hasOverdue { showOverdue = true } else if stuckCount > 0 { showTriage = true } } label: {
                     HStack(spacing: 5) {
                         Text(statusLine(stats)).font(.subheadline).foregroundStyle(Theme.textMeta)
                         if actionable {
@@ -298,8 +303,8 @@ struct ContentView: View {
         }
     }
     private func statusLine(_ s: (done: Int, total: Int)) -> String {
-        let od = store.overdueCount()
-        if od > 0 { return "🔴 \(od) overdue · spread them below" }
+        let od = store.pastDayOverdueCount()
+        if od > 0 { return "🔴 \(od) overdue · tap to review" }
         if stuckCount > 0 { return "⚠︎ \(stuckCount) you keep avoiding · tap to review" }
         if s.total == 0 { return "Nothing due today — you're clear." }
         return "\(s.done) of \(s.total) done today"
@@ -351,9 +356,9 @@ struct ContentView: View {
             }
         }
 
-        let od = store.overdueCount()
+        let od = store.pastDayOverdueCount()
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            statCard("Overdue", od, "exclamationmark.triangle", od > 0 ? Theme.coral : Theme.accent) { if od > 0 { switchTab(1) } }
+            statCard("Overdue", od, "exclamationmark.triangle", od > 0 ? Theme.coral : Theme.accent) { if od > 0 { showOverdue = true } }
             statCard("Due today", dueTodayCount, "sun.max", Theme.accent) { switchTab(1) }
             statCard("This week", thisWeekCount, "calendar", Theme.accent) { switchTab(2) }
             statCard("Done today", todayStats.done, "checkmark.circle", Theme.sage) { showCompleted = true }
@@ -476,10 +481,31 @@ struct ContentView: View {
     // MARK: - Today tab
 
     @ViewBuilder private var todayTab: some View {
-        if store.overdueCount() > 0 { smartRescheduleButton }
-        let secs = store.sections().filter { $0.id == "overdue" || $0.id == "today" }
-        if secs.isEmpty { emptyCard("checkmark.circle.fill", "Nothing due today", "You're on top of it.") }
-        ForEach(secs) { sectionView($0) }
+        // Today = reminders due on today's calendar day, INCLUDING ones whose time has
+        // already passed (they stay here until midnight, then move to the Overdue page).
+        let items = store.todayReminders()
+        let odCount = store.pastDayOverdueCount()
+        if odCount > 0 {
+            Button { showOverdue = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    Text("\(odCount) overdue from before today").fontWeight(.semibold)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.weight(.bold))
+                }
+                .font(.subheadline).foregroundStyle(Theme.coral)
+                .padding(14)
+                .background(Theme.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(PressableStyle())
+        }
+        if items.isEmpty {
+            emptyCard("checkmark.circle.fill", "Nothing due today", "You're on top of it.")
+        } else {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, r in
+                ReminderCardView(reminder: r) { editingReminder = r }.popIn(i)
+            }
+        }
     }
 
     private var progressHero: some View {

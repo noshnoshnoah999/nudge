@@ -824,6 +824,25 @@ final class NudgeStore: ObservableObject {
         }
     }
 
+    /// Reminders for the Overdue page: due on a PREVIOUS calendar day. A reminder due
+    /// earlier *today* (time already passed) stays on the Today page — it only lands here
+    /// once midnight rolls it into a past day. Excludes completed/dismissed/snoozed-ahead.
+    func pastDayOverdue() -> [Reminder] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let prank: (Reminder) -> Int = { $0.priorityOrNormal == "high" ? 0 : $0.priorityOrNormal == "low" ? 2 : 1 }
+        return open().filter {
+            guard let d = parseDate($0.dueDate) else { return false }
+            if let s = parseDate($0.snoozedUntil), s > Date() { return false }
+            return cal.startOfDay(for: d) < today
+        }.sorted {
+            let ra = prank($0), rb = prank($1)
+            if ra != rb { return ra < rb }
+            return (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture)
+        }
+    }
+    func pastDayOverdueCount() -> Int { pastDayOverdue().count }
+
     /// Open reminders the user pinned to the Home dashboard, high priority first.
     func pinnedReminders() -> [Reminder] {
         let prank: (Reminder) -> Int = { $0.priorityOrNormal == "high" ? 0 : $0.priorityOrNormal == "low" ? 2 : 1 }
