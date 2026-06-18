@@ -80,7 +80,8 @@ if ! ( set -o pipefail; xcodebuild -project Nudge.xcodeproj -scheme Nudge -desti
   echo "iPhone build FAILED — not installing (would be a stale app). Check Xcode ▸ Settings ▸ Accounts."; exit 1
 fi
 rm -rf "$PROF_BK"   # fresh build succeeded; the old profiles aren't needed
-APP=$(find "$HOME/Library/Developer/Xcode/DerivedData/Nudge-"*/Build/Products/Debug-iphoneos -maxdepth 1 -name Nudge.app 2>/dev/null | head -1)
+# NEWEST build by mtime — never an old DerivedData dir (which would install a stale app).
+APP=$(ls -td "$HOME/Library/Developer/Xcode/DerivedData/Nudge-"*/Build/Products/Debug-iphoneos/Nudge.app 2>/dev/null | head -1)
 [ -z "$APP" ] && { notify "Nudge reinstall failed" "No iPhone build output." "Basso"; exit 1; }
 OUT=$(xcrun devicectl device install app --device "$DEV" "$APP" 2>&1); echo "$OUT" | tail -2
 if echo "$OUT" | grep -qiE "installed|databaseUUID"; then
@@ -96,7 +97,7 @@ fi
 # Development signing fixes that. Trade-off: the Mac app now also carries the free-team
 # 7-day expiry — but this script resets that clock on every run anyway.
 if xcodebuild -project Nudge.xcodeproj -scheme Nudge -destination 'platform=macOS,variant=Mac Catalyst' -allowProvisioningUpdates build 2>&1 | tail -3; then
-  MACAPP=$(find "$HOME/Library/Developer/Xcode/DerivedData/Nudge-"*/Build/Products/Debug-maccatalyst -maxdepth 1 -name Nudge.app 2>/dev/null | head -1)
+  MACAPP=$(ls -td "$HOME/Library/Developer/Xcode/DerivedData/Nudge-"*/Build/Products/Debug-maccatalyst/Nudge.app 2>/dev/null | head -1)
   [ -n "$MACAPP" ] && { pkill -x Nudge >/dev/null 2>&1; sleep 1; /usr/bin/open "$MACAPP"; }
   echo "Mac refreshed."
 else
