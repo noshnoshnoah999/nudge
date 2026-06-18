@@ -11,12 +11,17 @@ import UIKit
 final class LockShield {
     static let shared = LockShield()
     private var window: UIWindow?
+    private var shownInteractive: Bool?   // current visible state, nil = hidden
     /// Called when the user taps Unlock on the interactive shield.
     var onUnlock: (() -> Void)?
 
     /// Show the cover. `interactive` adds the lock glyph + Unlock button; otherwise
     /// it's just a blur (used for the brief app-switcher snapshot).
     func show(interactive: Bool) {
+        // Already showing this exact state — don't rebuild it (avoids flicker when
+        // scenePhase .active fires repeatedly under Stage Manager).
+        if shownInteractive == interactive, let w = window, !w.isHidden { return }
+        shownInteractive = interactive
         guard let scene = activeScene() else { return }
         if window == nil {
             let w = UIWindow(windowScene: scene)
@@ -34,6 +39,7 @@ final class LockShield {
     func hide() {
         window?.isHidden = true
         window = nil
+        shownInteractive = nil
     }
 
     private func activeScene() -> UIWindowScene? {

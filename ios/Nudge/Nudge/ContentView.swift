@@ -151,7 +151,18 @@ struct ContentView: View {
             case .background:
                 if settings.appLock { isLocked = true; LockShield.shared.show(interactive: true) }
             case .active:
-                if isLocked { attemptUnlock() } else { LockShield.shared.hide() }
+                if isLocked {
+                    #if targetEnvironment(macCatalyst)
+                    // Mac: focus flips constantly (Stage Manager, ⌘-tab) and .active fires
+                    // while Nudge is merely visible, not focused — auto-prompting Touch ID
+                    // then pops the dialog while you're in another app. Just show the locked
+                    // cover; tapping its Unlock button authenticates when you actually switch
+                    // to Nudge.
+                    LockShield.shared.show(interactive: true)
+                    #else
+                    attemptUnlock()
+                    #endif
+                } else { LockShield.shared.hide() }
                 if didLoad {
                     Task { await store.refresh(); store.purgeOldCompleted()
                            stuckCount = store.stuckCount()
