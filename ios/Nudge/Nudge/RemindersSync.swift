@@ -149,15 +149,42 @@ final class RemindersSync: ObservableObject {
     }
 
     /// Remove exactly the duplicates the user confirmed. Deletes only from Nudge — the
-    /// next sync removes each one's linked Apple twin (and the reconcile re-link fix stops
-    /// re-import), so we never do a blind Apple-side scan that could delete the wrong item.
+    /// removes the extra Apple copies for those same groups, and UNLINKS each survivor so
+    /// the next reconcile re-links it to the surviving Apple item — instead of deleting it
+    /// when its old (now-removed) Apple twin disappears. (That tangle deleted a kept copy.)
     @discardableResult
-    func applyDuplicates(_ groups: [DuplicateGroup]) -> Int {
+    func applyDuplicates(_ groups: [DuplicateGroup]) async -> Int {
         guard let nudge else { return 0 }
         let removeIds = Set(groups.flatMap { $0.remove.map(\.id) })
         guard !removeIds.isEmpty else { return 0 }
         nudge.reminders.removeAll { removeIds.contains($0.id) }
-        nudge.persist()   // reconcile mirrors the deletions to Apple Reminders
+
+        // Apple side: for each confirmed group, keep ONE matching Apple item, remove the rest.
+        let groupKeys = Set(groups.map { dedupKey($0.keep) })
+        if enabled, hasAccess, let res = try? ensureCalendar() {
+            let eks = await fetchReminders(in: res.0)
+            var byKey: [String: [EKReminder]] = [:]
+            for e in eks {
+                let k = (e.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + "|" + canonDue(e)
+                byKey[k, default: []].append(e)
+            }
+            var commit = false
+            for k in groupKeys {
+                if let dupes = byKey[k], dupes.count > 1 {
+                    for e in dupes.dropFirst() { try? ek.remove(e, commit: false); commit = true }
+                }
+            }
+            if commit { try? ek.commit() }
+        }
+
+        // Unlink survivors + removed copies so the reconcile re-links survivors cleanly
+        // (re-link is duplicate-safe; see reconcile step 3) and never deletes them.
+        for g in groups {
+            links[g.keep.id] = nil
+            for r in g.remove { links[r.id] = nil }
+        }
+        saveLinks()
+        nudge.persist()
         return removeIds.count
     }
 

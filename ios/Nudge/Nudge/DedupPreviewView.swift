@@ -46,7 +46,7 @@ struct DedupPreviewView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Remove \(removeCount)") {
-                        let n = sync.applyDuplicates(groups); onApplied(n); dismiss()
+                        Task { let n = await sync.applyDuplicates(groups); onApplied(n); dismiss() }
                     }
                     .fontWeight(.bold).disabled(removeCount == 0)
                 }
