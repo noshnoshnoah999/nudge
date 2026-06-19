@@ -124,6 +124,7 @@ struct ContentView: View {
             stuckCount = store.stuckCount()
             await sync.syncNow(); await notifier.reschedule()
             maybeRoutineCheckin()
+            processPendingNotification()   // a tap that cold-launched the app, now that it's live
         }
         .task {
             // Live-ish polling: pull cloud changes (reminders added on the web app or
@@ -187,6 +188,7 @@ struct ContentView: View {
         .onChange(of: showTriage) { _, open in if !open { stuckCount = store.stuckCount() } }
         .onChange(of: router.pendingQuickAdd) { _, v in if v { router.pendingQuickAdd = false; showAdd = true } }
         .onChange(of: router.pendingShopping) { _, v in if v { router.pendingShopping = false; openShopping() } }
+        .onChange(of: router.pendingNotification) { _, p in if p != nil { processPendingNotification() } }
         .onChange(of: router.pendingReschedule) { _, id in
             guard let id, let r = store.reminders.first(where: { $0.id == id }) else { return }
             router.pendingReschedule = nil
@@ -395,6 +397,20 @@ struct ContentView: View {
 
     private func openShopping() {
         if let l = store.lists.first(where: { $0.id == "shopping" }) { listFilter = l }
+    }
+
+    /// Run a notification tap that was deferred from a fully-quit launch (see Notifications
+    /// .handle): now the store + UI are live, so it's safe to open the reschedule sheet or
+    /// start a Claude chat. A plain tap on a normal reminder just opens the app (no-op here).
+    private func processPendingNotification() {
+        guard let p = router.pendingNotification else { return }
+        router.pendingNotification = nil
+        guard let r = store.reminders.first(where: { $0.id == p.rid }) else { return }
+        if p.action == NotificationManager.rescheduleAction {
+            rescheduleTarget = r
+        } else if let prompt = ClaudeLink.prompt(from: r.title) {
+            router.pendingClaudePrompt = prompt
+        }
     }
 
     private var nextUp: Reminder? {

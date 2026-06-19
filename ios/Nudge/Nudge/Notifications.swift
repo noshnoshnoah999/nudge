@@ -267,9 +267,19 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Early-alert ids carry a "~e<minutes>" suffix — strip it to get the reminder id.
         let raw = String(notifId.dropFirst("nudge-".count))
         let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
-        // Use the live store if the app is running; otherwise (a Complete/Snooze tap that
-        // woke the app from fully-quit) spin up one from cache. For data-changing actions
-        // pull the latest cloud state first so we don't push a stale blob over newer edits.
+
+        // A plain TAP (or Reschedule) launches the app to the FOREGROUND. If it was fully
+        // quit, the live store/UI aren't up yet — and creating a throwaway NudgeStore here
+        // (its load reloads widgets + mutates published state) during UIKit's launch & state-
+        // restoration snapshot makes UIKit assert and abort. Hand it to the app to run live.
+        let opensApp = action != Self.completeAction && action != Self.snoozeAction
+        if nudge == nil && opensApp {
+            AppRouter.shared.pendingNotification = NotifAction(action: action, rid: rid)
+            return
+        }
+        // Complete/Snooze from fully-quit launch the app in the BACKGROUND (no scene snapshot),
+        // so a throwaway store + persist is safe there. Pull latest cloud first so we don't
+        // push a stale blob over newer edits.
         let store = nudge ?? NudgeStore()
         if action == Self.completeAction || action == Self.snoozeAction {
             await store.refresh()
