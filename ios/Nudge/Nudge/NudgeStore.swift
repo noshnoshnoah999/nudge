@@ -345,13 +345,35 @@ final class NudgeStore: ObservableObject {
         r.updatedAt = iso(Date())
     }
 
-    /// "I did it" → advance and persist.
+    /// "I did it" → leave a "done on this day" record in the Completed list, then advance.
     func routineDidIt(_ id: String, night: Date) {
         guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+        let snap = completedSnapshot(of: reminders[i], doneOn: night)
         advanceRoutine(&reminders[i], night: night)
+        reminders[i].completedAt = nil   // the snapshot is the completion record now (no double-count)
+        reminders.insert(snap, at: 0)
         clearNotifications(for: id)
         persist()
         syncPrepReminders()   // a prep linked to this routine follows its new date
+    }
+
+    /// A one-off, completed clone of a repeating reminder/routine — the historical "I did it
+    /// on this day" entry that shows in the Completed list. Not repeating itself, so it just
+    /// sits in history (and auto-clears with the usual 3-week purge).
+    func completedSnapshot(of r: Reminder, doneOn night: Date) -> Reminder {
+        var s = r
+        s.id = "r" + String(UUID().uuidString.prefix(12))
+        s.completed = true
+        s.completedAt = iso(Date())
+        s.dueDate = iso(night)        // the occurrence that was completed
+        s.recurrence = nil
+        s.routine = false
+        s.escalation = nil
+        s.snoozedUntil = nil
+        s.pinned = false
+        s.createdAt = iso(Date())
+        s.updatedAt = iso(Date())
+        return s
     }
 
     /// "Not yet" → move the routine to a chosen day, keeping its evening time.

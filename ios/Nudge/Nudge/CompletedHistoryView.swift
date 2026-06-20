@@ -6,10 +6,18 @@ import SwiftUI
 struct CompletedHistoryView: View {
     @EnvironmentObject var store: NudgeStore
     @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
 
     private var groups: [(day: String, items: [Reminder])] {
         let cal = Calendar.current
-        let dict = Dictionary(grouping: store.completedReminders()) { r -> Date in
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let items = store.completedReminders().filter { r in
+            q.isEmpty
+            || displayTitle(r).lowercased().contains(q)
+            || (r.notes?.lowercased().contains(q) ?? false)
+            || (store.list(for: r.listId)?.name.lowercased().contains(q) ?? false)
+        }
+        let dict = Dictionary(grouping: items) { r -> Date in
             cal.startOfDay(for: parseDate(r.completedAt) ?? .distantPast)
         }
         return dict.keys.sorted(by: >).map { (dayLabel($0), dict[$0]!) }
@@ -20,9 +28,12 @@ struct CompletedHistoryView: View {
             ScrollView {
                 if groups.isEmpty {
                     VStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle").font(.largeTitle).foregroundStyle(Theme.accent)
-                        Text("Nothing completed yet").font(.headline).foregroundStyle(Theme.textMain)
-                        Text("Reminders you finish will collect here.")
+                        Image(systemName: query.isEmpty ? "checkmark.circle" : "magnifyingglass")
+                            .font(.largeTitle).foregroundStyle(Theme.accent)
+                        Text(query.isEmpty ? "Nothing completed yet" : "No matches")
+                            .font(.headline).foregroundStyle(Theme.textMain)
+                        Text(query.isEmpty ? "Reminders you finish will collect here."
+                             : "No completed reminders match \u{201C}\(query)\u{201D}.")
                             .font(.subheadline).foregroundStyle(Theme.textMeta).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity).padding(.top, 70).padding(.horizontal, 30)
@@ -48,6 +59,8 @@ struct CompletedHistoryView: View {
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Completed")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: "Search completed")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .tint(Theme.accent)
