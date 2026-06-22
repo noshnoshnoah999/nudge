@@ -118,10 +118,8 @@ struct AddReminderView: View {
                         if hasDue {
                             if schedExpand == .date {
                                 divider
-                                DatePicker("", selection: $due, displayedComponents: [.date])
-                                    .datePickerStyle(.graphical)
-                                    .tint(Theme.accent).labelsHidden()
-                                    .padding(.vertical, 2)
+                                MiniCalendar(date: $due)
+                                    .padding(.vertical, 6)
                             }
                             divider
                             schedRow("clock", "Time", subtitle: hasTime ? timeText(due) : nil,

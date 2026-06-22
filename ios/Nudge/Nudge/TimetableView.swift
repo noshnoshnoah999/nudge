@@ -14,6 +14,8 @@ struct TimetableView: View {
     @State private var editing: Reminder?
     @State private var dragY: [String: CGFloat] = [:]
     @State private var undone = false
+    @State private var showDragConflict = false
+    @State private var pendingDrag: (id: String, date: Date, msg: String)?
 
     private let cal = Calendar.current
     private let hourH: CGFloat = 60
@@ -92,6 +94,12 @@ struct TimetableView: View {
                 }
             }
             .sheet(item: $editing) { r in AddReminderView(editing: r).environmentObject(store) }
+            .alert("You're busy then", isPresented: $showDragConflict) {
+                Button("Move anyway") { if let p = pendingDrag { withAnimation(Theme.spring) { store.reschedule(p.id, to: p.date) } } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your calendar has \(pendingDrag?.msg ?? "an event") at that time.")
+            }
             .onAppear {
                 if let first = undoChanges?.map(\.newDate).min() { selected = cal.startOfDay(for: first) }
             }
@@ -187,7 +195,11 @@ struct TimetableView: View {
                     let newT = timeFrom(y: yFor(due) + v.translation.height, on: selected)
                     dragY[r.id] = nil
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(Theme.spring) { store.reschedule(r.id, to: newT) }
+                    if let msg = CalendarService.shared.conflictDescription(at: newT) {
+                        pendingDrag = (r.id, newT, msg); showDragConflict = true   // confirm over an event
+                    } else {
+                        withAnimation(Theme.spring) { store.reschedule(r.id, to: newT) }
+                    }
                 }
         )
         .onTapGesture { editing = r }
