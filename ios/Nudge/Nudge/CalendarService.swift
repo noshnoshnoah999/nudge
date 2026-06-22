@@ -61,4 +61,19 @@ final class CalendarService: ObservableObject {
             return DateInterval(start: e.startDate, end: e.endDate)
         }
     }
+
+    /// Upcoming birthdays from the iOS "Birthdays" calendar (built from Contacts) — used to
+    /// nudge you a few days before. Reuses Calendar access; no Contacts permission needed.
+    func upcomingBirthdays(within days: Int = 30) -> [(title: String, date: Date)] {
+        guard authorized else { return [] }
+        let bdayCals = store.calendars(for: .event).filter { $0.type == .birthday }
+        guard !bdayCals.isEmpty else { return [] }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: Date())
+        let end = cal.date(byAdding: .day, value: days, to: start) ?? start
+        let pred = store.predicateForEvents(withStart: start, end: end, calendars: bdayCals)
+        return store.events(matching: pred)
+            .map { ($0.title ?? "Birthday", cal.startOfDay(for: $0.startDate)) }
+            .sorted { $0.1 < $1.1 }
+    }
 }

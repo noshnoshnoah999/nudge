@@ -181,8 +181,36 @@ final class NotificationManager: NSObject, ObservableObject {
         }
         await scheduleDigest(nudge: nudge, center: center)
         await schedulePayday(nudge: nudge, center: center)
+        await scheduleBirthdays(center: center)
         await clearStaleDelivered()   // drop delivered alerts for now-completed reminders
         scheduledCount = min(pending.count, 60)
+    }
+
+    /// Heads-up notifications for upcoming birthdays (from the iOS Birthdays calendar): a
+    /// reminder 3 days before at 09:00 and again on the morning of. Re-armed each reschedule.
+    private func scheduleBirthdays(center: UNUserNotificationCenter) async {
+        let existing = await center.pendingNotificationRequests()
+            .map(\.identifier).filter { $0.hasPrefix("nudge-bday-") }
+        if !existing.isEmpty { center.removePendingNotificationRequests(withIdentifiers: existing) }
+
+        let cal = Calendar.current
+        let bdays = CalendarService.shared.upcomingBirthdays(within: 30)
+        let f = DateFormatter(); f.dateFormat = "EEEE d MMM"
+        for (i, b) in bdays.enumerated() {
+            for lead in [3, 0] {
+                guard let leadDay = cal.date(byAdding: .day, value: -lead, to: b.date),
+                      let fire = cal.date(bySettingHour: 9, minute: 0, second: 0, of: leadDay),
+                      fire > Date() else { continue }
+                let content = UNMutableNotificationContent()
+                content.title = lead == 0 ? "🎂 \(b.title) — today!" : "🎂 \(b.title) in \(lead) days"
+                content.body = lead == 0 ? "Don't forget to wish them 🎉" : "Coming up \(f.string(from: b.date))."
+                content.sound = .default
+                content.threadIdentifier = "nudge-birthdays"
+                let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
+                let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+                try? await center.add(UNNotificationRequest(identifier: "nudge-bday-\(i)-\(lead)", content: content, trigger: trigger))
+            }
+        }
     }
 
     /// One pay-day summary instead of a notification per buy reminder: fires at the next
