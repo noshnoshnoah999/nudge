@@ -68,10 +68,13 @@ struct TimetableView: View {
                 Text("Drag a reminder to change its time")
                     .font(.caption).foregroundStyle(Theme.textMeta).padding(.bottom, 6)
                 ScrollView {
-                    ZStack(alignment: .topLeading) {
-                        gridLines
-                        ForEach(timed(selected)) { block($0) }
-                        if cal.isDateInToday(selected) { nowMarker }
+                    GeometryReader { geo in
+                        let lay = columns(selected)
+                        ZStack(alignment: .topLeading) {
+                            gridLines
+                            ForEach(timed(selected)) { block($0, width: geo.size.width, layout: lay) }
+                            if cal.isDateInToday(selected) { nowMarker }
+                        }
                     }
                     .frame(height: CGFloat(endHour - startHour) * hourH + 20)
                     .padding(16)
@@ -146,10 +149,19 @@ struct TimetableView: View {
         }
     }
 
-    private func block(_ r: Reminder) -> some View {
+    private let blockH: CGFloat = 50
+
+    private func block(_ r: Reminder, width: CGFloat, layout: [String: (col: Int, cols: Int)]) -> some View {
         let due = parseDate(r.dueDate) ?? selected
         let dragging = dragY[r.id] != nil
         let y = yFor(due) + (dragY[r.id] ?? 0)
+        // Side-by-side columns so reminders at the same time don't hide behind each other.
+        let lead: CGFloat = labelW + 8
+        let gap: CGFloat = 6
+        let (col, cols) = layout[r.id] ?? (0, 1)
+        let avail = max(60, width - lead - 4)
+        let w = (avail - CGFloat(cols - 1) * gap) / CGFloat(max(cols, 1))
+        let x = lead + CGFloat(col) * (w + gap)
         return HStack(spacing: 6) {
             RoundedRectangle(cornerRadius: 3).fill(Theme.accent).frame(width: 4)
             VStack(alignment: .leading, spacing: 1) {
@@ -158,17 +170,15 @@ struct TimetableView: View {
                     .font(.caption2.weight(.semibold)).foregroundStyle(Theme.accent)
             }
             Spacer(minLength: 0)
-            Image(systemName: "line.3.horizontal").font(.caption).foregroundStyle(Theme.textMeta)
+            if cols == 1 { Image(systemName: "line.3.horizontal").font(.caption).foregroundStyle(Theme.textMeta) }
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
-        .frame(height: 50)
+        .padding(.horizontal, cols > 1 ? 8 : 10).padding(.vertical, 8)
+        .frame(width: w, height: blockH, alignment: .leading)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
             .stroke(Theme.accent.opacity(dragging ? 0.9 : 0.25), lineWidth: dragging ? 2 : 1))
         .shadow(color: .black.opacity(dragging ? 0.16 : 0), radius: 7, y: 3)
-        .padding(.leading, labelW + 16)
-        .padding(.trailing, 4)
-        .offset(y: y)
+        .offset(x: x, y: y)
         .zIndex(dragging ? 1 : 0)
         .gesture(
             DragGesture(minimumDistance: 6)
@@ -181,6 +191,42 @@ struct TimetableView: View {
                 }
         )
         .onTapGesture { editing = r }
+    }
+
+    /// Lay reminders that overlap in time into side-by-side columns (calendar-style), so
+    /// none hide behind another. Returns each reminder's column index + the column count
+    /// of its overlap cluster.
+    private func columns(_ day: Date) -> [String: (col: Int, cols: Int)] {
+        let items = timed(day).compactMap { r -> (id: String, y: CGFloat)? in
+            guard let d = parseDate(r.dueDate) else { return nil }
+            return (r.id, yFor(d))
+        }.sorted { $0.y < $1.y }
+        guard !items.isEmpty else { return [:] }
+        var result: [String: (Int, Int)] = [:]
+        var i = 0
+        while i < items.count {
+            // Grow a cluster of transitively-overlapping blocks.
+            var j = i
+            var clusterBottom = items[i].y + blockH
+            while j + 1 < items.count && items[j + 1].y < clusterBottom {
+                j += 1
+                clusterBottom = max(clusterBottom, items[j].y + blockH)
+            }
+            // Greedy column assignment within the cluster.
+            var colBottoms: [CGFloat] = []
+            var assign: [String: Int] = [:]
+            for it in items[i...j] {
+                if let c = colBottoms.firstIndex(where: { it.y >= $0 }) {
+                    assign[it.id] = c; colBottoms[c] = it.y + blockH
+                } else {
+                    assign[it.id] = colBottoms.count; colBottoms.append(it.y + blockH)
+                }
+            }
+            let cols = colBottoms.count
+            for it in items[i...j] { result[it.id] = (assign[it.id]!, cols) }
+            i = j + 1
+        }
+        return result
     }
 
     private func dayName(_ d: Date) -> String {
