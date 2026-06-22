@@ -636,7 +636,8 @@ final class NudgeStore: ObservableObject {
     /// preview sheet shows these and the user confirms. Routines have their own check-in.
     func planSmartReschedule() -> [RescheduleChange] {
         let overdue = reminders.filter { isOverdue($0) && !($0.routine ?? false) }
-        return SmartScheduler.plan(overdue)
+        CalendarService.shared.refresh()   // freshest events so we avoid your busy times
+        return SmartScheduler.plan(overdue, busy: CalendarService.shared.busyIntervals())
     }
 
     /// Apply a user-approved subset of proposed reschedule changes.

@@ -123,6 +123,7 @@ struct ContentView: View {
             store.purgeOldCompleted()      // clear reminders completed >3 weeks ago
             stuckCount = store.stuckCount()
             await sync.syncNow(); await notifier.reschedule()
+            await CalendarService.shared.requestAccessIfNeeded()   // for event-conflict checks
             maybeRoutineCheckin()
             processPendingNotification()   // a tap that cold-launched the app, now that it's live
         }
@@ -169,6 +170,7 @@ struct ContentView: View {
                     Task { await store.refresh(); store.purgeOldCompleted()
                            stuckCount = store.stuckCount()
                            await sync.syncNow(); await notifier.reschedule()
+                           CalendarService.shared.refresh()
                            maybeRoutineCheckin() }
                 }
             @unknown default: break

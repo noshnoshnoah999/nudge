@@ -67,6 +67,8 @@ struct AddReminderView: View {
     @FocusState private var titleFocused: Bool
     @State private var buyRuleApplied = false   // so the live "buy" rule fires once per appearance of the word
     @State private var claudeRuleApplied = false   // same, for the "Claude - " → Claude list rule
+    @State private var showConflictAlert = false
+    @State private var conflictMsg: String?
     @FocusState private var notesFocused: Bool
 
     private let zones: [(String, String)] = [
@@ -339,10 +341,16 @@ struct AddReminderView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button("Save") { attemptSave() }
                         .fontWeight(.bold)
                         .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            }
+            .alert("You're busy then", isPresented: $showConflictAlert) {
+                Button("Schedule anyway") { save() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your calendar has \(conflictMsg ?? "an event") at that time.")
             }
             .onAppear(perform: load)
             .onChange(of: pickerItems) { _, items in
@@ -692,6 +700,16 @@ struct AddReminderView: View {
     private func applyClaudeRule() {
         guard editing == nil, isClaudeTitle(title) else { return }
         if store.lists.contains(where: { $0.id == "claude" }) { listId = "claude" }
+    }
+
+    /// Save, but first warn if the chosen time lands on a calendar event.
+    private func attemptSave() {
+        if hasDue, hasTime, let clash = CalendarService.shared.conflictDescription(at: due) {
+            conflictMsg = clash
+            showConflictAlert = true
+        } else {
+            save()
+        }
     }
 
     private func save() {

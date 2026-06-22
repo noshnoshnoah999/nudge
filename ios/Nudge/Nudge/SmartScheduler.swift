@@ -71,7 +71,7 @@ enum SmartScheduler {
         return cal.date(from: c) ?? day
     }
 
-    static func plan(_ overdue: [Reminder], from now: Date = Date()) -> [RescheduleChange] {
+    static func plan(_ overdue: [Reminder], busy: [DateInterval] = [], from now: Date = Date()) -> [RescheduleChange] {
         guard !overdue.isEmpty else { return [] }
         let cal = Calendar.current
         let startDay = cal.startOfDay(for: now)
@@ -125,17 +125,22 @@ enum SmartScheduler {
                 }
                 hour = min(max(hour, 6), 22)
                 minute = min(max(minute, 0), 45)
+                func slotDate() -> Date {
+                    var comps = cal.dateComponents([.year, .month, .day], from: day.date)
+                    comps.hour = hour; comps.minute = minute
+                    return cal.date(from: comps) ?? day.date
+                }
                 var key = "\(di)-\(hour)-\(minute)"
                 var guardN = 0
-                while used.contains(key) && guardN < 64 {
+                // Step forward past slots already taken by another reminder OR overlapping a
+                // calendar event, staying inside the day (capped at 22:45).
+                while (used.contains(key) || busy.contains { $0.contains(slotDate()) }) && guardN < 96 {
                     minute += 15; if minute >= 60 { minute -= 60; hour += 1 }
                     if hour > 22 { hour = 22; minute = 45 }
                     key = "\(di)-\(hour)-\(minute)"; guardN += 1
                 }
                 used.insert(key)
-                var comps = cal.dateComponents([.year, .month, .day], from: day.date)
-                comps.hour = hour; comps.minute = minute
-                let newDate = cal.date(from: comps) ?? day.date
+                let newDate = slotDate()
                 changes.append(RescheduleChange(id: r.id, title: displayTitle(r),
                                                 oldDue: r.dueDate, newDue: iso(newDate), newDate: newDate))
             }

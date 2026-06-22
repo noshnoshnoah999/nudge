@@ -9,6 +9,9 @@ struct RescheduleOptionsView: View {
     @Environment(\.dismiss) private var dismiss
     let reminder: Reminder
     @State private var manualDate: Date
+    @State private var showConflict = false
+    @State private var conflictMsg: String?
+    @State private var pendingDate: Date?
 
     init(reminder: Reminder) {
         self.reminder = reminder
@@ -42,7 +45,7 @@ struct RescheduleOptionsView: View {
                             }
                         }
                         Button {
-                            store.reschedule(reminder.id, to: smart); dismiss()
+                            apply(smart)
                         } label: {
                             Text("Use this time").font(.subheadline.weight(.bold)).foregroundStyle(.white)
                                 .frame(maxWidth: .infinity).padding(12)
@@ -59,8 +62,12 @@ struct RescheduleOptionsView: View {
                         Text("OR PICK A TIME").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.textMeta)
                         DatePicker("", selection: $manualDate, displayedComponents: [.date, .hourAndMinute])
                             .datePickerStyle(.graphical).tint(Theme.accent).labelsHidden()
+                        if let clash = CalendarService.shared.conflictDescription(at: manualDate) {
+                            Label("Clashes with \(clash)", systemImage: "calendar.badge.exclamationmark")
+                                .font(.caption).foregroundStyle(Theme.coral)
+                        }
                         Button {
-                            store.reschedule(reminder.id, to: manualDate); dismiss()
+                            apply(manualDate)
                         } label: {
                             Text("Reschedule to this").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
                                 .frame(maxWidth: .infinity).padding(12)
@@ -78,8 +85,25 @@ struct RescheduleOptionsView: View {
             .navigationTitle("Reschedule")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .alert("You're busy then", isPresented: $showConflict) {
+                Button("Reschedule anyway") {
+                    if let d = pendingDate { store.reschedule(reminder.id, to: d); dismiss() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your calendar has \(conflictMsg ?? "an event") at that time.")
+            }
         }
         .tint(Theme.accent)
         .presentationBackground(Theme.bg)
+    }
+
+    /// Apply a chosen time, warning first if it lands on a calendar event.
+    private func apply(_ date: Date) {
+        if let clash = CalendarService.shared.conflictDescription(at: date) {
+            conflictMsg = clash; pendingDate = date; showConflict = true
+        } else {
+            store.reschedule(reminder.id, to: date); dismiss()
+        }
     }
 }
