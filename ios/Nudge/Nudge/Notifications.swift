@@ -153,25 +153,20 @@ final class NotificationManager: NSObject, ObservableObject {
             let low = prio == "low"
             let shopping = p.r.listId == "shopping"
             let early = p.off > 0
-            // Shopping gets a cart; otherwise priority dot / bell.
-            let emoji = shopping ? "🛒 " : (high ? "🔴 " : (low ? "" : "🔔 "))
-            content.title = emoji + displayTitle(p.r)
-            content.subtitle = shopping ? "Shopping list" : (nudge.list(for: p.r.listId)?.name ?? "")
-            // Richer body: due time + location, then the full notes — so the
-            // notification carries the reminder's actual detail, not a generic line.
-            var detail: [String] = []
-            if let due = parseDate(p.r.dueDate) {
+            // Clean, Apple-Reminders-style layout: plain title, the list as subtitle, and the
+            // notes (plus a heads-up line for early alerts) as the body. No emoji or filler —
+            // priority is still conveyed by sound/interruption level, not the banner text.
+            content.title = displayTitle(p.r)
+            let listName = shopping ? "Shopping" : (nudge.list(for: p.r.listId)?.name ?? "")
+            if !listName.isEmpty { content.subtitle = listName }
+            var lines: [String] = []
+            if early, let due = parseDate(p.r.dueDate) {
                 let f = DateFormatter(); f.timeStyle = .short
-                // Early reminders read as a heads-up with their lead time; on-time say "Due now".
-                detail.append(early ? "⏰ In \(Self.leadLabel(p.off)) · due \(f.string(from: due))" : "Due now")
+                lines.append("In \(Self.leadLabel(p.off)) · due \(f.string(from: due))")
             }
-            if let loc = p.r.location, !loc.isEmpty { detail.append("📍 \(loc)") }
-            let head = detail.joined(separator: "  ·  ")
-            if let n = p.r.notes, !n.isEmpty {
-                content.body = head.isEmpty ? n : "\(head)\n\(n)"
-            } else {
-                content.body = head.isEmpty ? "Tap to open in Nudge" : head
-            }
+            if let loc = p.r.location, !loc.isEmpty { lines.append(loc) }
+            if let n = p.r.notes, !n.isEmpty { lines.append(n) }
+            content.body = lines.joined(separator: "\n")
             // Low priority delivers quietly: no sound, lands in Notification Centre
             // without lighting up the screen. High is time-sensitive; normal is active.
             content.sound = low ? nil : .default

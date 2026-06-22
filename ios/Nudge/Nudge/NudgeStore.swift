@@ -868,11 +868,12 @@ final class NudgeStore: ObservableObject {
 
     /// Open reminders the user pinned to the Home dashboard, high priority first.
     func pinnedReminders() -> [Reminder] {
+        // Chronological — earliest due first (no-date items last); priority only breaks ties.
         let prank: (Reminder) -> Int = { $0.priorityOrNormal == "high" ? 0 : $0.priorityOrNormal == "low" ? 2 : 1 }
         return open().filter { $0.pinned == true }.sorted {
-            let ra = prank($0), rb = prank($1)
-            if ra != rb { return ra < rb }
-            return (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture)
+            let da = parseDate($0.dueDate) ?? .distantFuture, db = parseDate($1.dueDate) ?? .distantFuture
+            if da != db { return da < db }
+            return prank($0) < prank($1)
         }
     }
 }
