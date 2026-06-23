@@ -23,6 +23,28 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     // assertion was crashing the app when a notification tap launched it from fully-quit.
     func application(_ application: UIApplication, shouldSaveSecureApplicationState coder: NSCoder) -> Bool { false }
     func application(_ application: UIApplication, shouldRestoreSecureApplicationState coder: NSCoder) -> Bool { false }
+
+    // Route scenes through our delegate so we can read the notification that LAUNCHED the app
+    // (cold start) from the scene's connection options — the correct, crash-free moment. (A
+    // tap while the app is already running is handled by the UNUserNotificationCenter delegate.)
+    func application(_ application: UIApplication,
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = NudgeSceneDelegate.self
+        return config
+    }
+}
+
+/// Captures a notification tap that launched the app from fully-quit. SwiftUI still owns the
+/// window (we never create one here) — we only read the launching notification.
+final class NudgeSceneDelegate: NSObject, UIWindowSceneDelegate {
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
+               options connectionOptions: UIScene.ConnectionOptions) {
+        if let resp = connectionOptions.notificationResponse {
+            NotificationManager.pendingColdTap = (resp.actionIdentifier, resp.notification.request.identifier)
+        }
+    }
 }
 
 @main
