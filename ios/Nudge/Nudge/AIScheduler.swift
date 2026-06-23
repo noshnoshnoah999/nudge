@@ -21,37 +21,45 @@ enum AIScheduler {
                      apiKey: String, model: String) async throws -> [RescheduleChange] {
         guard !overdue.isEmpty else { return [] }
         let cal = Calendar.current
-        let isoOffset = ISO8601DateFormatter()
-        isoOffset.formatOptions = [.withInternetDateTime]
+        // Local ISO with no timezone suffix — the format we ask Claude to return.
+        let localISO: (Date) -> String = { d in
+            let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = .current; f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"; return f.string(from: d)
+        }
+        let readable: (Date) -> String = { d in
+            let f = DateFormatter(); f.dateFormat = "EEE d MMM HH:mm"; return f.string(from: d)
+        }
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now
 
         let remLines = overdue.map { r -> String in
             let due = parseDate(r.dueDate)
-            let overdueDays = due.map { cal.dateComponents([.day], from: $0, to: now).day ?? 0 } ?? 0
-            let timeOfDay = ((r.hasTime ?? false), due)
-            let t: String = (timeOfDay.0 && timeOfDay.1 != nil) ? hhmm(timeOfDay.1!) : "no set time"
-            return "- id=\(r.id) | \"\(displayTitle(r))\" | priority=\(r.priorityOrNormal) | \(overdueDays)d overdue | usual time: \(t)"
+            let overdueDays = due.map { max(0, cal.dateComponents([.day], from: $0, to: now).day ?? 0) } ?? 0
+            let cur = due.map { readable($0) } ?? "no date"
+            return "- id=\(r.id) | \"\(displayTitle(r))\" | priority=\(r.priorityOrNormal) | currently \(cur) (\(overdueDays)d overdue)"
         }.joined(separator: "\n")
         let busyLines = busy.prefix(80)
-            .map { "- \(isoOffset.string(from: $0.start)) → \(isoOffset.string(from: $0.end))" }
+            .map { "- \(localISO($0.start)) to \(localISO($0.end))" }
             .joined(separator: "\n")
 
         let system = """
-        You reschedule a user's OVERDUE reminders into the NEXT 7 DAYS for a reminders app.
-        Rules:
-        - Spread them out so the backlog clears — don't pile everything onto one day; weekends can carry a little more.
-        - High-priority and most-overdue items get earlier days.
-        - Choose a sensible time of day from each reminder's wording (gym/breakfast/meds → morning; lunch → midday; study/work/call/email → afternoon; dinner/groceries/skincare → evening). If it already had a usual time, stay close to it.
-        - NEVER schedule a reminder during one of the user's BUSY calendar intervals — pick a free time.
-        - Keep all times between 07:00 and 22:00 local.
-        - Return a datetime for EVERY reminder id, in LOCAL time, ISO-8601 with no timezone suffix (e.g. 2026-06-25T18:00:00).
+        You reschedule a user's OVERDUE reminders. EVERY reminder below is in the past and needs a brand-new FUTURE time.
+
+        Hard requirements:
+        - Give each reminder a NEW datetime that is strictly AFTER "now". NEVER reuse a reminder's current (past) time — if your suggestion equals the current time, it is wrong.
+        - Spread the reminders across the next 7 days, STARTING TOMORROW. Do NOT pile them all onto one day, and do not leave any on today. A few per day; weekends can take a little more.
+        - Most-overdue and high-priority items get the earliest days.
+        - Choose a sensible time of day from each reminder's wording: gym/breakfast/meds/shower → morning (~08:00); lunch → ~12:00; study/work/call/email/errand → afternoon (~15:00); dinner/cook/groceries/skincare → evening (~18:00); shopping/"buy" → late afternoon. If unclear, vary times so they don't all clump.
+        - NEVER place a reminder inside one of the BUSY calendar intervals — pick a free time that day.
+        - All times 07:00–22:00 local.
+        - Output exactly one datetime per reminder id, LOCAL time, ISO-8601 with NO timezone suffix, e.g. 2026-06-25T18:00:00.
         """
         let userMsg = """
-        NOW (local): \(isoOffset.string(from: now))
+        NOW (local): \(localISO(now)) — i.e. today is \(readable(now)). Schedule everything for TOMORROW (\(readable(tomorrow))) or later.
 
-        OVERDUE REMINDERS:
+        OVERDUE REMINDERS (each needs a new future datetime — do not keep the 'currently' time):
         \(remLines)
 
-        BUSY CALENDAR INTERVALS (do not schedule over these):
+        BUSY CALENDAR INTERVALS (never schedule over these):
         \(busyLines.isEmpty ? "(none)" : busyLines)
         """
 
@@ -105,16 +113,15 @@ enum AIScheduler {
         let byId = Dictionary(overdue.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var changes: [RescheduleChange] = []
         for m in out.moves {
-            guard let r = byId[m.id], let date = parseFlexible(m.datetime) else { continue }
+            guard let r = byId[m.id], let date = parseFlexible(m.datetime), date > now else { continue }
             changes.append(RescheduleChange(id: r.id, title: displayTitle(r),
                                             oldDue: r.dueDate, newDue: iso(date), newDate: date))
         }
-        return changes
+        // If the model basically echoed the inputs (few real future moves), let the caller
+        // fall back to the heuristic by returning empty.
+        return changes.count >= max(1, overdue.count / 2) ? changes : []
     }
 
-    private static func hhmm(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f.string(from: d)
-    }
     private static func parseFlexible(_ s: String) -> Date? {
         if let d = parseDate(s) { return d }
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current
