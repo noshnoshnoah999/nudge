@@ -728,7 +728,6 @@ final class NudgeStore: ObservableObject {
                       escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
                       idForNew: String? = nil) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let targetId = editing?.id ?? idForNew ?? ("r" + String(UUID().uuidString.prefix(12)))
         // With a pinned timezone, the picked wall time is interpreted in that zone.
         let dueStr: String?
         if hasDue {
@@ -745,7 +744,6 @@ final class NudgeStore: ObservableObject {
         let cleanLoc = location?.trimmingCharacters(in: .whitespaces)
         let rec = (recurrence?.freq == "none") ? nil : recurrence
         if let existing = editing, let i = reminders.firstIndex(where: { $0.id == existing.id }) {
-            if reminders[i].title != cleanTitle { reminders[i].summary = nil }   // title changed → re-summarise
             reminders[i].title = cleanTitle
             reminders[i].notes = notes
             reminders[i].dueDate = dueStr
@@ -773,7 +771,7 @@ final class NudgeStore: ObservableObject {
             reminders[i].updatedAt = iso(Date())
         } else {
             let r = Reminder(
-                id: targetId,
+                id: idForNew ?? ("r" + String(UUID().uuidString.prefix(12))),
                 title: cleanTitle, notes: notes, dueDate: dueStr,
                 hasTime: hasDue ? hasTime : nil, listId: listId, priority: priority,
                 completed: false, completedAt: nil, recurrence: rec,
@@ -794,27 +792,6 @@ final class NudgeStore: ObservableObject {
             reminders.insert(r, at: 0)
         }
         persist()
-        maybeSummariseTitle(targetId, title: cleanTitle)
-    }
-
-    /// Long reminder titles get an AI-shortened version for compact display (the full title
-    /// is kept). Short / "Claude - " titles don't. Regenerated when the title changes; needs
-    /// an Anthropic API key (otherwise the card just shows the full title).
-    private func maybeSummariseTitle(_ id: String, title: String) {
-        guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
-        let isClaude = ClaudeLink.prompt(from: title) != nil
-        if title.count <= 50 || isClaude {
-            if reminders[i].summary != nil { reminders[i].summary = nil; persist() }
-            return
-        }
-        if let cur = reminders[i].summary, !cur.isEmpty, cur.count <= 36 { return }   // already a good short one
-        guard let key = UserDefaults.standard.string(forKey: "anthropic_api_key"), !key.isEmpty else { return }
-        Task {
-            guard let short = await AIScheduler.shortenTitle(title, apiKey: key), short != title else { return }
-            guard let j = reminders.firstIndex(where: { $0.id == id }), reminders[j].title == title else { return }
-            reminders[j].summary = short
-            persist()
-        }
     }
 
     // MARK: - Grouping
