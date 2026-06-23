@@ -156,10 +156,15 @@ final class NotificationManager: NSObject, ObservableObject {
             // Clean, Apple-Reminders-style layout: plain title, the list as subtitle, and the
             // notes (plus a heads-up line for early alerts) as the body. No emoji or filler —
             // priority is still conveyed by sound/interruption level, not the banner text.
-            content.title = displayTitle(p.r)
+            let title = displayTitle(p.r)
+            content.title = title
             let listName = shopping ? "Shopping" : (nudge.list(for: p.r.listId)?.name ?? "")
             if !listName.isEmpty { content.subtitle = listName }
             var lines: [String] = []
+            // iOS truncates the banner TITLE to one line — so a long reminder gets cut off.
+            // Repeat the full title in the body (which wraps to several lines) so nothing is
+            // lost. Short titles aren't repeated (the title already shows in full).
+            if title.count > 30 { lines.append(title) }
             if early, let due = parseDate(p.r.dueDate) {
                 let f = DateFormatter(); f.timeStyle = .short
                 lines.append("In \(Self.leadLabel(p.off)) · due \(f.string(from: due))")
