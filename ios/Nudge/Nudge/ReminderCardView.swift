@@ -15,6 +15,7 @@ struct ReminderCardView: View {
     @State private var claudeURL: IdentifiableURL?
     @State private var isPolishing = false
     @State private var showReschedule = false
+    @State private var expanded = false   // long title: show AI summary, tap to reveal full
 
     private var radius: CGFloat { settings.compact ? 14 : 18 }
 
@@ -56,18 +57,29 @@ struct ReminderCardView: View {
             .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: compact ? 5 : 7) {
-                // Title — the hero of the card.
+                // Title — the hero of the card. Long titles show an AI-shortened version;
+                // tap the title to expand to the full original (✦ = summarised, ▲ = expanded).
+                let summarised = (claudeP == nil) && (r.summary?.isEmpty == false)
+                let shownTitle = claudeP ?? ((summarised && !expanded) ? (r.summary ?? displayTitle(r)) : displayTitle(r))
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if claudeP != nil {
                         Image(systemName: "sparkles").font(.caption).foregroundStyle(settings.accent)
                     }
-                    Text(claudeP ?? displayTitle(r))
+                    Text(shownTitle)
                         .font(.system(size: compact ? 15 : 16, weight: .semibold))
                         .foregroundStyle(done ? Theme.textMeta : Theme.textMain)
                         .strikethrough(done, color: Theme.textMeta)
                         .lineSpacing(1.5)
-                        .lineLimit(compact ? 2 : nil)
-                        .fixedSize(horizontal: false, vertical: compact ? false : true)
+                        .lineLimit((summarised && !expanded) ? 1 : (compact ? 2 : nil))
+                        .fixedSize(horizontal: false, vertical: (summarised && !expanded) ? false : (compact ? false : true))
+                    if summarised {
+                        Image(systemName: expanded ? "chevron.up" : "sparkles")
+                            .font(.caption2.weight(.semibold)).foregroundStyle(settings.accent.opacity(0.75))
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if summarised { withAnimation(Theme.snappy) { expanded.toggle() } } else { onEdit() }
                 }
 
                 // Primary metadata: when · which list · how important.

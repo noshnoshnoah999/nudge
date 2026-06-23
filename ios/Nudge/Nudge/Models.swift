@@ -108,6 +108,9 @@ struct Reminder: Codable, Identifiable, Hashable {
     var prepDaysBefore: Int? = nil
     var prepHour: Int? = nil
     var prepMinute: Int? = nil
+    // AI-shortened title for compact display in lists (long reminders only). The full `title`
+    // is always kept; this is just what the card shows, expandable on tap.
+    var summary: String? = nil
 
     var isCompleted: Bool { completed ?? false }
     var listIdOrDefault: String { listId ?? "reminders" }

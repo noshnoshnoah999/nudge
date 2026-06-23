@@ -122,6 +122,34 @@ enum AIScheduler {
         return changes.count >= max(1, overdue.count / 2) ? changes : []
     }
 
+    /// Shorten a long reminder title for compact display (≤6 words). Uses Haiku — it's a
+    /// trivial, frequent call. Returns nil on any failure / no key (caller keeps the full title).
+    static func shortenTitle(_ title: String, apiKey: String) async -> String? {
+        let body: [String: Any] = [
+            "model": "claude-haiku-4-5",
+            "max_tokens": 40,
+            "system": "Shorten this reminder title for a compact list. Reply with ONLY the shortened version: at most 6 words, keep the key nouns / brand names, no quotes, no trailing punctuation, no commentary.",
+            "messages": [["role": "user", "content": title]]
+        ]
+        var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        req.setValue("application/json", forHTTPHeaderField: "content-type")
+        req.timeoutInterval = 25
+        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        req.httpBody = data
+        guard let (respData, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let obj = try? JSONSerialization.jsonObject(with: respData) as? [String: Any],
+              let content = obj["content"] as? [[String: Any]],
+              let text = (content.first { ($0["type"] as? String) == "text" }?["text"]) as? String
+        else { return nil }
+        let out = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'.”’"))
+        return out.isEmpty ? nil : out
+    }
+
     private static func parseFlexible(_ s: String) -> Date? {
         if let d = parseDate(s) { return d }
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current

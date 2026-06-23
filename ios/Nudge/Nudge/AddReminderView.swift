@@ -90,10 +90,10 @@ struct AddReminderView: View {
                     // Title — plain (single-line) TextField: a vertical-axis TextField
                     // inside a ScrollView won't become first responder on iOS (no keyboard
                     // on tap), though it works on Mac Catalyst. This focuses reliably.
-                    TextField("What do you need to remember?", text: $title)
+                    TextField("What do you need to remember?", text: $title, axis: .vertical)
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                         .foregroundStyle(Theme.textMain)
-                        .submitLabel(.done)
+                        .lineLimit(1...8)        // grows down as the title gets longer
                         .focused($titleFocused)
                         .padding(16)
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
