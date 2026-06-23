@@ -60,10 +60,23 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		3A9BD1F22FCE10E000E88354 /* Nudge */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FE02000000000000000000B1 /* exceptions for "Nudge" */,
+			);
 			path = Nudge;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FE02000000000000000000B1 /* exceptions for "Nudge" */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3A9BD1EF2FCE10E000E88354 /* Nudge */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		3A9BD1ED2FCE10E000E88354 /* Frameworks */ = {
@@ -405,8 +418,8 @@
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Nudge uses Face ID to keep your reminders private.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Nudge syncs your reminders with Apple Reminders so anything you capture in either place stays in sync.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Nudge checks your calendar so it can warn you when a reminder lands during an event and keep Smart Reschedule off your busy times.";
-				INFOPLIST_KEY_NSAlarmKitUsageDescription = "Nudge sets an alarm for reminders you mark Urgent, so they ring at the due time even when the app is closed.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_FILE = Nudge/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -446,8 +459,8 @@
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Nudge uses Face ID to keep your reminders private.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Nudge syncs your reminders with Apple Reminders so anything you capture in either place stays in sync.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Nudge checks your calendar so it can warn you when a reminder lands during an event and keep Smart Reschedule off your busy times.";
-				INFOPLIST_KEY_NSAlarmKitUsageDescription = "Nudge sets an alarm for reminders you mark Urgent, so they ring at the due time even when the app is closed.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_FILE = Nudge/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
