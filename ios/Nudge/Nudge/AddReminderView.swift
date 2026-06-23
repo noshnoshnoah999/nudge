@@ -343,6 +343,13 @@ struct AddReminderView: View {
             }
             .navigationTitle(editing == nil ? "New Reminder" : "Edit Reminder")
             .navigationBarTitleDisplayMode(.inline)
+            #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+            // Ask for alarm permission the moment Urgent is switched on, so the prompt always
+            // appears (not only later, deep inside saving a future-timed reminder).
+            .onChange(of: urgent) { _, on in
+                if on, #available(iOS 26.0, *) { Task { await NudgeAlarms.authorize() } }
+            }
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
