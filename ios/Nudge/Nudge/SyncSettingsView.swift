@@ -53,6 +53,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Pick a colour theme. Compact fits more reminders on screen.")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: Clean up
                 Section {
@@ -63,6 +64,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Quickly delete reminders you don't need — swipe a row, or tap Select to remove several at once.")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: AI Smart Reschedule
                 Section {
@@ -78,6 +80,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Add your Anthropic API key (console.anthropic.com) and Smart Reschedule will use Claude to spread your overdue reminders intelligently around your calendar. Stored only on this device; used only to call Anthropic. Without a key it uses the built-in planner.")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: Upcoming
                 Section {
@@ -91,6 +94,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Pin lists (like Subscriptions or Money) to show as their own sections on the Upcoming tab, in your chosen order.")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: Overdue
                 Section {
@@ -104,6 +108,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Smart Reschedule runs only when you tap it — from the Today tab or inside Triage. It spreads overdue reminders across the coming week (weekends carry more, important ones first). Every run is logged here and can be undone.")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: Privacy
                 if BiometricLock.available {
@@ -115,6 +120,7 @@ struct SyncSettingsView: View {
                     } footer: {
                         Text("Lock Nudge so it asks for Face ID, Touch ID, or your passcode each time you open it.")
                     }
+                    .listRowBackground(Theme.surface)
                 }
 
                 // MARK: Maintenance
@@ -131,6 +137,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Finds identical reminders (same title and time) and shows you exactly what it will remove — nothing is deleted until you confirm. Keeps one copy of each (an unfinished one where possible).")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: Notifications
                 Section {
@@ -166,6 +173,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Get notified when a reminder is due — earlier if it has an “early reminder” set. Only upcoming, incomplete reminders are scheduled.")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: Apple Reminders sync
                 Section {
@@ -199,6 +207,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Mirrors a dedicated **Nudge** list in Apple Reminders. Your other lists are never touched. Anything you capture in either place — Siri, Control Center, Apple Watch, or here — stays in sync.")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: Backups
                 Section {
@@ -228,6 +237,7 @@ struct SyncSettingsView: View {
                 } footer: {
                     Text("Your reminders are snapshotted on-device before every sync and cloud refresh (last 60 kept), so a bad merge can always be rolled back.")
                 }
+                .listRowBackground(Theme.surface)
 
                 // MARK: About
                 Section("About") {
@@ -247,10 +257,11 @@ struct SyncSettingsView: View {
                         Text("v\(Changelog.entries.first?.version ?? "1.0")").foregroundStyle(Theme.textMeta)
                     }
                 }
+                .listRowBackground(Theme.surface)
             }
             .scrollContentBackground(.hidden)            // drop the grey system Form background
-            .background(Theme.bg.ignoresSafeArea())       // …and use the app's theme instead
-            .listRowBackground(Theme.surface)             // cards in the theme surface, not white
+            .background(Theme.bg.ignoresSafeArea())       // …and use the app's theme — themed cards
+                                                          // are set per-Section via .listRowBackground
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
