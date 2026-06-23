@@ -292,14 +292,32 @@ import AlarmKit
 
 @available(iOS 26.0, *)
 struct NudgeAlarmLiveActivity: Widget {
+    private func title(_ c: ActivityViewContext<NudgeAlarmAttributes>) -> String {
+        c.attributes.metadata?.title ?? "Reminder"
+    }
+    /// Subtitle that mirrors Apple's: "Snooze 8:57 min" while counting down, else "Reminder".
+    @ViewBuilder private func status(_ c: ActivityViewContext<NudgeAlarmAttributes>) -> some View {
+        switch c.state.mode {
+        case .countdown(let cd):
+            HStack(spacing: 4) {
+                Text("Snooze")
+                Text(timerInterval: Date.now...cd.fireDate, countsDown: true)
+                    .monospacedDigit()
+            }
+        case .paused:
+            Text("Paused")
+        default:
+            Text("Reminder")
+        }
+    }
+
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: NudgeAlarmAttributes.self) { context in
             HStack(spacing: 12) {
                 Image(systemName: "alarm.fill").font(.title2).foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("REMINDER").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-                    Text(context.attributes.metadata?.title ?? "Reminder")
-                        .font(.headline).lineLimit(2)
+                    status(context).font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                    Text(title(context)).font(.headline).lineLimit(2)
                 }
                 Spacer(minLength: 0)
             }
@@ -311,13 +329,20 @@ struct NudgeAlarmLiveActivity: Widget {
                     Image(systemName: "alarm.fill").foregroundStyle(.orange)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(context.attributes.metadata?.title ?? "Reminder")
-                        .font(.headline).lineLimit(2)
+                    VStack(spacing: 2) {
+                        Text(title(context)).font(.headline).lineLimit(1)
+                        status(context).font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
             } compactLeading: {
                 Image(systemName: "alarm.fill").foregroundStyle(.orange)
             } compactTrailing: {
-                Image(systemName: "bell.fill").foregroundStyle(.orange)
+                if case .countdown(let cd) = context.state.mode {
+                    Text(timerInterval: Date.now...cd.fireDate, countsDown: true)
+                        .monospacedDigit().frame(maxWidth: 44)
+                } else {
+                    Image(systemName: "bell.fill").foregroundStyle(.orange)
+                }
             } minimal: {
                 Image(systemName: "alarm.fill").foregroundStyle(.orange)
             }

@@ -19,19 +19,29 @@ enum NudgeAlarms {
         return (try? await mgr.requestAuthorization()) == .authorized
     }
 
+    /// How long "Snooze" delays the alarm before it rings again (Apple's default is 9 min).
+    static let snoozeDuration: TimeInterval = 9 * 60
+
     /// Schedule (or replace) an urgent reminder's alarm for its due time. No-op if the time
-    /// is in the past or permission is denied.
+    /// is in the past or permission is denied. Presents an Apple-Reminders-style alarm: a big
+    /// "Snooze" button + slide-to-stop, and a "Snooze 8:57 min" countdown Live Activity.
     static func schedule(reminderId: String, title: String, at date: Date) async {
         guard date > Date(), await authorize() else { return }
+        let text = LocalizedStringResource(stringLiteral: title.isEmpty ? "Reminder" : title)
+        // Alert: system provides slide-to-stop; we add a Snooze secondary button that drops the
+        // alarm into a countdown (the snooze) and re-rings.
         let alert = AlarmPresentation.Alert(
-            title: LocalizedStringResource(stringLiteral: title.isEmpty ? "Reminder" : title),
-            secondaryButton: nil,
-            secondaryButtonBehavior: nil)
+            title: text,
+            secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+            secondaryButtonBehavior: .countdown)
+        // Countdown: shown while snoozed.
+        let countdown = AlarmPresentation.Countdown(title: text, pauseButton: nil)
         let attributes = AlarmAttributes(
-            presentation: AlarmPresentation(alert: alert, countdown: nil, paused: nil),
+            presentation: AlarmPresentation(alert: alert, countdown: countdown, paused: nil),
             metadata: NudgeAlarmMetadata(title: title),
             tintColor: Color.orange)
-        let config = AlarmManager.AlarmConfiguration.alarm(
+        let config = AlarmManager.AlarmConfiguration(
+            countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeDuration),
             schedule: .fixed(date),
             attributes: attributes,
             stopIntent: nil,

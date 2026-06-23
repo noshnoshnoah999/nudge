@@ -26,7 +26,7 @@ struct RootContainer: View {
         .task {
             guard showSplash else { return }
             RootContainer.hasShownSplash = true
-            try? await Task.sleep(nanoseconds: 2_000_000_000)   // ~2s
+            try? await Task.sleep(nanoseconds: 1_300_000_000)   // ~1.3s hold (≈1.8s incl. fade)
             withAnimation(.easeInOut(duration: 0.5)) { showSplash = false }
         }
     }

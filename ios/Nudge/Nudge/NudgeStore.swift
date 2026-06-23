@@ -57,7 +57,7 @@ final class NudgeStore: ObservableObject {
             let (data, _) = try await URLSession.shared.data(for: req)
             let rows = try JSONDecoder().decode([Row].self, from: data)
             if let blob = rows.first?.data {
-                if hasPendingPush || (blob.reminders == reminders && blob.lists == lists) {
+                if hasPendingPush || (sameReminders(blob.reminders, fullReminders()) && blob.lists == lists) {
                     // Either we have un-uploaded local edits (the older cloud copy
                     // would stomp them), or nothing actually changed — don't churn.
                     setSync("Synced")
@@ -78,8 +78,24 @@ final class NudgeStore: ObservableObject {
     /// which was dropping the title field's keyboard focus mid-edit).
     private func setSync(_ s: String) { if syncState != s { syncState = s } }
 
+    /// Reminders imported from the StudyTrack / Finance (budget) apps via the shared blob.
+    /// Hidden from Nudge's UI (those apps notify you themselves) but kept here so persisting
+    /// round-trips them back to the blob untouched — dropping them would delete them from the
+    /// other apps.
+    private var hiddenSource: [Reminder] = []
+    private func isHiddenSource(_ r: Reminder) -> Bool {
+        r.source == "studytrack" || r.source == "finance"
+    }
+    /// The complete reminder set (visible + hidden) for anything written to the cloud/cache.
+    private func fullReminders() -> [Reminder] { reminders + hiddenSource }
+    /// Order-insensitive content comparison (the blob keeps both groups interleaved).
+    private func sameReminders(_ a: [Reminder], _ b: [Reminder]) -> Bool {
+        a.count == b.count && Set(a) == Set(b)
+    }
+
     private func apply(_ blob: NudgeData) {
-        reminders = blob.reminders
+        hiddenSource = blob.reminders.filter { isHiddenSource($0) }
+        reminders = blob.reminders.filter { !isHiddenSource($0) }
         lists = blob.lists
         smartLists = blob.smartLists ?? []
         settings = blob.settings
@@ -118,7 +134,7 @@ final class NudgeStore: ObservableObject {
     func backupSnapshot(_ reason: String = "auto", force: Bool = false) {
         guard !reminders.isEmpty else { return }
         if !force, let last = lastBackup?.date, Date().timeIntervalSince(last) < 600 { return }
-        let blob = NudgeData(reminders: reminders, lists: lists, smartLists: smartLists, settings: settings)
+        let blob = NudgeData(reminders: fullReminders(), lists: lists, smartLists: smartLists, settings: settings)
         let ts = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let url = backupDir.appendingPathComponent("nudge_\(reason)_\(ts).json")
         guard let d = try? JSONEncoder().encode(blob) else { return }
@@ -169,7 +185,7 @@ final class NudgeStore: ObservableObject {
     struct Payload: Codable { var user_key: String; var data: NudgeData; var updated_at: String }
 
     func persist(notify: Bool = true) {
-        let blob = NudgeData(reminders: reminders, lists: lists, smartLists: smartLists, settings: settings)
+        let blob = NudgeData(reminders: fullReminders(), lists: lists, smartLists: smartLists, settings: settings)
         cache(blob)
         setSync("Syncing…")
         hasPendingPush = true
@@ -191,7 +207,7 @@ final class NudgeStore: ObservableObject {
     /// stomped by the next refresh(). Call this to flush before the handler returns.
     func persistNow() async {
         pushTask?.cancel()
-        let blob = NudgeData(reminders: reminders, lists: lists, smartLists: smartLists, settings: settings)
+        let blob = NudgeData(reminders: fullReminders(), lists: lists, smartLists: smartLists, settings: settings)
         cache(blob)
         hasPendingPush = true
         await push(blob)
