@@ -108,6 +108,9 @@ struct Reminder: Codable, Identifiable, Hashable {
     var prepDaysBefore: Int? = nil
     var prepHour: Int? = nil
     var prepMinute: Int? = nil
+    // "Urgent": schedule a real AlarmKit alarm (rings + Live Activity at the due time, even
+    // when the app is closed) — like Apple Reminders' urgent reminders. iOS 26+.
+    var urgent: Bool? = nil
 
     var isCompleted: Bool { completed ?? false }
     var listIdOrDefault: String { listId ?? "reminders" }

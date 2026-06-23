@@ -228,6 +228,9 @@ final class NudgeStore: ObservableObject {
         reminders[i].snoozedUntil = nil
         reminders[i].updatedAt = iso(Date())
         if nowComplete { clearNotifications(for: r.id) }   // drop any delivered/pending alert
+        #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+        if nowComplete, #available(iOS 26.0, *) { NudgeAlarms.cancel(reminderId: r.id) }   // stop the urgent alarm
+        #endif
         // Completing a repeating reminder spawns its next occurrence.
         if nowComplete, let rec = reminders[i].recurrence, rec.freq != "none",
            let next = nextOccurrence(after: reminders[i].dueDate, rec: rec) {
@@ -445,6 +448,9 @@ final class NudgeStore: ObservableObject {
         finalizeDelete()                 // commit any earlier pending deletion first
         reminders.removeAll { $0.id == r.id }
         clearNotifications(for: r.id)    // clear any delivered/pending alert
+        #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+        if #available(iOS 26.0, *) { NudgeAlarms.cancel(reminderId: r.id) }   // stop any urgent alarm
+        #endif
         recentlyDeleted = r              // hold for Undo; images purged on finalize
         persist()
     }
@@ -726,8 +732,9 @@ final class NudgeStore: ObservableObject {
                       pinned: Bool = false, remindBefores: [Int] = [],
                       subtasks: [Subtask] = [], routine: Bool = false,
                       escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
-                      idForNew: String? = nil) {
+                      urgent: Bool = false, idForNew: String? = nil) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetId = editing?.id ?? idForNew ?? ("r" + String(UUID().uuidString.prefix(12)))
         // With a pinned timezone, the picked wall time is interpreted in that zone.
         let dueStr: String?
         if hasDue {
@@ -771,7 +778,7 @@ final class NudgeStore: ObservableObject {
             reminders[i].updatedAt = iso(Date())
         } else {
             let r = Reminder(
-                id: idForNew ?? ("r" + String(UUID().uuidString.prefix(12))),
+                id: targetId,
                 title: cleanTitle, notes: notes, dueDate: dueStr,
                 hasTime: hasDue ? hasTime : nil, listId: listId, priority: priority,
                 completed: false, completedAt: nil, recurrence: rec,
@@ -791,7 +798,20 @@ final class NudgeStore: ObservableObject {
                 escalateAskNext: reviewFrequency ? iso(Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date()) : nil)
             reminders.insert(r, at: 0)
         }
+        if let i = reminders.firstIndex(where: { $0.id == targetId }) {
+            reminders[i].urgent = urgent ? true : nil
+        }
         persist()
+        #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+        if #available(iOS 26.0, *) {
+            // Urgent + a future timed due → schedule a ringing AlarmKit alarm; otherwise clear any.
+            if urgent, hasDue, hasTime, let due = parseDate(dueStr), due > Date() {
+                Task { await NudgeAlarms.schedule(reminderId: targetId, title: cleanTitle, at: due) }
+            } else {
+                NudgeAlarms.cancel(reminderId: targetId)
+            }
+        }
+        #endif
     }
 
     // MARK: - Grouping

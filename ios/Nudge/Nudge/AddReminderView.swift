@@ -45,6 +45,7 @@ struct AddReminderView: View {
     @State private var listId = "reminders"
     @State private var priority = "normal"
     @State private var pinned = false
+    @State private var urgent = false
     @State private var earlyAlerts: [Int] = []   // early-reminder offsets, minutes before due
     @State private var showCustomEarly = false
     @State private var customEarlyVal = 1
@@ -206,6 +207,12 @@ struct AddReminderView: View {
                         menuRow("Pin to Home", "pin") {
                             Toggle("", isOn: $pinned).labelsHidden().tint(Theme.accent)
                         }
+                        #if !targetEnvironment(macCatalyst)
+                        divider
+                        menuRow("Urgent (alarm)", "alarm") {
+                            Toggle("", isOn: $urgent).labelsHidden().tint(Theme.coral)
+                        }
+                        #endif
                     }
 
                     // Details
@@ -443,6 +450,7 @@ struct AddReminderView: View {
         listId = r.listIdOrDefault
         priority = r.priorityOrNormal
         pinned = r.pinned ?? false
+        urgent = r.urgent ?? false
         if let rec = r.recurrence, rec.freq != "none" {
             repeatFreq = rec.freq
             repeatInterval = max(1, rec.interval ?? 1)
@@ -728,6 +736,7 @@ struct AddReminderView: View {
                            url: url, location: location, lat: lat, lng: lng,
                            pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
                            routine: routine, escalation: escalation, reviewFrequency: askToReview,
+                           urgent: urgent,
                            idForNew: editing == nil ? draftId : nil)
         if editing == nil, let p = ClaudeLink.prompt(from: title) {
             AppRouter.shared.pendingClaudePrompt = p

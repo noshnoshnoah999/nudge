@@ -279,6 +279,49 @@ struct NudgeWidgetBundle: WidgetBundle {
         TodayWidget()
         #if !targetEnvironment(macCatalyst)
         NudgeQuickAddControl()   // Control Centre controls are iOS-only
+        if #available(iOS 26.0, *) { NudgeAlarmLiveActivity() }   // urgent-reminder alarm UI
         #endif
     }
 }
+
+// MARK: - Urgent-reminder alarm Live Activity (AlarmKit)
+
+#if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+import ActivityKit
+import AlarmKit
+
+@available(iOS 26.0, *)
+struct NudgeAlarmLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: NudgeAlarmAttributes.self) { context in
+            HStack(spacing: 12) {
+                Image(systemName: "alarm.fill").font(.title2).foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("REMINDER").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                    Text(context.attributes.metadata?.title ?? "Reminder")
+                        .font(.headline).lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding()
+            .activityBackgroundTint(.black.opacity(0.85))
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Image(systemName: "alarm.fill").foregroundStyle(.orange)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    Text(context.attributes.metadata?.title ?? "Reminder")
+                        .font(.headline).lineLimit(2)
+                }
+            } compactLeading: {
+                Image(systemName: "alarm.fill").foregroundStyle(.orange)
+            } compactTrailing: {
+                Image(systemName: "bell.fill").foregroundStyle(.orange)
+            } minimal: {
+                Image(systemName: "alarm.fill").foregroundStyle(.orange)
+            }
+        }
+    }
+}
+#endif
