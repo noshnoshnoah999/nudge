@@ -35,25 +35,30 @@ final class NotificationManager: NSObject, ObservableObject {
     /// the notification delegate set at launch is the same object the UI talks to.
     static let shared = NotificationManager()
 
-    /// Register the notification delegate + action categories. MUST run at app launch
-    /// (from the AppDelegate), BEFORE any SwiftUI view appears — otherwise a Complete/
-    /// Snooze tap that launches the app from a fully-quit state isn't delivered, and the
-    /// default tap doesn't open the app. Idempotent.
-    func registerForLaunch() {
-        let center = UNUserNotificationCenter.current()
-        center.delegate = self
-        // Actionable buttons on every reminder notification.
+    /// Register the action-button categories. Safe to run at process launch (AppDelegate) —
+    /// it touches no scene/UI. Idempotent.
+    func registerCategories() {
         let complete = UNNotificationAction(identifier: Self.completeAction, title: "✓ Complete", options: [])
         let snooze = UNNotificationAction(identifier: Self.snoozeAction, title: "Snooze 1 hour", options: [])
         let rescheduleBtn = UNNotificationAction(identifier: Self.rescheduleAction, title: "Reschedule…", options: [.foreground])
         let cat = UNNotificationCategory(identifier: Self.categoryId, actions: [complete, snooze, rescheduleBtn],
                                          intentIdentifiers: [], options: [])
-        center.setNotificationCategories([cat])
+        UNUserNotificationCenter.current().setNotificationCategories([cat])
+    }
+
+    /// Become the notification delegate. Do this only AFTER the SwiftUI scene exists (from
+    /// `attach`, not the AppDelegate): if the delegate is set during didFinishLaunching, a
+    /// tap that launched the app delivers its response into the half-built launch window and
+    /// UIKit's state-restoration snapshot asserts → SIGABRT. Setting it post-scene means the
+    /// queued launch response arrives when the window is valid. Idempotent.
+    func registerForLaunch() {
+        UNUserNotificationCenter.current().delegate = self
+        registerCategories()
     }
 
     func attach(_ store: NudgeStore) {
         nudge = store
-        registerForLaunch()   // idempotent; the AppDelegate already did this at launch
+        registerForLaunch()   // sets the delegate now that the scene is up
         NotificationCenter.default.addObserver(forName: .nudgeDataChanged, object: nil, queue: .main) { _ in
             Task { @MainActor [weak self] in self?.scheduleDebounced() }
         }

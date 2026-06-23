@@ -11,7 +11,10 @@ import UIKit
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        MainActor.assumeIsolated { NotificationManager.shared.registerForLaunch() }
+        // Register only the action-button categories here. The notification DELEGATE is set
+        // later (NotificationManager.attach, after the SwiftUI scene exists) — setting it this
+        // early delivers a launch tap into the half-built window and UIKit asserts (crash).
+        MainActor.assumeIsolated { NotificationManager.shared.registerCategories() }
         return true
     }
 
