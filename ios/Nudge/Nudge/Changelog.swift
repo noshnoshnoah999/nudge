@@ -16,6 +16,41 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.21", title: "AI Smart Reschedule", date: "23 Jun 2026",
+            added: [
+                "Smart Reschedule can now use Claude — add your Anthropic API key in Settings and it spreads your overdue reminders intelligently around your calendar (falls back to the built-in planner with no key)"
+            ],
+            changed: [
+                "Settings now matches your colour theme instead of a plain white page"
+            ]),
+        ChangelogEntry(
+            version: "2.20", title: "Calendar-aware scheduling & birthdays", date: "22 Jun 2026",
+            added: [
+                "Nudge reads your Calendar: scheduling or rescheduling onto an event warns you first, and Smart Reschedule avoids your busy times",
+                "Birthday reminders — a heads-up three days before and on the morning of each birthday, from your iOS Birthdays calendar"
+            ],
+            changed: [
+                "Clearer date calendar in the reminder editor — today stands out (bold + ring)",
+                "Timetable: reminders at the same time now sit side by side instead of hiding behind one another"
+            ]),
+        ChangelogEntry(
+            version: "2.19", title: "Routines, pins & cleaner notifications", date: "20 Jun 2026",
+            added: [
+                "Completing a repeating routine now leaves a record in your Completed list (it still repeats)",
+                "Search bar on the Completed list"
+            ],
+            changed: [
+                "Pinned reminders and the Today list sort earliest-first (chronological)",
+                "Notifications redesigned Apple-Reminders style — plain title, list, notes; no emoji clutter",
+                "\"Claude - …\" reminders file into the Claude list automatically"
+            ]),
+        ChangelogEntry(
+            version: "2.18", title: "Stability", date: "19 Jun 2026",
+            added: [],
+            changed: [
+                "Fixed a crash when tapping a reminder notification while the app was fully closed"
+            ]),
+        ChangelogEntry(
             version: "2.17", title: "Overdue page & safer cleanup", date: "18 Jun 2026",
             added: [
                 "New Overdue tab — reminders from before today live here. Anything due today stays on the Today tab until midnight, then moves over",

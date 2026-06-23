@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var showAdd = false
     @State private var editingReminder: Reminder?
     @State private var showTriage = false
+    @State private var aiRescheduling = false
     @State private var showSettings = false
     @State private var collapsed: Set<String> = []
     @State private var search = ""
@@ -98,8 +99,7 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showTriage) {
             TriageView(onSmartReschedule: {
                 showTriage = false
-                let plan = store.planSmartReschedule()
-                if !plan.isEmpty { rescheduleResult = RescheduleResult(changes: plan, auto: false) }
+                runSmartReschedule()
             }).environmentObject(store)
         }
         .sheet(item: $autoClaudeURL) { SafariView(url: $0.url, tint: Theme.accent) }
@@ -482,17 +482,33 @@ struct ContentView: View {
     }
 
     private var smartRescheduleButton: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            let plan = store.planSmartReschedule()
-            if !plan.isEmpty { rescheduleResult = RescheduleResult(changes: plan, auto: false) }
-        } label: {
-            Label("Smart Reschedule overdue", systemImage: "sparkles")
-                .font(.subheadline.weight(.bold)).foregroundStyle(.white)
-                .frame(maxWidth: .infinity).padding(13)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        Button { runSmartReschedule() } label: {
+            HStack(spacing: 8) {
+                if aiRescheduling {
+                    ProgressView().tint(.white)
+                    Text("Thinking…")
+                } else {
+                    Label("Smart Reschedule overdue", systemImage: "sparkles")
+                }
+            }
+            .font(.subheadline.weight(.bold)).foregroundStyle(.white)
+            .frame(maxWidth: .infinity).padding(13)
+            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(PressableStyle())
+        .disabled(aiRescheduling)
+    }
+
+    /// Run Smart Reschedule (AI if a key is set, else heuristic) and open the preview.
+    private func runSmartReschedule() {
+        guard !aiRescheduling else { return }
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        aiRescheduling = true
+        Task {
+            let plan = await store.planSmartRescheduleAI()
+            aiRescheduling = false
+            if !plan.isEmpty { rescheduleResult = RescheduleResult(changes: plan, auto: false) }
+        }
     }
 
     // MARK: - Today tab
@@ -533,7 +549,7 @@ struct ContentView: View {
             emptyCard("checkmark.circle.fill", "Nothing overdue",
                       "Reminders from before today land here. Anything due today stays on the Today tab until midnight.")
         } else {
-            smartRescheduleButton
+            smartRescheduleButton   // AI-first (with heuristic fallback) — see runSmartReschedule
             ForEach(Array(items.enumerated()), id: \.element.id) { i, r in
                 ReminderCardView(reminder: r) { editingReminder = r }.popIn(i)
             }

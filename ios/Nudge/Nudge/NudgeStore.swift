@@ -640,6 +640,25 @@ final class NudgeStore: ObservableObject {
         return SmartScheduler.plan(overdue, busy: CalendarService.shared.busyIntervals())
     }
 
+    /// AI-first Smart Reschedule: if an Anthropic API key is set, ask Claude to spread the
+    /// overdue pile intelligently (avoiding calendar events); otherwise — or on any failure —
+    /// fall back to the built-in heuristic planner. Both return a preview to confirm.
+    func planSmartRescheduleAI() async -> [RescheduleChange] {
+        let overdue = reminders.filter { isOverdue($0) && !($0.routine ?? false) }
+        guard !overdue.isEmpty else { return [] }
+        CalendarService.shared.refresh()
+        let busy = CalendarService.shared.busyIntervals()
+        let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
+        if !key.isEmpty {
+            let model = UserDefaults.standard.string(forKey: "ai_reschedule_model") ?? AIScheduler.defaultModel
+            if let ai = try? await AIScheduler.plan(overdue: overdue, busy: busy, now: Date(),
+                                                    apiKey: key, model: model), !ai.isEmpty {
+                return ai
+            }
+        }
+        return SmartScheduler.plan(overdue, busy: busy)
+    }
+
     /// Apply a user-approved subset of proposed reschedule changes.
     @discardableResult
     func applyReschedule(_ changes: [RescheduleChange], auto: Bool = false) -> [RescheduleChange] {

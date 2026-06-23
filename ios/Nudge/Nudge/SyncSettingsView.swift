@@ -12,6 +12,8 @@ struct SyncSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var dedupResult: String?
     @State private var showCleanUp = false
+    @AppStorage("anthropic_api_key") private var aiKey = ""
+    @AppStorage("ai_reschedule_model") private var aiModel = "claude-opus-4-8"
     @State private var showDupPreview = false
     @State private var dupGroups: [DuplicateGroup] = []
 
@@ -60,6 +62,21 @@ struct SyncSettingsView: View {
                     }
                 } footer: {
                     Text("Quickly delete reminders you don't need — swipe a row, or tap Select to remove several at once.")
+                }
+
+                // MARK: AI Smart Reschedule
+                Section {
+                    SecureField("sk-ant-…", text: $aiKey)
+                        .textInputAutocapitalization(.never).disableAutocorrection(true)
+                    Picker("Model", selection: $aiModel) {
+                        Text("Opus (smartest)").tag("claude-opus-4-8")
+                        Text("Sonnet (balanced)").tag("claude-sonnet-4-6")
+                        Text("Haiku (fast, cheap)").tag("claude-haiku-4-5")
+                    }
+                } header: {
+                    Text("AI Smart Reschedule")
+                } footer: {
+                    Text("Add your Anthropic API key (console.anthropic.com) and Smart Reschedule will use Claude to spread your overdue reminders intelligently around your calendar. Stored only on this device; used only to call Anthropic. Without a key it uses the built-in planner.")
                 }
 
                 // MARK: Upcoming
@@ -231,6 +248,9 @@ struct SyncSettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)            // drop the grey system Form background
+            .background(Theme.bg.ignoresSafeArea())       // …and use the app's theme instead
+            .listRowBackground(Theme.surface)             // cards in the theme surface, not white
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
