@@ -409,19 +409,29 @@ struct ContentView: View {
     /// NotificationManager.handle / pendingColdTap). Now the store + UI are live, so it's safe
     /// to open the specific reminder, the reschedule sheet, or start a Claude chat.
     private func processPendingNotification() {
-        guard let tap = NotificationManager.pendingColdTap else { return }
-        NotificationManager.pendingColdTap = nil
-        let notifId = tap.notifId
-        if notifId == "nudge-payday" { openShopping(); return }
-        let raw = String(notifId.dropFirst("nudge-".count))   // strip "~e<min>" early-alert suffix
-        let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
-        guard let r = store.reminders.first(where: { $0.id == rid }) else { return }
-        if tap.action == NotificationManager.rescheduleAction {
-            rescheduleTarget = r
-        } else if let prompt = ClaudeLink.prompt(from: r.title) {
-            router.pendingClaudePrompt = prompt
-        } else {
-            editingReminder = r   // open the specific reminder the user tapped
+        // Cold-launch holder (defensive — usually the warm path/router is used now).
+        if let tap = NotificationManager.pendingColdTap {
+            NotificationManager.pendingColdTap = nil
+            let notifId = tap.notifId
+            if notifId == "nudge-payday" { openShopping() }
+            else {
+                let raw = String(notifId.dropFirst("nudge-".count))
+                let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
+                if let r = store.reminders.first(where: { $0.id == rid }) {
+                    if tap.action == NotificationManager.rescheduleAction { rescheduleTarget = r }
+                    else if let p = ClaudeLink.prompt(from: r.title) { router.pendingClaudePrompt = p }
+                    else { editingReminder = r }
+                }
+            }
+        }
+        // The launch tap is delivered to the warm path, which sets these router flags — but it
+        // can fire before this view observes them OR before reminders finished loading. Now
+        // that refresh() is done, drain any that are still pending so we open the reminder.
+        if let id = router.pendingOpenReminder, let r = store.reminders.first(where: { $0.id == id }) {
+            router.pendingOpenReminder = nil; editingReminder = r
+        }
+        if let id = router.pendingReschedule, let r = store.reminders.first(where: { $0.id == id }) {
+            router.pendingReschedule = nil; rescheduleTarget = r
         }
     }
 
