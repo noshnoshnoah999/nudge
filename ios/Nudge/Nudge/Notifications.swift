@@ -289,47 +289,46 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         return "\(m) min"
     }
 
+    /// A notification tap recorded during a fully-quit launch, before any UI exists. Held in
+    /// a PLAIN (non-@Published) static so recording it touches no observed state — see handle().
+    nonisolated(unsafe) static var pendingColdTap: (action: String, notifId: String)?
+
     @MainActor private func handle(action: String, notifId: String) async {
         guard notifId.hasPrefix("nudge-") else { return }
-        if notifId == "nudge-payday" { AppRouter.shared.pendingShopping = true; return }
-        // Early-alert ids carry a "~e<minutes>" suffix — strip it to get the reminder id.
-        let raw = String(notifId.dropFirst("nudge-".count))
-        let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
-
-        // A plain TAP (or Reschedule) launches the app to the FOREGROUND. If it was fully
-        // quit, the live store/UI aren't up yet — and creating a throwaway NudgeStore here
-        // (its load reloads widgets + mutates published state) during UIKit's launch & state-
-        // restoration snapshot makes UIKit assert and abort. Hand it to the app to run live.
         let opensApp = action != Self.completeAction && action != Self.snoozeAction
+
+        // COLD-LAUNCH foreground-opening tap (plain tap / Reschedule / pay-day): the live
+        // store + UI aren't up yet. We must touch NO @Published state here — mutating an
+        // observed property makes SwiftUI commit a CATransaction inside UIKit's launch &
+        // state-restoration window, which throws an assertion and crashes (the bug you saw).
+        // Stash the tap in a plain holder; the app consumes it once live (ContentView
+        // .processPendingNotification).
         if nudge == nil && opensApp {
-            AppRouter.shared.pendingNotification = NotifAction(action: action, rid: rid)
+            Self.pendingColdTap = (action, notifId)
             return
         }
-        // Complete/Snooze from fully-quit launch the app in the BACKGROUND (no scene snapshot),
-        // so a throwaway store + persist is safe there. Pull latest cloud first so we don't
-        // push a stale blob over newer edits.
+
+        // Warm (app already live) — or a background Complete/Snooze from a fully-quit app,
+        // which launches with no scene snapshot, so this is safe there.
+        if notifId == "nudge-payday" { AppRouter.shared.pendingShopping = true; return }
+        let raw = String(notifId.dropFirst("nudge-".count))   // strip "~e<min>" early-alert suffix
+        let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
         let store = nudge ?? NudgeStore()
-        if action == Self.completeAction || action == Self.snoozeAction {
-            await store.refresh()
-        }
+        if action == Self.completeAction || action == Self.snoozeAction { await store.refresh() }
         guard let i = store.reminders.firstIndex(where: { $0.id == rid }) else { return }
         switch action {
         case Self.completeAction:
-            store.toggleComplete(store.reminders[i])
-            await store.persistNow()   // flush before iOS suspends us, else it's lost
+            store.toggleComplete(store.reminders[i]); await store.persistNow()
         case Self.snoozeAction:
-            // Same model as the card menu: push the due date out an hour. persist()
-            // → reschedule() then re-arms the alert for the new time automatically.
-            store.snooze(store.reminders[i], minutes: 60)
-            await store.persistNow()
+            store.snooze(store.reminders[i], minutes: 60); await store.persistNow()
         case Self.rescheduleAction:
-            AppRouter.shared.pendingReschedule = rid   // app opens → reschedule sheet
+            AppRouter.shared.pendingReschedule = rid
         default:
-            // Tapping a "Claude - …" reminder's notification opens the app and
-            // starts the Claude chat (so a Claude reminder set for later acts as
-            // "ask Claude at this time"). Other reminders just open the app.
+            // Open the specific reminder the user tapped (Claude reminders start their chat).
             if let p = ClaudeLink.prompt(from: store.reminders[i].title) {
                 AppRouter.shared.pendingClaudePrompt = p
+            } else {
+                AppRouter.shared.pendingOpenReminder = rid
             }
         }
     }

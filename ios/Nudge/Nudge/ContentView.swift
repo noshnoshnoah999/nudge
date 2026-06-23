@@ -190,7 +190,11 @@ struct ContentView: View {
         .onChange(of: showTriage) { _, open in if !open { stuckCount = store.stuckCount() } }
         .onChange(of: router.pendingQuickAdd) { _, v in if v { router.pendingQuickAdd = false; showAdd = true } }
         .onChange(of: router.pendingShopping) { _, v in if v { router.pendingShopping = false; openShopping() } }
-        .onChange(of: router.pendingNotification) { _, p in if p != nil { processPendingNotification() } }
+        .onChange(of: router.pendingOpenReminder) { _, id in
+            guard let id, let r = store.reminders.first(where: { $0.id == id }) else { return }
+            router.pendingOpenReminder = nil
+            editingReminder = r   // notification tap (warm) → open that reminder
+        }
         .onChange(of: router.pendingReschedule) { _, id in
             guard let id, let r = store.reminders.first(where: { $0.id == id }) else { return }
             router.pendingReschedule = nil
@@ -401,17 +405,23 @@ struct ContentView: View {
         if let l = store.lists.first(where: { $0.id == "shopping" }) { listFilter = l }
     }
 
-    /// Run a notification tap that was deferred from a fully-quit launch (see Notifications
-    /// .handle): now the store + UI are live, so it's safe to open the reschedule sheet or
-    /// start a Claude chat. A plain tap on a normal reminder just opens the app (no-op here).
+    /// Consume a notification tap that was recorded during a fully-quit launch (see
+    /// NotificationManager.handle / pendingColdTap). Now the store + UI are live, so it's safe
+    /// to open the specific reminder, the reschedule sheet, or start a Claude chat.
     private func processPendingNotification() {
-        guard let p = router.pendingNotification else { return }
-        router.pendingNotification = nil
-        guard let r = store.reminders.first(where: { $0.id == p.rid }) else { return }
-        if p.action == NotificationManager.rescheduleAction {
+        guard let tap = NotificationManager.pendingColdTap else { return }
+        NotificationManager.pendingColdTap = nil
+        let notifId = tap.notifId
+        if notifId == "nudge-payday" { openShopping(); return }
+        let raw = String(notifId.dropFirst("nudge-".count))   // strip "~e<min>" early-alert suffix
+        let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
+        guard let r = store.reminders.first(where: { $0.id == rid }) else { return }
+        if tap.action == NotificationManager.rescheduleAction {
             rescheduleTarget = r
         } else if let prompt = ClaudeLink.prompt(from: r.title) {
             router.pendingClaudePrompt = prompt
+        } else {
+            editingReminder = r   // open the specific reminder the user tapped
         }
     }
 

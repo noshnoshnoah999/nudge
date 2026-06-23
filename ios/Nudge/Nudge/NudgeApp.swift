@@ -14,6 +14,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         MainActor.assumeIsolated { NotificationManager.shared.registerForLaunch() }
         return true
     }
+
+    // Nudge keeps no UIKit state to restore (SwiftUI owns the UI). Opting out stops UIKit
+    // building a state-restoration archive on background/launch events — the codepath whose
+    // assertion was crashing the app when a notification tap launched it from fully-quit.
+    func application(_ application: UIApplication, shouldSaveSecureApplicationState coder: NSCoder) -> Bool { false }
+    func application(_ application: UIApplication, shouldRestoreSecureApplicationState coder: NSCoder) -> Bool { false }
 }
 
 @main
