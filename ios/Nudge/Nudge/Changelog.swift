@@ -16,6 +16,13 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.22", title: "Siri & Shortcuts", date: "23 Jun 2026",
+            added: [
+                "Control Nudge with Siri and the Shortcuts app: \"Add a reminder to Nudge\", \"What's due today in Nudge\", and complete a reminder by name",
+                "These work as Shortcuts actions too — build automations like a morning \"what's due\" readout or arriving-home triggers"
+            ],
+            changed: []),
+        ChangelogEntry(
             version: "2.21", title: "AI Smart Reschedule", date: "23 Jun 2026",
             added: [
                 "Smart Reschedule can now use Claude — add your Anthropic API key in Settings and it spreads your overdue reminders intelligently around your calendar (falls back to the built-in planner with no key)"
