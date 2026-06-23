@@ -313,9 +313,15 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             return
         }
 
-        // Warm (app already live) — or a background Complete/Snooze from a fully-quit app,
-        // which launches with no scene snapshot, so this is safe there.
-        if notifId == "nudge-payday" { AppRouter.shared.pendingShopping = true; return }
+        // Warm (app already live) — or a background Complete/Snooze, or (for Urgent reminders)
+        // an app that AlarmKit woke in the background to manage its alarm. In that last case the
+        // tap arrives while the app is mid background→foreground state-restoration, so writing
+        // any @Published property synchronously here makes SwiftUI commit a CATransaction inside
+        // UIKit's restoration window → the same assertion crash. Defer every observed-state
+        // write one runloop tick (`onMain`) so it lands AFTER the restoration transaction. A
+        // genuine foreground tap is unaffected — it's just one tick later.
+        func onMain(_ work: @escaping @MainActor () -> Void) { DispatchQueue.main.async { work() } }
+        if notifId == "nudge-payday" { onMain { AppRouter.shared.pendingShopping = true }; return }
         let raw = String(notifId.dropFirst("nudge-".count))   // strip "~e<min>" early-alert suffix
         let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
         let store = nudge ?? NudgeStore()
@@ -327,13 +333,13 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         case Self.snoozeAction:
             store.snooze(store.reminders[i], minutes: 60); await store.persistNow()
         case Self.rescheduleAction:
-            AppRouter.shared.pendingReschedule = rid
+            onMain { AppRouter.shared.pendingReschedule = rid }
         default:
             // Open the specific reminder the user tapped (Claude reminders start their chat).
             if let p = ClaudeLink.prompt(from: store.reminders[i].title) {
-                AppRouter.shared.pendingClaudePrompt = p
+                onMain { AppRouter.shared.pendingClaudePrompt = p }
             } else {
-                AppRouter.shared.pendingOpenReminder = rid
+                onMain { AppRouter.shared.pendingOpenReminder = rid }
             }
         }
     }
