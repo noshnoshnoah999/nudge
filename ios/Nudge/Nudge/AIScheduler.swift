@@ -127,8 +127,8 @@ enum AIScheduler {
     static func shortenTitle(_ title: String, apiKey: String) async -> String? {
         let body: [String: Any] = [
             "model": "claude-haiku-4-5",
-            "max_tokens": 40,
-            "system": "Shorten this reminder title for a compact list. Reply with ONLY the shortened version: at most 6 words, keep the key nouns / brand names, no quotes, no trailing punctuation, no commentary.",
+            "max_tokens": 30,
+            "system": "Summarise this reminder as a VERY short label: 2 to 4 words capturing the gist. Drop filler words, lists and extra detail; keep the key noun(s) and any brand name. Examples: \"Nuts, dried fruit, carrots for ginger shots\" → \"Ginger shot ingredients\"; \"Email Sony Bank to turn off transaction emails\" → \"Sony Bank emails off\". Reply with ONLY the label — no quotes, no punctuation, no commentary.",
             "messages": [["role": "user", "content": title]]
         ]
         var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
@@ -147,7 +147,10 @@ enum AIScheduler {
         else { return nil }
         let out = text.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "\"'.”’"))
-        return out.isEmpty ? nil : out
+        // Must actually be short — otherwise it'd just get truncated on the card, so skip it
+        // and keep the full (wrapping) title instead.
+        if out.isEmpty || out.count > 36 { return nil }
+        return out
     }
 
     private static func parseFlexible(_ s: String) -> Date? {

@@ -59,7 +59,9 @@ struct ReminderCardView: View {
             VStack(alignment: .leading, spacing: compact ? 5 : 7) {
                 // Title — the hero of the card. Long titles show an AI-shortened version;
                 // tap the title to expand to the full original (✦ = summarised, ▲ = expanded).
-                let summarised = (claudeP == nil) && (r.summary?.isEmpty == false)
+                // Only use the summary if it's actually short — a long one would just truncate
+                // and hide text, so fall back to the full (wrapping) title in that case.
+                let summarised = (claudeP == nil) && (r.summary.map { !$0.isEmpty && $0.count <= 36 } ?? false)
                 let shownTitle = claudeP ?? ((summarised && !expanded) ? (r.summary ?? displayTitle(r)) : displayTitle(r))
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if claudeP != nil {
@@ -70,8 +72,8 @@ struct ReminderCardView: View {
                         .foregroundStyle(done ? Theme.textMeta : Theme.textMain)
                         .strikethrough(done, color: Theme.textMeta)
                         .lineSpacing(1.5)
-                        .lineLimit((summarised && !expanded) ? 1 : (compact ? 2 : nil))
-                        .fixedSize(horizontal: false, vertical: (summarised && !expanded) ? false : (compact ? false : true))
+                        .lineLimit((summarised && !expanded) ? 2 : (compact ? 2 : nil))
+                        .fixedSize(horizontal: false, vertical: (summarised && !expanded) ? true : (compact ? false : true))
                     if summarised {
                         Image(systemName: expanded ? "chevron.up" : "sparkles")
                             .font(.caption2.weight(.semibold)).foregroundStyle(settings.accent.opacity(0.75))

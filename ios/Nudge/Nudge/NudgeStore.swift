@@ -807,7 +807,7 @@ final class NudgeStore: ObservableObject {
             if reminders[i].summary != nil { reminders[i].summary = nil; persist() }
             return
         }
-        guard reminders[i].summary == nil else { return }   // keep until the title changes
+        if let cur = reminders[i].summary, !cur.isEmpty, cur.count <= 36 { return }   // already a good short one
         guard let key = UserDefaults.standard.string(forKey: "anthropic_api_key"), !key.isEmpty else { return }
         Task {
             guard let short = await AIScheduler.shortenTitle(title, apiKey: key), short != title else { return }
