@@ -18,7 +18,7 @@ enum Changelog {
         ChangelogEntry(
             version: "2.23", title: "Rewards & end-of-day AI tidy-up", date: "24 Jun 2026",
             added: [
-                "A calm reward when you complete a reminder — the tick glows gold, lifts and dissolves into sparkles, with a gentle chime, haptic, and a \"N done today\" streak (turn the sound & haptics off in Settings)",
+                "A satisfying complete animation — a gold border traces the reminder, it slides away to the left, and the rest of the list springs up to fill the gap (turn the sound & haptics off in Settings)",
                 "End-of-day AI carry-over: each night at 23:50 Claude reviews what you didn't finish and rolls only the important ones to the next day — your nightly & repeating routines are never touched",
                 "A glowing red banner the next morning shows what was moved and what was left, with reasons. Full history of the last month lives in Settings → Carry-Over History"
             ],

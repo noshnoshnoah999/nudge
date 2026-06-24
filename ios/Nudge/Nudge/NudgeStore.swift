@@ -18,18 +18,6 @@ final class NudgeStore: ObservableObject {
     @Published var lists: [ReminderList] = []
     @Published var smartLists: [SmartList] = []
     @Published var syncState: String = "Local"
-    /// Fires when a (non-routine) reminder is genuinely completed, so the UI can play the
-    /// reward animation. Carries the day's completion streak for the "🔥 N done today" chip.
-    @Published var celebration: CelebrationEvent? = nil
-
-    /// Reminders completed today (drives the streak chip in the completion animation).
-    var completedTodayCount: Int {
-        let cal = Calendar.current
-        return reminders.filter { r in
-            guard r.completed ?? false, let at = parseDate(r.completedAt) else { return false }
-            return cal.isDateInToday(at)
-        }.count
-    }
 
     private var settings: [String: JSONValue]? = nil
     private var pushTask: Task<Void, Never>? = nil
@@ -272,10 +260,6 @@ final class NudgeStore: ObservableObject {
             reminders.insert(copy, at: 0)
         }
         persist()
-        // Reward animation: only when genuinely ticking something off (not un-ticking).
-        if nowComplete {
-            celebration = CelebrationEvent(id: UUID(), streak: completedTodayCount)
-        }
     }
 
     /// Advance a due date to the next FUTURE occurrence per the recurrence rule.

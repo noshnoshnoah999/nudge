@@ -87,12 +87,6 @@ struct ContentView: View {
         }
         .animation(Theme.spring, value: store.recentlyDeleted)
         .overlay { if preparingClaude { preparingOverlay } }
-        .overlay {
-            if let ev = store.celebration {
-                CelebrationOverlay(event: ev) { store.celebration = nil }
-                    .id(ev.id)
-            }
-        }
         .sheet(item: $showCarryReview) { e in
             CarryOverReviewView(entry: e).environmentObject(store)
         }

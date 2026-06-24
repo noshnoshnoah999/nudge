@@ -5,6 +5,7 @@
 // link button. Tuned to feel calm and current, not cramped.
 
 import SwiftUI
+import AudioToolbox
 
 struct ReminderCardView: View {
     @EnvironmentObject var store: NudgeStore
@@ -15,8 +16,13 @@ struct ReminderCardView: View {
     @State private var claudeURL: IdentifiableURL?
     @State private var isPolishing = false
     @State private var showReschedule = false
+    // Completion flair: a gold border traces the card, then it slides off to the left and the
+    // list springs to bunch up (the removal animation lives on the parent list).
+    @State private var trace: CGFloat = 0
+    @State private var slideOff = false
 
     private var radius: CGFloat { settings.compact ? 14 : 18 }
+    private let gold = Color(red: 0.98, green: 0.78, blue: 0.30)
 
     var body: some View {
         // No swipe-to-delete drag gesture: a per-card DragGesture fights the ScrollView's
@@ -44,8 +50,7 @@ struct ReminderCardView: View {
 
         return HStack(alignment: .top, spacing: compact ? 12 : 14) {
             Button {
-                store.toggleComplete(r)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                completeWithFlair(r)
             } label: {
                 Image(systemName: done ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 23, weight: .regular))
@@ -136,8 +141,39 @@ struct ReminderCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
             .strokeBorder(overdue ? Theme.coral.opacity(0.85) : Theme.hairline, lineWidth: overdue ? 2.5 : 1))
+        // Gold tracing border that draws around the card on completion.
+        .overlay(
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .trim(from: 0, to: trace)
+                .stroke(LinearGradient(colors: [gold, gold.opacity(0.35)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .shadow(color: gold.opacity(trace > 0 ? 0.6 : 0), radius: 6)
+        )
         .cardElevation(compact ? 6 : 11, y: compact ? 2 : 5, opacity: done ? 0.02 : (compact ? 0.05 : 0.07))
-        .opacity(done ? 0.6 : 1)
+        .offset(x: slideOff ? -700 : 0)
+        .opacity(slideOff ? 0 : (done ? 0.6 : 1))
+    }
+
+    /// Trace the gold border, slide the card off to the left, then commit the completion so the
+    /// list springs to bunch up. Un-ticking and nightly routines skip the slide (routines roll
+    /// forward in place rather than leaving the list).
+    private func completeWithFlair(_ r: Reminder) {
+        let haptics = settings.celebrationFeedback
+        guard !r.isCompleted, !(r.routine ?? false) else {
+            store.toggleComplete(r)
+            if haptics { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+            return
+        }
+        if haptics { UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.8) }
+        withAnimation(.easeInOut(duration: 0.4)) { trace = 1 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            if haptics { AudioServicesPlaySystemSound(1103) }
+            withAnimation(.easeIn(duration: 0.32)) { slideOff = true }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.76) {
+            withAnimation(Theme.spring) { store.toggleComplete(r) }
+        }
     }
 
     // MARK: - Chips & pieces
