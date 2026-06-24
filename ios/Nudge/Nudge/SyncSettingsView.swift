@@ -82,6 +82,21 @@ struct SyncSettingsView: View {
                 }
                 .listRowBackground(Theme.surface)
 
+                // MARK: End-of-day AI carry-over
+                Section {
+                    NavigationLink {
+                        CarryOverHistoryView().environmentObject(store)
+                    } label: {
+                        Label("Carry-Over History", systemImage: "sparkles")
+                            .foregroundStyle(Theme.textMain)
+                    }
+                } header: {
+                    Text("End-of-day Carry-Over")
+                } footer: {
+                    Text("Each night at 23:50, Claude reviews the reminders you didn't finish and carries over only the important ones to the next day. Nightly and repeating routines are never moved. See the last month of runs here.")
+                }
+                .listRowBackground(Theme.surface)
+
                 // MARK: Upcoming
                 Section {
                     NavigationLink {

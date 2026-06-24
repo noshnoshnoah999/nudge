@@ -122,6 +122,17 @@ struct Reminder: Codable, Identifiable, Hashable {
         let raw = remindBefores ?? remindBefore.map { [$0] } ?? []
         return Array(Set(raw.filter { $0 > 0 })).sorted(by: >)
     }
+
+    /// Recurring / nightly / escalating reminders that the end-of-day AI carry-over must
+    /// NEVER move. This is the single structural gate — anything that repeats in any way is
+    /// off-limits, no matter what the AI suggests. Checked both when building the AI's input
+    /// (so it never even sees these) and again at the apply step (belt-and-braces).
+    var isProtectedFromAI: Bool {
+        if routine == true { return true }
+        if let e = escalation, !e.isEmpty { return true }
+        if let r = recurrence, r.freq != "none" { return true }
+        return false
+    }
 }
 
 struct ReminderList: Codable, Identifiable, Hashable {

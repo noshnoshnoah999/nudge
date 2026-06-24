@@ -16,6 +16,14 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.23", title: "Rewards & end-of-day AI tidy-up", date: "24 Jun 2026",
+            added: [
+                "A satisfying celebration when you complete a reminder — confetti, a checkmark pop, a haptic and a chime, plus a \"🔥 N done today\" streak",
+                "End-of-day AI carry-over: each night at 23:50 Claude reviews what you didn't finish and rolls only the important ones to the next day — your nightly & repeating routines are never touched",
+                "A glowing red banner the next morning shows what was moved and what was left, with reasons. Full history of the last month lives in Settings → Carry-Over History"
+            ],
+            changed: []),
+        ChangelogEntry(
             version: "2.22", title: "Siri & Shortcuts", date: "23 Jun 2026",
             added: [
                 "Control Nudge with Siri and the Shortcuts app: \"Add a reminder to Nudge\", \"What's due today in Nudge\", and complete a reminder by name",

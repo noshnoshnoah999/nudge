@@ -18,6 +18,18 @@ final class NudgeStore: ObservableObject {
     @Published var lists: [ReminderList] = []
     @Published var smartLists: [SmartList] = []
     @Published var syncState: String = "Local"
+    /// Fires when a (non-routine) reminder is genuinely completed, so the UI can play the
+    /// reward animation. Carries the day's completion streak for the "🔥 N done today" chip.
+    @Published var celebration: CelebrationEvent? = nil
+
+    /// Reminders completed today (drives the streak chip in the completion animation).
+    var completedTodayCount: Int {
+        let cal = Calendar.current
+        return reminders.filter { r in
+            guard r.completed ?? false, let at = parseDate(r.completedAt) else { return false }
+            return cal.isDateInToday(at)
+        }.count
+    }
 
     private var settings: [String: JSONValue]? = nil
     private var pushTask: Task<Void, Never>? = nil
@@ -260,6 +272,10 @@ final class NudgeStore: ObservableObject {
             reminders.insert(copy, at: 0)
         }
         persist()
+        // Reward animation: only when genuinely ticking something off (not un-ticking).
+        if nowComplete {
+            celebration = CelebrationEvent(id: UUID(), streak: completedTodayCount)
+        }
     }
 
     /// Advance a due date to the next FUTURE occurrence per the recurrence rule.
@@ -696,6 +712,77 @@ final class NudgeStore: ObservableObject {
         persist()
         RescheduleLog.add(RescheduleLogEntry(id: UUID().uuidString, date: Date(), auto: auto, changes: changes))
         return changes
+    }
+
+    // MARK: - End-of-day AI carry-over (23:50)
+
+    /// Day key (yyyy-MM-dd) for the carry-over to process: today once 23:50 has passed,
+    /// otherwise yesterday (whose 23:50 cutoff is already in the past).
+    private func carryOverTargetDay(now: Date = Date()) -> (key: String, dayStart: Date) {
+        let cal = Calendar.current
+        var cutoff = cal.dateComponents([.year, .month, .day], from: now)
+        cutoff.hour = 23; cutoff.minute = 50
+        let cutoffDate = cal.date(from: cutoff) ?? now
+        let day = now >= cutoffDate ? now : (cal.date(byAdding: .day, value: -1, to: now) ?? now)
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        return (f.string(from: day), cal.startOfDay(for: day))
+    }
+
+    /// Run the carry-over for the target day if it hasn't run yet. Safe to call on every launch —
+    /// it no-ops until 23:50 has passed and only ever runs once per day. Requires an API key.
+    func maybeRunDailyCarryOver() async {
+        let target = carryOverTargetDay()
+        guard CarryOverLog.shared.lastProcessedDay != target.key else { return }
+
+        let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
+        guard !key.isEmpty else { return }   // no AI without a key; try again next launch
+        let model = UserDefaults.standard.string(forKey: "ai_reschedule_model") ?? AIScheduler.defaultModel
+
+        // Candidates: incomplete, not dismissed, due ON the target day, and NOT protected
+        // (recurring / nightly / escalating reminders are excluded here so the AI never sees them).
+        let cal = Calendar.current
+        let leftovers = reminders.filter { r in
+            guard !(r.completed ?? false), !(r.dismissed ?? false) else { return false }
+            guard !r.isProtectedFromAI else { return false }
+            guard let due = parseDate(r.dueDate) else { return false }
+            return cal.isDate(due, inSameDayAs: target.dayStart)
+        }
+
+        guard !leftovers.isEmpty else { CarryOverLog.shared.markProcessed(target.key); return }
+
+        let decisions: [String: (carry: Bool, reason: String)]
+        do {
+            decisions = try await AICarryOver.decide(leftovers: leftovers, now: Date(), apiKey: key, model: model)
+        } catch {
+            return   // network/API failure — leave unprocessed so it retries next launch
+        }
+        guard !decisions.isEmpty else { CarryOverLog.shared.markProcessed(target.key); return }
+
+        var moved: [CarryItem] = []
+        var kept: [CarryItem] = []
+        for r in leftovers {
+            // Re-check the safety gate at apply time — belt and braces.
+            guard !r.isProtectedFromAI else { continue }
+            let d = decisions[r.id] ?? (false, "Left in place.")
+            if d.carry, let i = reminders.firstIndex(where: { $0.id == r.id }),
+               let old = parseDate(r.dueDate) {
+                let newDate = cal.date(byAdding: .day, value: 1, to: old) ?? old
+                reminders[i].dueDate = iso(newDate)
+                reminders[i].snoozedUntil = nil
+                reminders[i].updatedAt = iso(Date())
+                moved.append(CarryItem(id: r.id, title: displayTitle(r), reason: d.reason,
+                                       oldDue: r.dueDate, newDue: iso(newDate)))
+            } else {
+                kept.append(CarryItem(id: r.id, title: displayTitle(r), reason: d.reason,
+                                      oldDue: r.dueDate, newDue: nil))
+            }
+        }
+
+        if !moved.isEmpty { persist() }
+        await MainActor.run {
+            CarryOverLog.shared.record(CarryOverEntry(id: target.key, ranAt: iso(Date()),
+                                                      moved: moved, kept: kept))
+        }
     }
 
     // MARK: - Targeted triage (the reminders you keep avoiding)

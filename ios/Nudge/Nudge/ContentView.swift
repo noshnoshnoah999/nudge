@@ -38,6 +38,8 @@ struct ContentView: View {
     @State private var showRoutineCheckin = false
     @State private var routineLapsed: [Reminder] = []
     @State private var routineStepUps: [Reminder] = []
+    @ObservedObject private var carryLog = CarryOverLog.shared
+    @State private var showCarryReview: CarryOverEntry?
     @Namespace private var tabNS
 
     private let tabs: [(name: String, icon: String)] = [
@@ -50,6 +52,7 @@ struct ContentView: View {
             Theme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                if carryLog.unseenEntry != nil { carryOverBanner }
                 header
                 if let d = signingDaysLeft, d <= 2, expiryDismissedAtDays != d { expiryBanner(d) }
                 ScrollView {
@@ -84,6 +87,15 @@ struct ContentView: View {
         }
         .animation(Theme.spring, value: store.recentlyDeleted)
         .overlay { if preparingClaude { preparingOverlay } }
+        .overlay {
+            if let ev = store.celebration {
+                CelebrationOverlay(event: ev) { store.celebration = nil }
+                    .id(ev.id)
+            }
+        }
+        .sheet(item: $showCarryReview) { e in
+            CarryOverReviewView(entry: e).environmentObject(store)
+        }
         .sheet(isPresented: $showAdd) { AddReminderView(editing: nil).environmentObject(store) }
         .sheet(item: $editingReminder) { r in AddReminderView(editing: r).environmentObject(store) }
         .sheet(isPresented: $showSettings) {
@@ -125,6 +137,7 @@ struct ContentView: View {
             await sync.syncNow(); await notifier.reschedule()
             await CalendarService.shared.requestAccessIfNeeded()   // for event-conflict checks
             maybeRoutineCheckin()
+            await store.maybeRunDailyCarryOver()   // end-of-day AI carry-over (23:50), runs once/day
             processPendingNotification()   // a tap that cold-launched the app, now that it's live
         }
         .task {
@@ -864,6 +877,40 @@ struct ContentView: View {
 
     // reverse text colour for on-accent (white on dark accent, dark on light accent) — accents are dark, so white.
     private var reverseText: Color { .white }
+
+    // Glowing red banner pinned to the very top on the first open after an AI carry-over ran.
+    @State private var carryGlow = false
+    private var carryOverBanner: some View {
+        let e = carryLog.unseenEntry
+        return Button {
+            showCarryReview = e
+            carryLog.dismissBanner()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles").foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("AI tidied up last night").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    Text("Moved \(e?.moved.count ?? 0) to today · left \(e?.kept.count ?? 0). Tap to review.")
+                        .font(.caption).foregroundStyle(.white.opacity(0.95))
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.subheadline.weight(.bold)).foregroundStyle(.white.opacity(0.9))
+            }
+            .padding(12)
+            .background(
+                LinearGradient(colors: [Color(red: 0.86, green: 0.15, blue: 0.18),
+                                        Color(red: 0.70, green: 0.05, blue: 0.12)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: Color.red.opacity(carryGlow ? 0.85 : 0.3),
+                    radius: carryGlow ? 16 : 6, y: 0)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 4)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { carryGlow = true }
+        }
+    }
 
     private func expiryBanner(_ days: Int) -> some View {
         HStack(spacing: 10) {

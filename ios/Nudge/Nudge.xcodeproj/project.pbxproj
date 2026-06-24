@@ -13,11 +13,11 @@
 		43491E524FB40093A8720477 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D02E2E7153E871D406772A2 /* WidgetData.swift */; };
 		70361BCD0371121195C0B400 /* NudgeWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6B9C5DE0B02C50CE957E2B65 /* NudgeWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B85FBEA063A111978C486974 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B4DE77BF970E57C76202DBE /* QuickAddIntent.swift */; };
-		FE01000000000000000000A2 /* NudgeAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01000000000000000000A1 /* NudgeAlarm.swift */; };
-		FE01000000000000000000A3 /* NudgeAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01000000000000000000A1 /* NudgeAlarm.swift */; };
 		DAFEFBCA2BC3486E29AC0381 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B4DE77BF970E57C76202DBE /* QuickAddIntent.swift */; };
 		EB83FBC067ED9EDD11548910 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2EFA3D2A91ECC4922004933E /* Foundation.framework */; };
 		FD69A38D8D9BB778DC05DC93 /* NudgeWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53CD5B060D93168A9A1D1D1 /* NudgeWidgets.swift */; };
+		FE01000000000000000000A2 /* NudgeAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01000000000000000000A1 /* NudgeAlarm.swift */; };
+		FE01000000000000000000A3 /* NudgeAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01000000000000000000A1 /* NudgeAlarm.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,27 +49,16 @@
 		2EFA3D2A91ECC4922004933E /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		3A9BD1F02FCE10E000E88354 /* Nudge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nudge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6B4DE77BF970E57C76202DBE /* QuickAddIntent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickAddIntent.swift; sourceTree = "<group>"; };
-		FE01000000000000000000A1 /* NudgeAlarm.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NudgeAlarm.swift; sourceTree = "<group>"; };
 		6B9C5DE0B02C50CE957E2B65 /* NudgeWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NudgeWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7DF3C757367D3B53CF1889A5 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9D02E2E7153E871D406772A2 /* WidgetData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WidgetData.swift; sourceTree = "<group>"; };
 		C53CD5B060D93168A9A1D1D1 /* NudgeWidgets.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NudgeWidgets.swift; sourceTree = "<group>"; };
 		FAD34E5E8C4DDC49F18C420A /* NudgeControl.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NudgeControl.swift; sourceTree = "<group>"; };
+		FE01000000000000000000A1 /* NudgeAlarm.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NudgeAlarm.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		3A9BD1F22FCE10E000E88354 /* Nudge */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				FE02000000000000000000B1 /* exceptions for "Nudge" */,
-			);
-			path = Nudge;
-			sourceTree = "<group>";
-		};
-/* End PBXFileSystemSynchronizedRootGroup section */
-
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		FE02000000000000000000B1 /* exceptions for "Nudge" */ = {
+		FE02000000000000000000B1 /* Exceptions for "Nudge" folder in "Nudge" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -77,6 +66,17 @@
 			target = 3A9BD1EF2FCE10E000E88354 /* Nudge */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		3A9BD1F22FCE10E000E88354 /* Nudge */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FE02000000000000000000B1 /* Exceptions for "Nudge" folder in "Nudge" target */,
+			);
+			path = Nudge;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		3A9BD1ED2FCE10E000E88354 /* Frameworks */ = {
@@ -415,11 +415,11 @@
 				DEVELOPMENT_TEAM = FMF6YAVA23;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Nudge/Info.plist;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Nudge checks your calendar so it can warn you when a reminder lands during an event and keep Smart Reschedule off your busy times.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Nudge uses Face ID to keep your reminders private.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Nudge syncs your reminders with Apple Reminders so anything you capture in either place stays in sync.";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Nudge checks your calendar so it can warn you when a reminder lands during an event and keep Smart Reschedule off your busy times.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_FILE = Nudge/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -456,11 +456,11 @@
 				DEVELOPMENT_TEAM = FMF6YAVA23;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Nudge/Info.plist;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Nudge checks your calendar so it can warn you when a reminder lands during an event and keep Smart Reschedule off your busy times.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Nudge uses Face ID to keep your reminders private.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Nudge syncs your reminders with Apple Reminders so anything you capture in either place stays in sync.";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Nudge checks your calendar so it can warn you when a reminder lands during an event and keep Smart Reschedule off your busy times.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_FILE = Nudge/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
