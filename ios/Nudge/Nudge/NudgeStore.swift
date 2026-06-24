@@ -672,7 +672,7 @@ final class NudgeStore: ObservableObject {
         let busy = CalendarService.shared.busyIntervals()
         let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
         if !key.isEmpty {
-            let model = UserDefaults.standard.string(forKey: "ai_reschedule_model") ?? AIScheduler.defaultModel
+            let model = AIScheduler.defaultModel   // Sonnet — never Opus/Haiku
             if let ai = try? await AIScheduler.plan(overdue: overdue, busy: busy, now: Date(),
                                                     apiKey: key, model: model), !ai.isEmpty {
                 return ai
@@ -720,7 +720,7 @@ final class NudgeStore: ObservableObject {
 
         let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
         guard !key.isEmpty else { return }   // no AI without a key; try again next launch
-        let model = UserDefaults.standard.string(forKey: "ai_reschedule_model") ?? AIScheduler.defaultModel
+        let model = AIScheduler.defaultModel   // Sonnet — never Opus/Haiku
 
         // Candidates: incomplete, not dismissed, due ON the target day, and NOT protected
         // (recurring / nightly / escalating reminders are excluded here so the AI never sees them).

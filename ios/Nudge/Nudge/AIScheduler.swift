@@ -13,7 +13,9 @@ enum AIScheduler {
     struct Move: Decodable { let id: String; let datetime: String }
     private struct Out: Decodable { let moves: [Move] }
 
-    static let defaultModel = "claude-opus-4-8"
+    // Both AI features (Smart Reschedule + end-of-day carry-over) run on Sonnet — a good
+    // balance of quality and cost, and deliberately not Opus (priciest) or Haiku.
+    static let defaultModel = "claude-sonnet-4-6"
 
     /// Ask Claude for new times for the overdue reminders. Throws on any network/parse error
     /// so the caller can fall back to the heuristic planner.
