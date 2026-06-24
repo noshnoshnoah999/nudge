@@ -21,12 +21,18 @@ final class AppSettings: ObservableObject {
     @Published var upcomingSections: [String] {
         didSet { UserDefaults.standard.set(upcomingSections, forKey: K.upcomingSections) }
     }
+    /// Play the haptic + chime with the completion celebration animation. The visual always
+    /// plays; this just mutes the feedback. Key shared with CelebrationOverlay via @AppStorage.
+    @Published var celebrationFeedback: Bool {
+        didSet { UserDefaults.standard.set(celebrationFeedback, forKey: K.celebrationFeedback) }
+    }
 
     private enum K {
         static let theme = "pref.theme"
         static let compact = "pref.compact"
         static let appLock = "pref.appLock"
         static let upcomingSections = "pref.upcomingSections"
+        static let celebrationFeedback = "pref.celebrationFeedback"
     }
 
     init() {
@@ -36,6 +42,7 @@ final class AppSettings: ObservableObject {
         compact = (UserDefaults.standard.object(forKey: K.compact) as? Bool) ?? true
         appLock = UserDefaults.standard.bool(forKey: K.appLock)
         upcomingSections = (UserDefaults.standard.array(forKey: K.upcomingSections) as? [String]) ?? []
+        celebrationFeedback = (UserDefaults.standard.object(forKey: K.celebrationFeedback) as? Bool) ?? true
         Theme.palette = Palettes.by(t)   // didSet doesn't fire on init's first assignment
     }
 

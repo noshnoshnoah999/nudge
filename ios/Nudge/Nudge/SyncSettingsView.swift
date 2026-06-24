@@ -48,10 +48,13 @@ struct SyncSettingsView: View {
 
                     Toggle("Compact list", isOn: Binding(
                         get: { settings.compact }, set: { settings.compact = $0 }))
+
+                    Toggle("Sound & haptics on complete", isOn: Binding(
+                        get: { settings.celebrationFeedback }, set: { settings.celebrationFeedback = $0 }))
                 } header: {
                     Text("Appearance")
                 } footer: {
-                    Text("Pick a colour theme. Compact fits more reminders on screen.")
+                    Text("Pick a colour theme. Compact fits more reminders on screen. Turn off Sound & haptics to keep the completion animation silent.")
                 }
                 .listRowBackground(Theme.surface)
 
