@@ -124,6 +124,18 @@ closed, Apple-Reminders-style (Snooze + slide-to-stop + a "Snooze 8:57 min" coun
 
 ---
 
+### Mac Catalyst calendar gotcha (cost real time, 24 Jun)
+EventKit on **Mac Catalyst needs the `com.apple.security.personal-information.calendars`
+entitlement** — the `NSCalendarsFullAccessUsageDescription` string alone is enough on iOS but
+NOT on Catalyst. Without it `requestFullAccessToEvents()` throws immediately (swallowed by
+`try?`), no prompt ever shows, and the app never even appears in System Settings → Privacy →
+Calendars. The entitlement lives in `ios/Nudge/Nudge/Nudge.entitlements`, wired **SDK-scoped**
+via `CODE_SIGN_ENTITLEMENTS[sdk=macosx*]` so it only applies to the Catalyst build (keeping it
+off the iOS build avoids free-account provisioning issues — that build has no entitlements file
+and must stay that way). The app is **not sandboxed** (no container, no `app-sandbox` key) — do
+NOT add `com.apple.security.app-sandbox`, it would break Supabase networking without a
+`network.client` grant.
+
 ## 5. Hiding StudyTrack / Finance reminders
 
 The shared blob contains reminders authored by other apps (`source == "studytrack"` or

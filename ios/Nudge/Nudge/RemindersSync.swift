@@ -277,8 +277,7 @@ final class RemindersSync: ObservableObject {
     private var links: [String: Link] = [:]   // keyed by nudgeId
 
     private var linksURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("nudge_sync_links.json")
+        nudgeSupportDirectory().appendingPathComponent("nudge_sync_links.json")
     }
     private func loadLinks() {
         guard let d = try? Data(contentsOf: linksURL),

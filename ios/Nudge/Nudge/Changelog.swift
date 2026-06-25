@@ -16,6 +16,24 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.25", title: "Catch a thought", date: "25 Jun 2026",
+            added: [
+                "New Quick Catch: tap the Nudge button in Control Centre, type a thought, and that's it — Claude reads it and picks a smart date & time, working around your calendar events and the days you're already busy",
+                "Nothing is scheduled behind your back: a quick confirmation screen shows the suggested time (with a one-line reason) so you can tweak it or just tap Add",
+                "No API key? It still works — a built-in planner drops the thought into a free slot tomorrow"
+            ],
+            changed: [
+                "The Control Centre button now opens Quick Catch instead of the full reminder form (the full form is still on Siri & Shortcuts as \"Add to Nudge\")"
+            ]),
+        ChangelogEntry(
+            version: "2.24", title: "Calendar on the timetable", date: "24 Jun 2026",
+            added: [
+                "Your real Calendar events now show on the Timetable — timed events appear as green 'busy' blocks behind your reminders, and all-day events as chips along the top, so you can drag reminders around your actual day"
+            ],
+            changed: [
+                "Stale alerts are suppressed: if you complete a reminder on another device, the Mac no longer banners it (while Nudge is open) — including daily repeats that have already rolled to tomorrow"
+            ]),
+        ChangelogEntry(
             version: "2.23", title: "Rewards & end-of-day AI tidy-up", date: "24 Jun 2026",
             added: [
                 "A satisfying complete animation — a gold border traces the reminder, it slides away to the left, and the rest of the list springs up to fill the gap (turn the sound & haptics off in Settings)",

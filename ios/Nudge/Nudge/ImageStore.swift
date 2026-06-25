@@ -1,7 +1,7 @@
 // ImageStore.swift — Nudge (iOS)
 // Local, on-device image attachments. Images live under
-// Documents/nudge_images/<reminderId>/ — NOT in the synced cloud blob, so they
-// stay on this phone (per Noah's choice). Keyed by reminder id; no model fields.
+// <nudgeSupportDirectory>/nudge_images/<reminderId>/ — NOT in the synced cloud blob,
+// so they stay on this device (per Noah's choice). Keyed by reminder id; no model fields.
 
 import UIKit
 
@@ -10,7 +10,7 @@ enum ImageStore {
     // card rendering hits this constantly, so re-creating the dir each time was flagged
     // as excessive I/O.
     private static let root: URL = {
-        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let base = nudgeSupportDirectory()
             .appendingPathComponent("nudge_images", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base

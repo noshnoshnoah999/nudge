@@ -7,6 +7,7 @@ import SwiftUI
 
 struct TimetableView: View {
     @EnvironmentObject var store: NudgeStore
+    @ObservedObject private var calSvc = CalendarService.shared
     @Environment(\.dismiss) private var dismiss
     var undoChanges: [RescheduleChange]? = nil
 
@@ -33,6 +34,10 @@ struct TimetableView: View {
                 lo = min(lo, h); hi = max(hi, h + 1)
             }
         }
+        for e in timedEvents(day) {
+            lo = min(lo, cal.component(.hour, from: e.start))
+            hi = max(hi, cal.component(.hour, from: e.end) + (cal.component(.minute, from: e.end) > 0 ? 1 : 0))
+        }
         if cal.isDateInToday(day) {
             let nh = cal.component(.hour, from: Date())
             lo = min(lo, nh); hi = max(hi, nh + 1)
@@ -48,6 +53,12 @@ struct TimetableView: View {
             guard ($0.hasTime ?? false), let d = parseDate($0.dueDate) else { return false }
             return cal.isDate(d, inSameDayAs: day)
         }
+    }
+    private func timedEvents(_ day: Date) -> [CalendarService.CalEvent] {
+        calSvc.events(on: day).filter { !$0.isAllDay && $0.end > $0.start }
+    }
+    private func allDayEvents(_ day: Date) -> [CalendarService.CalEvent] {
+        calSvc.events(on: day).filter(\.isAllDay)
     }
     private func yFor(_ d: Date) -> CGFloat {
         let h = Double(cal.component(.hour, from: d)) + Double(cal.component(.minute, from: d)) / 60.0
@@ -69,11 +80,13 @@ struct TimetableView: View {
                 dayPills
                 Text("Drag a reminder to change its time")
                     .font(.caption).foregroundStyle(Theme.textMeta).padding(.bottom, 6)
+                allDayBar
                 ScrollView {
                     GeometryReader { geo in
                         let lay = columns(selected)
                         ZStack(alignment: .topLeading) {
                             gridLines
+                            ForEach(timedEvents(selected)) { eventBlock($0, width: geo.size.width) }
                             ForEach(timed(selected)) { block($0, width: geo.size.width, layout: lay) }
                             if cal.isDateInToday(selected) { nowMarker }
                         }
@@ -102,6 +115,7 @@ struct TimetableView: View {
             }
             .onAppear {
                 if let first = undoChanges?.map(\.newDate).min() { selected = cal.startOfDay(for: first) }
+                Task { await CalendarService.shared.requestAccessIfNeeded() }
             }
         }
         .tint(Theme.accent)
@@ -141,6 +155,52 @@ struct TimetableView: View {
         }
         .offset(y: yFor(Date()) - 5)
         .zIndex(2)
+        .allowsHitTesting(false)
+    }
+
+    // All-day calendar events shown as chips above the hour grid (they have no time slot).
+    @ViewBuilder private var allDayBar: some View {
+        let evs = allDayEvents(selected)
+        if !evs.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(evs) { e in
+                        HStack(spacing: 5) {
+                            Image(systemName: "calendar").font(.caption2)
+                            Text(e.title).font(.caption.weight(.semibold)).lineLimit(1)
+                        }
+                        .foregroundStyle(Theme.sage)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Theme.sage.opacity(0.12), in: Capsule())
+                        .overlay(Capsule().stroke(Theme.sage.opacity(0.30), lineWidth: 1))
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    // A read-only "you're busy" block from the calendar, spanning its real duration. Sits
+    // behind reminder cards (which stay draggable) and ignores touches.
+    private func eventBlock(_ e: CalendarService.CalEvent, width: CGFloat) -> some View {
+        let top = yFor(e.start)
+        let bottom = max(top + 24, yFor(e.end))
+        let lead: CGFloat = labelW + 8
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(e.title).font(.caption.weight(.semibold)).foregroundStyle(Theme.sage).lineLimit(1)
+            if bottom - top > 34 {
+                Text("\(timeStr(e.start))–\(timeStr(e.end))")
+                    .font(.caption2).foregroundStyle(Theme.sage.opacity(0.85))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .frame(width: max(60, width - lead - 4), height: bottom - top, alignment: .topLeading)
+        .background(Theme.sage.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Theme.sage.opacity(0.30), lineWidth: 1))
+        .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(Theme.sage).frame(width: 3) }
+        .offset(x: lead, y: top)
         .allowsHitTesting(false)
     }
 

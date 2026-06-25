@@ -9,12 +9,12 @@ import AppIntents
 struct NudgeQuickAddControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "uk.flouty.Nudge.quickadd") {
-            ControlWidgetButton(action: QuickAddReminderIntent()) {
-                Label("Add Reminder", systemImage: "bell.badge.fill")
+            ControlWidgetButton(action: QuickCatchIntent()) {
+                Label("Catch a Thought", systemImage: "bolt.badge.clock.fill")
             }
         }
-        .displayName("Add to Nudge")
-        .description("Quickly add a reminder to Nudge.")
+        .displayName("Catch a Thought")
+        .description("Jot a thought; Nudge picks a smart time for it.")
     }
 }
 #endif

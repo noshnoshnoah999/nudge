@@ -4,6 +4,7 @@
 
 import AppIntents
 
+/// The full New Reminder form (Siri / Shortcuts).
 struct QuickAddReminderIntent: AppIntent {
     static var title: LocalizedStringResource = "Add to Nudge"
     static var description = IntentDescription("Quickly capture a new reminder in Nudge.")
@@ -13,6 +14,21 @@ struct QuickAddReminderIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         AppRouter.shared.requestQuickAdd()
+        return .result()
+    }
+}
+
+/// Quick Catch — the fast "get a thought out of my head" popup. Claude assigns
+/// a smart date + time; the user just confirms. This is what the Control Center
+/// button runs.
+struct QuickCatchIntent: AppIntent {
+    static var title: LocalizedStringResource = "Catch a Thought"
+    static var description = IntentDescription("Jot a thought; Nudge picks a smart time for it.")
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        AppRouter.shared.requestQuickCatch()
         return .result()
     }
 }

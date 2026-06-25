@@ -54,6 +54,33 @@ final class CalendarService: ObservableObject {
         return "\(title) (\(f.string(from: e.startDate))–\(f.string(from: e.endDate)))"
     }
 
+    /// A lightweight, value-type snapshot of a calendar event for the timetable UI.
+    struct CalEvent: Identifiable, Hashable {
+        let id: String
+        let title: String
+        let start: Date
+        let end: Date
+        let isAllDay: Bool
+    }
+
+    /// All of `day`'s events (read-only), for showing your real schedule on the timetable.
+    /// Birthday-calendar entries are excluded (they have their own heads-up flow).
+    func events(on day: Date) -> [CalEvent] {
+        guard authorized else { return [] }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: day)
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? start
+        let pred = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        return store.events(matching: pred)
+            .filter { $0.calendar?.type != .birthday }
+            .map { e in
+                CalEvent(id: e.eventIdentifier ?? UUID().uuidString,
+                         title: (e.title?.isEmpty == false) ? e.title! : "Busy",
+                         start: e.startDate, end: e.endDate, isAllDay: e.isAllDay)
+            }
+            .sorted { $0.start < $1.start }
+    }
+
     /// Busy spans (timed events only) for the Smart-Reschedule planner to avoid.
     func busyIntervals() -> [DateInterval] {
         cache.compactMap { e in

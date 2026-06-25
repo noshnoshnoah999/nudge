@@ -15,6 +15,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // later (NotificationManager.attach, after the SwiftUI scene exists) — setting it this
         // early delivers a launch tap into the half-built window and UIKit asserts (crash).
         MainActor.assumeIsolated { NotificationManager.shared.registerCategories() }
+        // Register the overnight carry-over background task before launch finishes (required
+        // by BGTaskScheduler). Scheduling the first request happens when we go to background.
+        #if !targetEnvironment(macCatalyst)
+        CarryOverBGTask.register()
+        #endif
         return true
     }
 

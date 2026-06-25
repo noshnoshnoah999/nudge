@@ -31,8 +31,7 @@ struct RescheduleLogEntry: Identifiable, Codable {
 /// Persistent log of every Smart Reschedule run (local file, newest first).
 enum RescheduleLog {
     private static var url: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("reschedule_log.json")
+        nudgeSupportDirectory().appendingPathComponent("reschedule_log.json")
     }
     static func all() -> [RescheduleLogEntry] {
         guard let d = try? Data(contentsOf: url) else { return [] }

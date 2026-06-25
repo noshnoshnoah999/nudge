@@ -32,8 +32,7 @@ final class NudgeStore: ObservableObject {
     private let userKey = "2631e558-19f1-4961-9502-d701f4b15826"
 
     private var cacheURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("nudge_cache.json")
+        nudgeSupportDirectory().appendingPathComponent("nudge_cache.json")
     }
 
     init() { loadCache() }
@@ -107,8 +106,7 @@ final class NudgeStore: ObservableObject {
     // Created once on first access — backupSnapshot + lastBackup hit this on every
     // sync, so re-creating the dir each time was flagged as excessive I/O.
     private lazy var backupDir: URL = {
-        let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("backups", isDirectory: true)
+        let d = nudgeSupportDirectory().appendingPathComponent("backups", isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }()

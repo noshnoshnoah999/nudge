@@ -275,8 +275,30 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             willPresent notification: UNNotification) async
         -> UNNotificationPresentationOptions {
-        [.banner, .sound, .list]
+        let show: UNNotificationPresentationOptions = [.banner, .sound, .list]
+        let id = notification.request.identifier
+        // Only reminder alerts are state-checked; digests / payday / birthdays always show.
+        guard id.hasPrefix("nudge-"), !id.hasPrefix("nudge-bday-"),
+              id != "nudge-payday", id != "nudge-digest" else { return show }
+        let raw = String(id.dropFirst("nudge-".count))   // strip "~e<min>" early-alert suffix
+        let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
+
+        // Pull the latest blob first: if this reminder was completed (or, for a daily repeat,
+        // rolled to its next occurrence under a new id) on another device — the iPhone — the
+        // Mac's own pending alert is now stale. Suppress it instead of banner-ing a thing you
+        // already did. (Only helps while Nudge is foregrounded; a fully-asleep Mac can't run
+        // this — that's the per-device local-notification limit.)
+        let store = await storeForPresentationCheck()
+        await store?.refresh()
+        let stale = await MainActor.run { () -> Bool in
+            guard let store else { return false }
+            guard let r = store.reminders.first(where: { $0.id == rid }) else { return true }
+            return (r.completed ?? false) || (r.dismissed ?? false)
+        }
+        return stale ? [] : show
     }
+
+    @MainActor private func storeForPresentationCheck() -> NudgeStore? { nudge }
 
     // Handle the Complete / Snooze action buttons.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,

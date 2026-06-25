@@ -14,6 +14,7 @@ struct ContentView: View {
 
     @State private var tab = 0
     @State private var showAdd = false
+    @State private var showQuickCatch = false
     @State private var editingReminder: Reminder?
     @State private var showTriage = false
     @State private var aiRescheduling = false
@@ -91,6 +92,7 @@ struct ContentView: View {
             CarryOverReviewView(entry: e).environmentObject(store)
         }
         .sheet(isPresented: $showAdd) { AddReminderView(editing: nil).environmentObject(store) }
+        .sheet(isPresented: $showQuickCatch) { QuickCatchView().environmentObject(store) }
         .sheet(item: $editingReminder) { r in AddReminderView(editing: r).environmentObject(store) }
         .sheet(isPresented: $showSettings) {
             SyncSettingsView().environmentObject(sync).environmentObject(notifier)
@@ -125,6 +127,7 @@ struct ContentView: View {
             signingDaysLeft = SigningInfo.daysLeft
             withAnimation(Theme.spring) { shown = true }
             if router.pendingQuickAdd { router.pendingQuickAdd = false; showAdd = true }
+            if router.pendingQuickCatch { router.pendingQuickCatch = false; showQuickCatch = true }
             await store.refresh()
             store.purgeOldCompleted()      // clear reminders completed >3 weeks ago
             stuckCount = store.stuckCount()
@@ -143,7 +146,7 @@ struct ContentView: View {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 // Don't pull/re-render while the user is in the add/edit sheet — a
                 // mid-edit store change can drop the title field's keyboard focus.
-                if showAdd || editingReminder != nil || showSettings { continue }
+                if showAdd || showQuickCatch || editingReminder != nil || showSettings { continue }
                 await store.refresh()
                 stuckCount = store.stuckCount()
                 await notifier.clearStaleDelivered()   // clear alerts for reminders completed elsewhere
@@ -160,6 +163,10 @@ struct ContentView: View {
                 #endif
             case .background:
                 if settings.appLock { isLocked = true; LockShield.shared.show(interactive: true) }
+                // Queue the overnight AI carry-over so iOS can run it while Nudge is closed.
+                #if !targetEnvironment(macCatalyst)
+                CarryOverBGTask.schedule()
+                #endif
             case .active:
                 if isLocked {
                     #if targetEnvironment(macCatalyst)
@@ -178,7 +185,8 @@ struct ContentView: View {
                            stuckCount = store.stuckCount()
                            await sync.syncNow(); await notifier.reschedule()
                            CalendarService.shared.refresh()
-                           maybeRoutineCheckin() }
+                           maybeRoutineCheckin()
+                           await store.maybeRunDailyCarryOver() }   // also run on foreground, not just cold launch
                 }
             @unknown default: break
             }
@@ -196,6 +204,7 @@ struct ContentView: View {
         .onChange(of: store.reminders) { _, _ in stuckCount = store.stuckCount() }
         .onChange(of: showTriage) { _, open in if !open { stuckCount = store.stuckCount() } }
         .onChange(of: router.pendingQuickAdd) { _, v in if v { router.pendingQuickAdd = false; showAdd = true } }
+        .onChange(of: router.pendingQuickCatch) { _, v in if v { router.pendingQuickCatch = false; showQuickCatch = true } }
         .onChange(of: router.pendingShopping) { _, v in if v { router.pendingShopping = false; openShopping() } }
         .onChange(of: router.pendingOpenReminder) { _, id in
             guard let id, let r = store.reminders.first(where: { $0.id == id }) else { return }
