@@ -70,9 +70,10 @@ struct NudgeApp: App {
                 .preferredColorScheme(settings.colorScheme)
                 .task { sync.attach(store); notifier.attach(store) }
                 .onOpenURL { url in
-                    // Lock Screen quick-add widget deep link → open the New Reminder sheet.
+                    // Lock Screen quick-add widget deep link → open the same Quick Catch
+                    // chooser as the Control Centre button (Quick Note vs Reminder).
                     if url.scheme == "nudge", url.host == "quickadd" {
-                        AppRouter.shared.requestQuickAdd()
+                        AppRouter.shared.requestQuickCatch()
                     }
                 }
         }

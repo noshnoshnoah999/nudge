@@ -175,12 +175,13 @@ enum AIScheduler {
         - datetime: a sensible FUTURE local time, ISO-8601 with NO timezone suffix (e.g. 2026-06-26T18:00:00). Strictly after "now".
         - has_time: true if a specific time of day makes sense; false for a loose "someday that day" task (then use 09:00 as a placeholder).
         - priority: "high" only if the wording is clearly urgent/important, "low" if trivial/whenever, else "normal".
-        - reason: ONE short friendly line (max ~10 words) explaining the pick, e.g. "Tomorrow evening — your day looks free".
+        - reason: ALWAYS give ONE short friendly line (max ~12 words) that JUSTIFIES the day you picked, e.g. "Tomorrow evening — your day's free" or "Sat — first quiet day; Thu & Fri are full". If you schedule it further out than tomorrow, the reason MUST say why (which nearer days were too busy or why the wording needs later). Never leave it blank.
 
         Rules:
-        - If the thought names/implies a time ("tonight", "tomorrow 3pm", "before the weekend", "call the dentist") honour it.
-        - Otherwise prefer the soonest QUIETER day (fewer existing reminders) within the next week, at a fitting time of day: gym/breakfast/meds/shower → ~08:00; lunch → ~12:00; study/work/call/email/errand → ~15:00; dinner/cook/groceries → ~18:00; chores/admin → late afternoon. Default loose thoughts to tomorrow.
-        - NEVER place it inside a BUSY calendar interval.
+        - SOONEST-FIRST: default to TOMORROW. Only push to a later day when tomorrow is genuinely full (lots of existing reminders / a busy calendar at every fitting time) OR the wording implies later ("next week", "before the weekend", "after payday"). Do NOT skip ahead just to find a perfectly empty day — a day with a few reminders still has room. Going more than ~3 days out for a loose thought is almost always wrong.
+        - If the thought names/implies a specific time ("tonight", "tomorrow 3pm", "Friday") honour it exactly.
+        - Pick a fitting time of day: gym/breakfast/meds/shower → ~08:00; lunch → ~12:00; study/work/call/email/errand → ~15:00; dinner/cook/groceries → ~18:00; chores/admin → late afternoon.
+        - NEVER place it inside a BUSY calendar interval — just choose another free time the SAME day rather than moving to another day.
         - All times 07:00–22:00 local.
         """
         let userMsg = """

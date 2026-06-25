@@ -16,6 +16,15 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.26", title: "Quick Catch: Note or Reminder", date: "25 Jun 2026",
+            added: [
+                "Quick Catch now opens a chooser: 'Quick Note' lets Claude pick a smart date & time for you, or 'Reminder' opens the full form to set everything yourself",
+                "The Lock Screen widget now opens the same chooser as the Control Centre button (they were out of sync)"
+            ],
+            changed: [
+                "Smart timing now leans much sooner — it defaults to tomorrow and only pushes further out when nearer days are genuinely full, and every suggestion comes with a reason for the day it chose"
+            ]),
+        ChangelogEntry(
             version: "2.25", title: "Catch a thought", date: "25 Jun 2026",
             added: [
                 "New Quick Catch: tap the Nudge button in Control Centre, type a thought, and that's it — Claude reads it and picks a smart date & time, working around your calendar events and the days you're already busy",

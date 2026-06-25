@@ -12,8 +12,8 @@ struct QuickCatchView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("anthropic_api_key") private var aiKey = ""
 
-    private enum Phase { case input, thinking, confirm }
-    @State private var phase: Phase = .input
+    private enum Phase { case chooser, input, thinking, confirm }
+    @State private var phase: Phase = .chooser
     @State private var thought = ""
     @FocusState private var focused: Bool
 
@@ -30,6 +30,7 @@ struct QuickCatchView: View {
         NavigationStack {
             Group {
                 switch phase {
+                case .chooser:  chooserScreen
                 case .input:    inputScreen
                 case .thinking: thinkingScreen
                 case .confirm:  confirmScreen
@@ -43,8 +44,58 @@ struct QuickCatchView: View {
             }
         }
         .tint(Theme.accent)
-        .presentationDetents(phase == .input ? [.height(260)] : [.medium])
+        .presentationDetents((phase == .chooser || phase == .input) ? [.height(300)] : [.medium])
         .presentationDragIndicator(.visible)
+    }
+
+    // MARK: Step 0 — choose Quick Note (AI times it) vs Reminder (full form)
+    private var chooserScreen: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("What's on your mind?")
+                    .font(.title2.bold()).foregroundStyle(Theme.textMain)
+                Text("Jot it down — pick how you want it handled.")
+                    .font(.subheadline).foregroundStyle(Theme.textMeta)
+            }
+            Button { withAnimation(Theme.snappy) { phase = .input } } label: {
+                choiceRow(icon: "sparkles", title: "Quick Note",
+                          sub: "Just type it — Claude picks a smart date & time", filled: true)
+            }
+            Button { openFullReminder() } label: {
+                choiceRow(icon: "slider.horizontal.3", title: "Reminder",
+                          sub: "Set the date, time & priority yourself", filled: false)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+    }
+
+    @ViewBuilder
+    private func choiceRow(icon: String, title: String, sub: String, filled: Bool) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3).foregroundStyle(filled ? .white : Theme.accent)
+                .frame(width: 44, height: 44)
+                .background(filled ? Theme.accent : Theme.accentSoft, in: RoundedRectangle(cornerRadius: 11))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline).foregroundStyle(Theme.textMain)
+                Text(sub).font(.caption).foregroundStyle(Theme.textMeta)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textMeta)
+        }
+        .padding(14)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// Hand off to the full New Reminder form: close this sheet, then ask the router to
+    /// present it once we've fully dismissed (avoids two sheets fighting to present).
+    private func openFullReminder() {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            AppRouter.shared.requestQuickAdd()
+        }
     }
 
     // MARK: Step 1 — capture
