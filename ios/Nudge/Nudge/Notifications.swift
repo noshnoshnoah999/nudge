@@ -189,7 +189,6 @@ final class NotificationManager: NSObject, ObservableObject {
             let req = UNNotificationRequest(identifier: nid, content: content, trigger: trigger)
             try? await center.add(req)
         }
-        await scheduleDigest(nudge: nudge, center: center)
         await schedulePayday(nudge: nudge, center: center)
         await scheduleBirthdays(center: center)
         await clearStaleDelivered()   // drop delivered alerts for now-completed reminders
@@ -243,31 +242,6 @@ final class NotificationManager: NSObject, ObservableObject {
         try? await center.add(UNNotificationRequest(identifier: "nudge-payday", content: content, trigger: trigger))
     }
 
-    /// A daily 9am digest of overdue + due-today counts. This is what makes
-    /// notifications useful when most reminders are already overdue (those never
-    /// fire their own alert). Refreshed each time reschedule() runs.
-    private func scheduleDigest(nudge: NudgeStore, center: UNUserNotificationCenter) async {
-        let cal = Calendar.current, now = Date()
-        var overdue = 0, today = 0
-        for r in nudge.reminders {
-            if (r.completed ?? false) || (r.dismissed ?? false) { continue }
-            guard let d = parseDate(r.dueDate) else { continue }
-            if let s = parseDate(r.snoozedUntil), s > now { continue }
-            if d < now { overdue += 1 } else if cal.isDateInToday(d) { today += 1 }
-        }
-        guard overdue > 0 || today > 0 else { return }
-        let content = UNMutableNotificationContent()
-        content.title = "Good Morning"
-        var parts: [String] = []
-        if overdue > 0 { parts.append("\(overdue) overdue") }
-        if today > 0 { parts.append("\(today) due today") }
-        content.body = parts.joined(separator: " · ") + " — tap to triage"
-        content.sound = .default
-        content.threadIdentifier = "nudge-digest"
-        var comps = DateComponents(); comps.hour = 9; comps.minute = 0
-        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
-        try? await center.add(UNNotificationRequest(identifier: "nudge-digest", content: content, trigger: trigger))
-    }
 }
 
 // Show banners even when Nudge is in the foreground.
@@ -277,9 +251,9 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         -> UNNotificationPresentationOptions {
         let show: UNNotificationPresentationOptions = [.banner, .sound, .list]
         let id = notification.request.identifier
-        // Only reminder alerts are state-checked; digests / payday / birthdays always show.
+        // Only reminder alerts are state-checked; payday / birthdays always show.
         guard id.hasPrefix("nudge-"), !id.hasPrefix("nudge-bday-"),
-              id != "nudge-payday", id != "nudge-digest" else { return show }
+              id != "nudge-payday" else { return show }
         let raw = String(id.dropFirst("nudge-".count))   // strip "~e<min>" early-alert suffix
         let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
 
