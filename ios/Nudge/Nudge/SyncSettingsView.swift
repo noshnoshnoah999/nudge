@@ -23,26 +23,30 @@ struct SyncSettingsView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Theme").font(.subheadline)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(Palettes.all) { p in
-                                    Button { withAnimation(Theme.spring) { settings.theme = p.id } } label: {
-                                        VStack(spacing: 6) {
-                                            ZStack {
-                                                Circle().fill(Color(hex: p.bg)).frame(width: 40, height: 40)
-                                                Circle().fill(Color(hex: p.accent)).frame(width: 18, height: 18)
-                                            }
-                                            .overlay(Circle().stroke(settings.theme == p.id ? Color(hex: p.accent) : Color.black.opacity(0.1),
-                                                                     lineWidth: settings.theme == p.id ? 2.5 : 1)
-                                                .frame(width: 46, height: 46))
-                                            Text(p.name).font(.caption2.weight(settings.theme == p.id ? .bold : .regular))
+                        // All 7 palettes wrap into a grid so none are hidden off-screen
+                        // (Ocean used to be clipped past the right edge of a horizontal scroll).
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
+                                  spacing: 14) {
+                            ForEach(Palettes.all) { p in
+                                Button { withAnimation(Theme.spring) { settings.theme = p.id } } label: {
+                                    VStack(spacing: 6) {
+                                        ZStack {
+                                            Circle().fill(Color(hex: p.bg)).frame(width: 40, height: 40)
+                                            Circle().fill(Color(hex: p.accent)).frame(width: 18, height: 18)
                                         }
+                                        .overlay(Circle().stroke(settings.theme == p.id ? Color(hex: p.accent) : Color.black.opacity(0.1),
+                                                                 lineWidth: settings.theme == p.id ? 2.5 : 1)
+                                            .frame(width: 46, height: 46))
+                                        Text(p.name)
+                                            .font(.caption2.weight(settings.theme == p.id ? .bold : .regular))
+                                            .lineLimit(1).minimumScaleFactor(0.8)
                                     }
-                                    .buttonStyle(.plain)
+                                    .frame(maxWidth: .infinity)
                                 }
+                                .buttonStyle(.plain)
                             }
-                            .padding(.vertical, 4).padding(.horizontal, 2)
                         }
+                        .padding(.vertical, 4)
                     }
 
                     Toggle("Compact list", isOn: Binding(

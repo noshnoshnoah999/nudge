@@ -16,6 +16,12 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.27", title: "All themes at a glance", date: "4 Jul 2026",
+            added: [],
+            changed: [
+                "The theme picker in Settings now shows all 7 colours at once in a grid — Ocean and Graphite were being clipped off the edge of the old side-scrolling row, so you had to swipe to find them"
+            ]),
+        ChangelogEntry(
             version: "2.26", title: "Quick Catch: Note or Reminder", date: "25 Jun 2026",
             added: [
                 "Quick Catch now opens a chooser: 'Quick Note' lets Claude pick a smart date & time for you, or 'Reminder' opens the full form to set everything yourself",
