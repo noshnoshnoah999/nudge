@@ -30,6 +30,8 @@ struct GroupCardView: View {
 
     private var radius: CGFloat { settings.compact ? 14 : 18 }
     private var count: Int { items.count }
+    // Dark orange used to fence the expanded group off from the loose reminders around it.
+    private let darkOrange = Color(red: 0.80, green: 0.34, blue: 0.02)
 
     var body: some View {
         VStack(alignment: .leading, spacing: expanded ? (settings.compact ? 8 : 10) : 0) {
@@ -40,6 +42,17 @@ struct GroupCardView: View {
                         .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)),
                                                 removal: .opacity))
                 }
+            }
+        }
+        // When expanded, wrap the header + members in a dark-orange box so the grouped
+        // reminders read as one unit, clearly separated from the individual cards around them.
+        .padding(expanded ? (settings.compact ? 8 : 10) : 0)
+        .background(expanded ? darkOrange.opacity(0.06) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: radius + 4, style: .continuous))
+        .overlay {
+            if expanded {
+                RoundedRectangle(cornerRadius: radius + 4, style: .continuous)
+                    .strokeBorder(darkOrange, lineWidth: 2)
             }
         }
     }

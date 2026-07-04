@@ -16,6 +16,12 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.29", title: "Grouped reminders stand out", date: "4 Jul 2026",
+            added: [],
+            changed: [
+                "When you open a group, its reminders are now wrapped in a dark-orange box so the grouped ones are clearly separated from the individual reminders around them"
+            ]),
+        ChangelogEntry(
             version: "2.28", title: "Group reminders", date: "4 Jul 2026",
             added: [
                 "New AI grouping: Claude bundles related reminders (same theme, project, or errand) into one collapsible card so your list feels less cluttered — tap a group to open it and see everything inside, tap again to collapse",
