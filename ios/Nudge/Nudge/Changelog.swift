@@ -16,6 +16,17 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.28", title: "Group reminders", date: "4 Jul 2026",
+            added: [
+                "New AI grouping: Claude bundles related reminders (same theme, project, or errand) into one collapsible card so your list feels less cluttered — tap a group to open it and see everything inside, tap again to collapse",
+                "Group any time from Settings → Group reminders → \"Group similar reminders now\", or let it run automatically each night at 23:50 (there's a toggle to turn the nightly run off)",
+                "When it groups overnight, you'll see an orange banner the next morning — tap it to review exactly what got grouped, with an Ungroup button on each",
+                "Grouping history (last month) lives in Settings, like the carry-over log"
+            ],
+            changed: [
+                "Grouping is completely non-destructive: nothing is deleted or rescheduled, Ungroup undoes it instantly, and only reminders with no date (or due more than 3 days out) are ever grouped — so nothing overdue or coming up soon is hidden. Nightly and repeating routines are never touched"
+            ]),
+        ChangelogEntry(
             version: "2.27", title: "All themes at a glance", date: "4 Jul 2026",
             added: [],
             changed: [

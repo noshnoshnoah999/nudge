@@ -41,6 +41,8 @@ struct ContentView: View {
     @State private var routineStepUps: [Reminder] = []
     @ObservedObject private var carryLog = CarryOverLog.shared
     @State private var showCarryReview: CarryOverEntry?
+    @ObservedObject private var groupLog = GroupLog.shared
+    @State private var showGroupReview: GroupRunEntry?
     @Namespace private var tabNS
 
     private let tabs: [(name: String, icon: String)] = [
@@ -54,6 +56,7 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 if carryLog.unseenEntry != nil { carryOverBanner }
+                if groupLog.unseenEntry != nil { groupBanner }
                 header
                 if let d = signingDaysLeft, d <= 2, expiryDismissedAtDays != d { expiryBanner(d) }
                 ScrollView {
@@ -90,6 +93,9 @@ struct ContentView: View {
         .overlay { if preparingClaude { preparingOverlay } }
         .sheet(item: $showCarryReview) { e in
             CarryOverReviewView(entry: e).environmentObject(store)
+        }
+        .sheet(item: $showGroupReview) { e in
+            GroupReviewView(entry: e).environmentObject(store)
         }
         .sheet(isPresented: $showAdd) { AddReminderView(editing: nil).environmentObject(store) }
         .sheet(isPresented: $showQuickCatch) { QuickCatchView().environmentObject(store) }
@@ -135,6 +141,7 @@ struct ContentView: View {
             await CalendarService.shared.requestAccessIfNeeded()   // for event-conflict checks
             maybeRoutineCheckin()
             await store.maybeRunDailyCarryOver()   // end-of-day AI carry-over (23:50), runs once/day
+            await store.maybeRunDailyGrouping()    // end-of-day AI grouping (23:50), runs once/day
             processPendingNotification()   // a tap that cold-launched the app, now that it's live
         }
         .task {
@@ -186,7 +193,8 @@ struct ContentView: View {
                            await sync.syncNow(); await notifier.reschedule()
                            CalendarService.shared.refresh()
                            maybeRoutineCheckin()
-                           await store.maybeRunDailyCarryOver() }   // also run on foreground, not just cold launch
+                           await store.maybeRunDailyCarryOver()   // also run on foreground, not just cold launch
+                           await store.maybeRunDailyGrouping() }
                 }
             @unknown default: break
             }
@@ -571,9 +579,7 @@ struct ContentView: View {
         if items.isEmpty {
             emptyCard("checkmark.circle.fill", "Nothing due today", "You're on top of it.")
         } else {
-            ForEach(Array(items.enumerated()), id: \.element.id) { i, r in
-                ReminderCardView(reminder: r) { editingReminder = r }.popIn(i)
-            }
+            groupedRows(items)
         }
     }
 
@@ -586,9 +592,7 @@ struct ContentView: View {
                       "Reminders from before today land here. Anything due today stays on the Today tab until midnight.")
         } else {
             smartRescheduleButton   // AI-first (with heuristic fallback) — see runSmartReschedule
-            ForEach(Array(items.enumerated()), id: \.element.id) { i, r in
-                ReminderCardView(reminder: r) { editingReminder = r }.popIn(i)
-            }
+            groupedRows(items)
         }
     }
 
@@ -801,11 +805,19 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             if !isCollapsed {
-                ForEach(section.items) { r in
-                    ReminderCardView(reminder: r) { editingReminder = r }
-                        .transition(.asymmetric(
-                            insertion: .opacity,
-                            removal: .scale(scale: 0.9).combined(with: .opacity)))
+                ForEach(store.listItems(section.items)) { item in
+                    switch item {
+                    case .single(let r):
+                        ReminderCardView(reminder: r) { editingReminder = r }
+                            .transition(.asymmetric(
+                                insertion: .opacity,
+                                removal: .scale(scale: 0.9).combined(with: .opacity)))
+                    case .group(let id, let title, let members):
+                        GroupCardView(groupId: id, title: title, items: members) { editingReminder = $0 }
+                            .transition(.asymmetric(
+                                insertion: .opacity,
+                                removal: .scale(scale: 0.9).combined(with: .opacity)))
+                    }
                 }
             }
         }
@@ -912,6 +924,53 @@ struct ContentView: View {
         .padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 4)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { carryGlow = true }
+        }
+    }
+
+    // Orange banner on the first open after an overnight AI grouping ran.
+    @State private var groupGlow = false
+    private var groupBanner: some View {
+        let e = groupLog.unseenEntry
+        return Button {
+            showGroupReview = e
+            groupLog.dismissBanner()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "folder.fill.badge.plus").foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("AI grouped reminders last night").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    Text("Made \(e?.groups.count ?? 0) group\((e?.groups.count ?? 0) == 1 ? "" : "s") from \(e?.groupedCount ?? 0) reminders. Tap to review.")
+                        .font(.caption).foregroundStyle(.white.opacity(0.95))
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.subheadline.weight(.bold)).foregroundStyle(.white.opacity(0.9))
+            }
+            .padding(12)
+            .background(
+                LinearGradient(colors: [Color(red: 0.98, green: 0.55, blue: 0.10),
+                                        Color(red: 0.92, green: 0.38, blue: 0.02)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: Color.orange.opacity(groupGlow ? 0.8 : 0.3),
+                    radius: groupGlow ? 15 : 6, y: 0)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 4)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { groupGlow = true }
+        }
+    }
+
+    /// Render a flat reminder list with grouped members collapsed into group cards.
+    /// `base` offsets the pop-in stagger so it lines up with any rows shown above.
+    @ViewBuilder private func groupedRows(_ items: [Reminder], base: Int = 0) -> some View {
+        ForEach(Array(store.listItems(items).enumerated()), id: \.element.id) { i, item in
+            switch item {
+            case .single(let r):
+                ReminderCardView(reminder: r) { editingReminder = r }.popIn(base + i)
+            case .group(let id, let title, let members):
+                GroupCardView(groupId: id, title: title, items: members) { editingReminder = $0 }.popIn(base + i)
+            }
         }
     }
 

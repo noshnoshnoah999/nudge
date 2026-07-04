@@ -15,6 +15,9 @@ struct SyncSettingsView: View {
     @AppStorage("anthropic_api_key") private var aiKey = ""
     @State private var showDupPreview = false
     @State private var dupGroups: [DuplicateGroup] = []
+    @AppStorage("autoGroupNightly") private var autoGroupNightly = true
+    @State private var groupingBusy = false
+    @State private var groupingResult: String?
 
     var body: some View {
         NavigationStack {
@@ -100,6 +103,51 @@ struct SyncSettingsView: View {
                     Text("End-of-day Carry-Over")
                 } footer: {
                     Text("Each night at 23:50, Claude reviews the reminders you didn't finish and carries over only the important ones to the next day. Nightly and repeating routines are never moved. See the last month of runs here.")
+                }
+                .listRowBackground(Theme.surface)
+
+                // MARK: Group reminders
+                Section {
+                    Button {
+                        guard !groupingBusy else { return }
+                        groupingBusy = true; groupingResult = nil
+                        Task {
+                            let n = await store.groupNowAI()
+                            await MainActor.run {
+                                groupingBusy = false
+                                switch n {
+                                case .none:      groupingResult = "Add an API key above to use AI grouping."
+                                case .some(0):   groupingResult = "Nothing to group right now."
+                                case .some(let c): groupingResult = "Grouped \(c) reminder\(c == 1 ? "" : "s")."
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Label("Group similar reminders now", systemImage: "folder.badge.plus")
+                                .foregroundStyle(Theme.textMain)
+                            Spacer()
+                            if groupingBusy { ProgressView().controlSize(.small) }
+                        }
+                    }
+                    .disabled(groupingBusy)
+
+                    if let r = groupingResult {
+                        Text(r).font(.caption).foregroundStyle(Theme.textMeta)
+                    }
+
+                    Toggle("Group automatically at 23:50", isOn: $autoGroupNightly)
+
+                    NavigationLink {
+                        GroupHistoryView().environmentObject(store)
+                    } label: {
+                        Label("Grouping history", systemImage: "folder")
+                            .foregroundStyle(Theme.textMain)
+                    }
+                } header: {
+                    Text("Group reminders")
+                } footer: {
+                    Text("Claude bundles related reminders (same theme, project, or errand) into one collapsible card to clear clutter — tap a group to see everything inside. Nothing is deleted or rescheduled, and Ungroup undoes it instantly. Only reminders with no date, or due more than 3 days out, are grouped, so nothing overdue or coming up soon gets hidden. Runs on tap and, when the toggle is on, automatically each night at 23:50 (you'll see an orange banner to review it next morning).")
                 }
                 .listRowBackground(Theme.surface)
 

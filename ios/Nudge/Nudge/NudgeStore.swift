@@ -767,6 +767,129 @@ final class NudgeStore: ObservableObject {
         }
     }
 
+    // MARK: - Group reminders (AI clustering to clear clutter)
+
+    /// Reminders eligible to be grouped. Deliberately conservative so grouping never HIDES an
+    /// actionable item inside a collapsed card:
+    /// - incomplete, not dismissed, not pinned
+    /// - not protected (routines / recurring / escalating are left alone)
+    /// - not already in a group
+    /// - either has NO due date, or is due more than 3 days out — so nothing overdue or coming
+    ///   up soon gets tucked away. Near-term work stays visible as normal cards.
+    func groupCandidates(now: Date = Date()) -> [Reminder] {
+        let soon = Calendar.current.date(byAdding: .day, value: 3, to: now) ?? now
+        return reminders.filter { r in
+            guard !(r.completed ?? false), !(r.dismissed ?? false), !(r.pinned ?? false) else { return false }
+            guard !r.isProtectedFromAI, !r.isGrouped else { return false }
+            if let due = parseDate(r.dueDate) { return due > soon }   // far-off only
+            return true                                               // no-date pile
+        }
+    }
+
+    /// Apply proposed groups to the reminders (sets groupId/groupTitle/groupSource on members).
+    /// Non-destructive. Returns a GroupedSet per applied group for the run log / review sheet.
+    @discardableResult
+    func applyProposedGroups(_ groups: [ProposedGroup], source: String) -> [GroupedSet] {
+        var applied: [GroupedSet] = []
+        for g in groups {
+            let members = g.reminderIds.compactMap { id in reminders.firstIndex(where: { $0.id == id }) }
+            guard members.count >= 2 else { continue }
+            for i in members {
+                reminders[i].groupId = g.id
+                reminders[i].groupTitle = g.title
+                reminders[i].groupSource = source
+                reminders[i].updatedAt = iso(Date())
+            }
+            let titles = members.map { displayTitle(reminders[$0]) }
+            applied.append(GroupedSet(id: g.id, title: g.title,
+                                      reminderIds: g.reminderIds, reminderTitles: titles))
+        }
+        if !applied.isEmpty { persist() }
+        return applied
+    }
+
+    /// Break a group back apart — clears the grouping fields on all its members. Nothing else
+    /// changes (due dates, lists, etc. are untouched).
+    func ungroup(_ groupId: String) {
+        var changed = false
+        for i in reminders.indices where reminders[i].groupId == groupId {
+            reminders[i].groupId = nil
+            reminders[i].groupTitle = nil
+            reminders[i].groupSource = nil
+            reminders[i].updatedAt = iso(Date())
+            changed = true
+        }
+        if changed { persist() }
+    }
+
+    /// Manual "Group similar reminders now" (Settings button). Returns the number of reminders
+    /// grouped, or nil if there's no API key / nothing to group / the AI call failed.
+    func groupNowAI() async -> Int? {
+        let candidates = groupCandidates()
+        guard candidates.count >= 2 else { return 0 }
+        let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
+        guard !key.isEmpty else { return nil }
+        let model = AIScheduler.defaultModel   // Sonnet — never Opus/Haiku
+        guard let proposed = try? await AIGrouper.propose(candidates: candidates, apiKey: key, model: model),
+              !proposed.isEmpty else { return 0 }
+        let applied = applyProposedGroups(proposed, source: "manual")
+        return applied.reduce(0) { $0 + $1.reminderIds.count }
+    }
+
+    /// Overnight auto-grouping at 23:50 (same window as the carry-over). Runs once per day,
+    /// no-ops until 23:50 has passed. Auto-applies (it's non-destructive & reversible) and
+    /// records the run so the next morning shows the orange review banner. Respects the
+    /// "autoGroupNightly" toggle (default on) so the user can turn it off.
+    func maybeRunDailyGrouping() async {
+        guard UserDefaults.standard.object(forKey: "autoGroupNightly") as? Bool ?? true else { return }
+        let target = carryOverTargetDay()   // reuse the shared 23:50 day-key logic
+        guard GroupLog.shared.lastProcessedDay != target.key else { return }
+
+        let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
+        guard !key.isEmpty else { return }   // no AI without a key; retry next launch
+        let model = AIScheduler.defaultModel
+
+        let candidates = groupCandidates()
+        guard candidates.count >= 2 else { GroupLog.shared.markProcessed(target.key); return }
+
+        let proposed: [ProposedGroup]
+        do {
+            proposed = try await AIGrouper.propose(candidates: candidates, apiKey: key, model: model)
+        } catch {
+            return   // network/API failure — leave unprocessed so it retries next launch
+        }
+        guard !proposed.isEmpty else { GroupLog.shared.markProcessed(target.key); return }
+
+        let applied = applyProposedGroups(proposed, source: "ai")
+        await MainActor.run {
+            GroupLog.shared.record(GroupRunEntry(id: target.key, ranAt: iso(Date()), groups: applied))
+        }
+    }
+
+    /// Collapse a flat reminder list into rows: singles stay as-is; grouped members within THIS
+    /// list collapse into one group row positioned at the first member's spot. Each tab passes
+    /// its own already-filtered list, so a group only appears where its members would.
+    func listItems(_ items: [Reminder]) -> [ListItem] {
+        var out: [ListItem] = []
+        var seen = Set<String>()
+        for r in items {
+            if let gid = r.groupId, !gid.isEmpty {
+                if seen.contains(gid) { continue }
+                seen.insert(gid)
+                let members = items.filter { $0.groupId == gid }
+                // A lone surviving member (others completed/filtered out) shows as a normal card.
+                if members.count >= 2 {
+                    out.append(.group(id: gid, title: r.groupTitle ?? "Group", items: members))
+                } else {
+                    out.append(.single(r))
+                }
+            } else {
+                out.append(.single(r))
+            }
+        }
+        return out
+    }
+
     // MARK: - Targeted triage (the reminders you keep avoiding)
     /// Open reminders Smart Reschedule has had to move 3+ times — i.e. they keep
     /// lapsing. Excludes ones you recently chose to "Keep". Most-moved first.

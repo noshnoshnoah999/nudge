@@ -52,6 +52,7 @@ enum CarryOverBGTask {
             let store = NudgeStore()
             await store.refresh()                 // pull the latest blob first
             await store.maybeRunDailyCarryOver()  // runs once/day, no-ops if already done
+            await store.maybeRunDailyGrouping()   // overnight AI grouping, runs once/day
             task.setTaskCompleted(success: true)
         }
         task.expirationHandler = { work.cancel() }

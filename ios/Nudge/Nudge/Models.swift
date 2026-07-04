@@ -111,8 +111,18 @@ struct Reminder: Codable, Identifiable, Hashable {
     // "Urgent": schedule a real AlarmKit alarm (rings + Live Activity at the due time, even
     // when the app is closed) — like Apple Reminders' urgent reminders. iOS 26+.
     var urgent: Bool? = nil
+    // Grouping: reminders that share a `groupId` are shown collapsed into one "group card"
+    // to clear clutter; tapping expands to reveal all members. `groupTitle` is denormalised
+    // onto each member so any client can render the group with no lookup table (keeps the
+    // web PWA able to display/expand groups the phone made). `groupSource` = "ai" | "manual".
+    // Fully NON-DESTRUCTIVE: ungrouping just clears these three fields; nothing is deleted and
+    // each reminder keeps its own due date, list, etc.
+    var groupId: String? = nil
+    var groupTitle: String? = nil
+    var groupSource: String? = nil
 
     var isCompleted: Bool { completed ?? false }
+    var isGrouped: Bool { (groupId?.isEmpty == false) }
     var listIdOrDefault: String { listId ?? "reminders" }
     var priorityOrNormal: String { priority ?? "normal" }
 
