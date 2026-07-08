@@ -99,15 +99,8 @@ struct AddReminderView: View {
                         .padding(16)
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
-                        // NOTE: the belt-and-braces simultaneousGesture(TapGesture()) that used
-                        // to sit here (force-focus on tap) has been removed. Even gated to
-                        // "!titleFocused" it was still interfering with double-tap-to-select on
-                        // multi-line titles (bug reported: works on some reminders, not all —
-                        // specifically fails when the title wraps to 2+ lines). Relying on
-                        // .focused($titleFocused) alone now. If tapping to focus a NEW reminder's
-                        // title stops reliably raising the keyboard because of this, that's the
-                        // original ScrollView/vertical-TextField first-responder bug returning —
-                        // report back rather than re-adding the tap-forcing hack blind.
+                        // Belt-and-braces: also force focus on tap (doesn't steal the tap).
+                        .simultaneousGesture(TapGesture().onEnded { titleFocused = true })
 
                     // Schedule
                     section("When") {
@@ -301,8 +294,7 @@ struct AddReminderView: View {
                         TextField("Add notes…", text: $notes, axis: .vertical)
                             .lineLimit(2...6).foregroundStyle(Theme.textMain).padding(.vertical, 10)
                             .focused($notesFocused)
-                            // Same gating as the title field above — see comment there.
-                            .simultaneousGesture(TapGesture().onEnded { if !notesFocused { notesFocused = true } })
+                            .simultaneousGesture(TapGesture().onEnded { notesFocused = true })
                     }
 
                     if let e = editing {
