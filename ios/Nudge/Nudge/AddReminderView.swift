@@ -100,7 +100,11 @@ struct AddReminderView: View {
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
                         // Belt-and-braces: also force focus on tap (doesn't steal the tap).
-                        .simultaneousGesture(TapGesture().onEnded { titleFocused = true })
+                        // Gated on !titleFocused so this doesn't re-fire (and race the
+                        // system's double-tap-to-select recognizer) once the field is
+                        // already focused — that collision was breaking word selection
+                        // when editing an existing reminder's title on iOS.
+                        .simultaneousGesture(TapGesture().onEnded { if !titleFocused { titleFocused = true } })
 
                     // Schedule
                     section("When") {
@@ -294,7 +298,8 @@ struct AddReminderView: View {
                         TextField("Add notes…", text: $notes, axis: .vertical)
                             .lineLimit(2...6).foregroundStyle(Theme.textMain).padding(.vertical, 10)
                             .focused($notesFocused)
-                            .simultaneousGesture(TapGesture().onEnded { notesFocused = true })
+                            // Same gating as the title field above — see comment there.
+                            .simultaneousGesture(TapGesture().onEnded { if !notesFocused { notesFocused = true } })
                     }
 
                     if let e = editing {
