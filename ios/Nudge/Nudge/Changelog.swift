@@ -19,7 +19,7 @@ enum Changelog {
             version: "2.30", title: "Fixed word selection when editing", date: "8 Jul 2026",
             added: [],
             changed: [
-                "Fixed a bug where double-tapping a word to select it didn't work when editing an existing reminder's title or notes on iPhone (worked fine for new reminders and on Mac)"
+                "Fixed a bug where double-tapping a word to select it didn't work when editing an existing reminder's title on iPhone, especially once the title wrapped to two or more lines (worked fine for new reminders and on Mac)"
             ]),
         ChangelogEntry(
             version: "2.29", title: "Grouped reminders stand out", date: "4 Jul 2026",

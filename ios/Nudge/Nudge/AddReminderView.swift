@@ -99,12 +99,15 @@ struct AddReminderView: View {
                         .padding(16)
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
-                        // Belt-and-braces: also force focus on tap (doesn't steal the tap).
-                        // Gated on !titleFocused so this doesn't re-fire (and race the
-                        // system's double-tap-to-select recognizer) once the field is
-                        // already focused — that collision was breaking word selection
-                        // when editing an existing reminder's title on iOS.
-                        .simultaneousGesture(TapGesture().onEnded { if !titleFocused { titleFocused = true } })
+                        // NOTE: the belt-and-braces simultaneousGesture(TapGesture()) that used
+                        // to sit here (force-focus on tap) has been removed. Even gated to
+                        // "!titleFocused" it was still interfering with double-tap-to-select on
+                        // multi-line titles (bug reported: works on some reminders, not all —
+                        // specifically fails when the title wraps to 2+ lines). Relying on
+                        // .focused($titleFocused) alone now. If tapping to focus a NEW reminder's
+                        // title stops reliably raising the keyboard because of this, that's the
+                        // original ScrollView/vertical-TextField first-responder bug returning —
+                        // report back rather than re-adding the tap-forcing hack blind.
 
                     // Schedule
                     section("When") {
