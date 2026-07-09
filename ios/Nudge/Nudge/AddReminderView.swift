@@ -115,6 +115,39 @@ struct AddReminderView: View {
         ("Australia — Sydney", "Australia/Sydney")
     ]
 
+    /// The Repeat / interval / End-repeat rows. Extracted from `body` so the Swift
+    /// type-checker doesn't time out on one giant expression ("unable to type-check in
+    /// reasonable time"). Behaviour is unchanged — same rows, same bindings.
+    @ViewBuilder private var repeatSection: some View {
+        menuRow("Repeat", "repeat") {
+            Picker("Repeat", selection: $repeatFreq.animation(Theme.spring)) {
+                Text("Never").tag("none")
+                Text("Hourly").tag("hourly")
+                Text("Daily").tag("daily")
+                Text("Weekly").tag("weekly")
+                Text("Monthly").tag("monthly")
+                Text("Yearly").tag("yearly")
+            }.labelsHidden().tint(Theme.accent)
+        }
+        if repeatFreq != "none" {
+            divider
+            Stepper(value: $repeatInterval, in: stepRange) {
+                rowLabel("Every \(repeatInterval) \(unitLabel)", "number")
+            }
+            .tint(Theme.accent).padding(.vertical, 6)
+            divider
+            toggleRow("End repeat", systemImage: "calendar.badge.exclamationmark",
+                      isOn: $hasUntil.animation(Theme.spring))
+            if hasUntil {
+                divider
+                DatePicker(selection: $until, displayedComponents: [.date]) {
+                    rowLabel("Ends", "flag.checkered")
+                }
+                .tint(Theme.accent).padding(.vertical, 6)
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -183,33 +216,7 @@ struct AddReminderView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             divider
-                            menuRow("Repeat", "repeat") {
-                                Picker("Repeat", selection: $repeatFreq.animation(Theme.spring)) {
-                                    Text("Never").tag("none")
-                                    Text("Hourly").tag("hourly")
-                                    Text("Daily").tag("daily")
-                                    Text("Weekly").tag("weekly")
-                                    Text("Monthly").tag("monthly")
-                                    Text("Yearly").tag("yearly")
-                                }.labelsHidden().tint(Theme.accent)
-                            }
-                            if repeatFreq != "none" {
-                                divider
-                                Stepper(value: $repeatInterval, in: stepRange) {
-                                    rowLabel("Every \(repeatInterval) \(unitLabel)", "number")
-                                }
-                                .tint(Theme.accent).padding(.vertical, 6)
-                                divider
-                                toggleRow("End repeat", systemImage: "calendar.badge.exclamationmark",
-                                          isOn: $hasUntil.animation(Theme.spring))
-                                if hasUntil {
-                                    divider
-                                    DatePicker(selection: $until, displayedComponents: [.date]) {
-                                        rowLabel("Ends", "flag.checkered")
-                                    }
-                                    .tint(Theme.accent).padding(.vertical, 6)
-                                }
-                            }
+                            repeatSection
                             divider
                             toggleRow("Nightly check-in", systemImage: "moon.stars",
                                       isOn: $routine.animation(Theme.spring))
@@ -389,24 +396,19 @@ struct AddReminderView: View {
             } message: {
                 Text("Your calendar has \(conflictMsg ?? "an event") at that time.")
             }
-            .confirmationDialog("How should this change be applied?",
-                                isPresented: $showRecurScopeDialog, titleVisibility: .visible) {
-                Button("Save for This Event Only") { saveThisEventOnly() }
-                Button("Save for Future Events") { save() }
-                Button("Cancel", role: .cancel) {}
-            }
-            .confirmationDialog("Delete recurring reminder?",
-                                isPresented: $showRecurDeleteDialog, titleVisibility: .visible) {
-                Button("Delete This Event Only", role: .destructive) {
+            .modifier(RecurringScopeDialogs(
+                showEditScope: $showRecurScopeDialog,
+                showDeleteScope: $showRecurDeleteDialog,
+                onSaveThisEvent: { saveThisEventOnly() },
+                onSaveFuture: { save() },
+                onDeleteThisEvent: {
                     if let e = editing { withAnimation(Theme.spring) { _ = store.deleteThisOccurrence(e) } }
                     dismiss()
-                }
-                Button("Delete All Future Events", role: .destructive) {
+                },
+                onDeleteFuture: {
                     if let e = editing { withAnimation(Theme.spring) { store.deleteReminder(e) } }
                     dismiss()
-                }
-                Button("Cancel", role: .cancel) {}
-            }
+                }))
             .onAppear(perform: load)
             .onChange(of: pickerItems) { _, items in
                 Task {
@@ -828,6 +830,34 @@ struct AddReminderView: View {
             AppRouter.shared.pendingClaudePrompt = p
         }
         dismiss()
+    }
+}
+
+/// The two recurring-reminder scope prompts (edit + delete), extracted into a single
+/// ViewModifier so `AddReminderView.body` stays small enough for the Swift type-checker
+/// (the inline chain was hitting "unable to type-check in reasonable time").
+private struct RecurringScopeDialogs: ViewModifier {
+    @Binding var showEditScope: Bool
+    @Binding var showDeleteScope: Bool
+    let onSaveThisEvent: () -> Void
+    let onSaveFuture: () -> Void
+    let onDeleteThisEvent: () -> Void
+    let onDeleteFuture: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog("How should this change be applied?",
+                                isPresented: $showEditScope, titleVisibility: .visible) {
+                Button("Save for This Event Only") { onSaveThisEvent() }
+                Button("Save for Future Events") { onSaveFuture() }
+                Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog("Delete recurring reminder?",
+                                isPresented: $showDeleteScope, titleVisibility: .visible) {
+                Button("Delete This Event Only", role: .destructive) { onDeleteThisEvent() }
+                Button("Delete All Future Events", role: .destructive) { onDeleteFuture() }
+                Button("Cancel", role: .cancel) {}
+            }
     }
 }
 
