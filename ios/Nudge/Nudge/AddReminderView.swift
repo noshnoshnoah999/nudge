@@ -99,8 +99,17 @@ struct AddReminderView: View {
                         .padding(16)
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
-                        // Belt-and-braces: also force focus on tap (doesn't steal the tap).
-                        .simultaneousGesture(TapGesture().onEnded { titleFocused = true })
+                        // Tap-to-focus assist: a vertical-axis TextField inside a ScrollView
+                        // won't reliably become first responder from .focused() alone on iOS.
+                        // The `including:` mask is the crux of the fix: while the field is already
+                        // focused we drop this recognizer out of gesture arbitration (.subviews),
+                        // so it stops competing with the TextField's own double-tap-to-select
+                        // recognizer (which was broken on wrapped 2+ line titles). When not focused
+                        // it's active (.all) so the first tap still opens the keyboard.
+                        .simultaneousGesture(
+                            TapGesture().onEnded { titleFocused = true },
+                            including: titleFocused ? .subviews : .all
+                        )
 
                     // Schedule
                     section("When") {

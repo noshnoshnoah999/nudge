@@ -785,6 +785,19 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
   </div>
 </div>
 
+<!-- RECURRING EDIT SCOPE PROMPT -->
+<div class="overlay" id="recurEditOverlay">
+  <div class="sheet" id="recurEditSheet" style="max-width:440px;">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">How should this change be applied?</div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:14px;">
+      <button class="btn btn-primary" id="recurThisOnly" style="width:100%;">Save for This Event Only</button>
+      <button class="btn btn-primary" id="recurFuture" style="width:100%;">Save for Future Events</button>
+      <button class="btn btn-ghost" id="recurCancel" style="width:100%;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- SMART LIST BUILDER -->
 <div class="overlay" id="smartOverlay">
   <div class="sheet" id="smartSheet" style="max-width:460px;">
@@ -1561,14 +1574,61 @@ function saveQA(){
   const remindBefore = $('#qaRemindBefore') && $('#qaRemindBefore').value ? +$('#qaRemindBefore').value : null;
   const remindBefores = remindBefore!=null ? [remindBefore] : null;   // web sets one; iOS can set many
   const payload={ title, notes:$('#qaNotes').value.trim(), dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri, repeat:ui.qa.repeat, subtasks:ui.qa.subtasks, remindBefore, remindBefores, tz };
+  const editPatch={ title, notes:payload.notes, dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri,
+      recurrence, subtasks:ui.qa.subtasks, remindBefore, remindBefores, tz };
   if(ui.editingId){
-    updateReminder(ui.editingId,{
-      title, notes:payload.notes, dueDate, hasTime, listId:ui.qa.list, priority:ui.qa.pri,
-      recurrence, subtasks:ui.qa.subtasks, remindBefore, remindBefores, tz
-    });
+    // Editing a reminder that is CURRENTLY recurring → ask how to apply (Apple-Calendar style).
+    if(existing && existing.recurrence){
+      ui.pendingRecurEdit = { id: ui.editingId, patch: editPatch };
+      showOverlay('#recurEditOverlay');
+      return;   // wait for the user's choice; addOverlay stays open behind the prompt
+    }
+    updateReminder(ui.editingId, editPatch);
     showToast('Saved');
   } else { addReminder(payload); showToast('Added'); }
   hideOverlay('#addOverlay'); render();
+}
+
+/* ---- Recurring-edit scope: apply the pending edit per the user's choice ---- */
+function applyRecurFuture(){
+  const p=ui.pendingRecurEdit; if(!p) return;
+  updateReminder(p.id, p.patch);      // series-wide edit: future occurrences inherit it
+  ui.pendingRecurEdit=null;
+  hideOverlay('#recurEditOverlay'); hideOverlay('#addOverlay');
+  render(); showToast('Saved for future events');
+}
+function applyRecurThisOnly(){
+  const p=ui.pendingRecurEdit; if(!p) return;
+  const orig=state.reminders.find(x=>x.id===p.id);
+  if(!orig){ ui.pendingRecurEdit=null; hideOverlay('#recurEditOverlay'); hideOverlay('#addOverlay'); render(); return; }
+  // Snapshot the ORIGINAL series settings before we mutate this object.
+  const origRecurrence = orig.recurrence ? {...orig.recurrence} : null;
+  const nextDue = nextOccurrence(orig);   // next future date using the original rule
+  // 1) Detach THIS occurrence: apply the edits AND strip recurrence → becomes a one-off.
+  updateReminder(p.id, {...p.patch, recurrence:null});
+  // 2) Continue the series from the next date with the ORIGINAL (unedited) settings.
+  //    If there is no next date (no dueDate / past `until`), the series simply ends here.
+  if(nextDue && origRecurrence){
+    const cont={
+      id:uuid(), title:orig.title, notes:orig.notes||'',
+      dueDate:nextDue, hasTime:!!orig.hasTime, listId:orig.listId||'reminders',
+      priority:orig.priority||'normal', completed:false, completedAt:null,
+      recurrence:{...origRecurrence},   // preserves freq, interval AND until
+      subtasks:(orig.subtasks||[]).map(s=>({...s})),
+      remindBefore:orig.remindBefore??null, remindBefores:orig.remindBefores?orig.remindBefores.slice():null,
+      tz:orig.tz??null,
+      createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
+      source:orig.source||'manual', snoozedUntil:null, dismissed:false,
+    };
+    state.reminders.unshift(cont); persist();
+  }
+  ui.pendingRecurEdit=null;
+  hideOverlay('#recurEditOverlay'); hideOverlay('#addOverlay');
+  render(); showToast('Saved for this event only');
+}
+function cancelRecurEdit(){
+  ui.pendingRecurEdit=null;
+  hideOverlay('#recurEditOverlay');   // keep the edit sheet open so nothing is lost
 }
 
 /* ============ NEW LIST ============ */
@@ -1948,6 +2008,9 @@ function bindGlobal(){
   $('#newListName').onkeydown=(e)=>{ if(e.key==='Enter'&&$('#newListName').value.trim()) saveList(); };
   $('#saveListBtn').onclick=saveList;
   $('#deleteListBtn').onclick=deleteList;
+  $('#recurThisOnly').onclick=applyRecurThisOnly;
+  $('#recurFuture').onclick=applyRecurFuture;
+  $('#recurCancel').onclick=cancelRecurEdit;
 
   // smart lists
   $('#addSmartBtn').onclick=()=>openSmartBuilder();
