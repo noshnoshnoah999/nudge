@@ -981,7 +981,15 @@ function parseNaturalDate(text){
   return { date, time, title: title || orig.trim() };
 }
 
-function isOverdue(r){ return r.dueDate && !r.completed && new Date(r.dueDate) < new Date() && !isSnoozed(r); }
+function isOverdue(r){
+  if(!r.dueDate || r.completed || isSnoozed(r)) return false;
+  const d=new Date(r.dueDate);
+  // Mirror iOS: a date-only reminder (no time) isn't overdue until its whole day has
+  // passed — otherwise an iOS-created all-day item reads "overdue" from 00:01 on the
+  // very day it's due.
+  const cutoff = r.hasTime ? d : new Date(startOfDay(d).getTime()+86400000);
+  return cutoff < new Date();
+}
 function isSnoozed(r){ return r.snoozedUntil && new Date(r.snoozedUntil) > new Date(); }
 function listById(id){ return state.lists.find(l=>l.id===id) || DEFAULT_LISTS[0]; }
 function getTags(r){ return (String(r.title||'').match(/#[\p{L}0-9_-]+/gu)||[]).map(t=>t.slice(1).toLowerCase()); }
@@ -1179,7 +1187,18 @@ function completeReminder(id){
   }
   if(!r.completed && r.recurrence && r.dueDate){
     const next=nextOccurrence(r);
-    if(next){ addReminder({title:r.title,notes:r.notes,dueDate:next,hasTime:r.hasTime,listId:r.listId,priority:r.priority,repeat:r.recurrence.freq,source:r.source}); }
+    // Spawn the next occurrence as a FULL copy (mirrors iOS toggleComplete): keeps
+    // recurrence interval/until, tz, early alerts, subtasks and any iOS-only fields
+    // (url, location, pinned, group…). The old addReminder() path reset the interval
+    // to 1 (every 2 weeks became weekly) and dropped everything else.
+    if(next){
+      const copy={...r, id:uuid(), completed:false, completedAt:null, dueDate:next,
+        recurrence:{...r.recurrence},
+        subtasks:(r.subtasks||[]).map(s=>({...s})),
+        remindBefores:r.remindBefores?r.remindBefores.slice():r.remindBefores,
+        snoozedUntil:null, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()};
+      state.reminders.unshift(copy);
+    }
   }
   r.completed=!r.completed; r.completedAt=r.completed?new Date().toISOString():null; r.snoozedUntil=null; r.updatedAt=new Date().toISOString();
   persist();
@@ -1226,7 +1245,10 @@ function snoozeReminder(id, days){
   const r=state.reminders.find(x=>x.id===id); if(!r) return;
   const base = r.dueDate && new Date(r.dueDate)>new Date() ? new Date(r.dueDate) : new Date();
   base.setDate(base.getDate()+days); base.setHours(9,0,0,0);
-  r.dueDate=base.toISOString(); r.hasTime=true; r.snoozedUntil=null; persist();
+  // "Today 9am" picked after 9am would land in the past and stay overdue —
+  // roll a past result forward to the top of the next hour instead.
+  if(base<=new Date()){ base.setTime(Date.now()); base.setMinutes(0,0,0); base.setHours(base.getHours()+1); }
+  r.dueDate=base.toISOString(); r.hasTime=true; r.snoozedUntil=null; r.updatedAt=new Date().toISOString(); persist();
 }
 
 /* ---------- filtering / grouping ---------- */
@@ -1247,8 +1269,10 @@ function groupReminders(rs){
     if(!r.dueDate){ g.nodate.push(r); return; }
     const d=new Date(r.dueDate);
     if(isSnoozed(r)){ g.upcoming.push(r); return; }
-    if(d<now && startOfDay(d)<t){ g.overdue.push(r); }
-    else if(startOfDay(d).getTime()===t.getTime()){ d<now?g.overdue.push(r):g.today.push(r); }
+    // Same bucketing rule as iOS sections(): isOverdue() decides Overdue (date-only
+    // items stay in Today for their whole due day), then today vs upcoming by day.
+    if(isOverdue(r)){ g.overdue.push(r); }
+    else if(startOfDay(d).getTime()===t.getTime()){ g.today.push(r); }
     else if(d<=wk){ g.upcoming.push(r); }
     else g.upcoming.push(r);
   });
@@ -1381,7 +1405,7 @@ function boardCard(r){
 function bindBoard(){
   $$('.board-card').forEach(card=>{
     const id=card.dataset.id;
-    card.querySelector('[data-act=complete]').onclick=(e)=>{ e.stopPropagation(); card.style.opacity='.4'; completeReminder(id); showToast('Completed','Undo',()=>{completeReminder(id);render();}); setTimeout(render,150); };
+    card.querySelector('[data-act=complete]').onclick=(e)=>{ e.stopPropagation(); const before=completeUndoSnapshot(); card.style.opacity='.4'; completeReminder(id); showToast('Completed','Undo',()=>{ state.reminders=before; persist(); render(); }); setTimeout(render,150); };
     card.querySelector('[data-act=edit]').onclick=(e)=>{ e.stopPropagation(); openEdit(id); };
     card.ondragstart=(e)=>{ e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed='move'; card.classList.add('dragging'); };
     card.ondragend=()=>card.classList.remove('dragging');
@@ -1447,11 +1471,19 @@ function bindCards(){
     });
   });
 }
+/* Undo for a completion must RESTORE the prior state, not toggle again: toggling a
+   recurring reminder back left its spawned next-occurrence behind (duplicate), and
+   "un-ticking" a routine rolled it forward a SECOND time (routines treat every tick
+   as "did it"). Snapshot the array before mutating; undo puts it back. */
+function completeUndoSnapshot(){
+  return state.reminders.map(r=>({...r}));
+}
 function animateComplete(card,id){
   const r=state.reminders.find(x=>x.id===id);
+  const before=completeUndoSnapshot();
   card.classList.add('removing','completing');
   completeReminder(id);
-  showToast(r&&r.recurrence?'Done · next one scheduled':'Completed', 'Undo', ()=>{ completeReminder(id); render(); });
+  showToast(r&&r.recurrence?'Done · next one scheduled':'Completed', 'Undo', ()=>{ state.reminders=before; persist(); render(); });
   setTimeout(render, 240);
 }
 function animateDelete(card,id,confirm){
@@ -1653,24 +1685,26 @@ function applyRecurThisOnly(){
   const p=ui.pendingRecurEdit; if(!p) return;
   const orig=state.reminders.find(x=>x.id===p.id);
   if(!orig){ ui.pendingRecurEdit=null; hideOverlay('#recurEditOverlay'); hideOverlay('#addOverlay'); render(); return; }
-  // Snapshot the ORIGINAL series settings before we mutate this object.
-  const origRecurrence = orig.recurrence ? {...orig.recurrence} : null;
+  // Snapshot the WHOLE original reminder BEFORE we mutate it. The old code only
+  // snapshotted the recurrence, then read orig.title/notes/priority/… AFTER
+  // updateReminder had applied the patch — so "This Event Only" silently leaked the
+  // edit into every future event, and hand-building `cont` dropped iOS-only fields
+  // (url, location, pinned, prep links, groups…). Mirrors iOS
+  // saveReminderThisOccurrenceOnly: full-value copy, then override per-occurrence bits.
+  const snap={...orig,
+    recurrence: orig.recurrence ? {...orig.recurrence} : null,
+    subtasks:(orig.subtasks||[]).map(s=>({...s})),
+    remindBefores: orig.remindBefores ? orig.remindBefores.slice() : orig.remindBefores};
   const nextDue = nextOccurrence(orig);   // next future date using the original rule
   // 1) Detach THIS occurrence: apply the edits AND strip recurrence → becomes a one-off.
   updateReminder(p.id, {...p.patch, recurrence:null});
   // 2) Continue the series from the next date with the ORIGINAL (unedited) settings.
   //    If there is no next date (no dueDate / past `until`), the series simply ends here.
-  if(nextDue && origRecurrence){
-    const cont={
-      id:uuid(), title:orig.title, notes:orig.notes||'',
-      dueDate:nextDue, hasTime:!!orig.hasTime, listId:orig.listId||'reminders',
-      priority:orig.priority||'normal', completed:false, completedAt:null,
-      recurrence:{...origRecurrence},   // preserves freq, interval AND until
-      subtasks:(orig.subtasks||[]).map(s=>({...s})),
-      remindBefore:orig.remindBefore??null, remindBefores:orig.remindBefores?orig.remindBefores.slice():null,
-      tz:orig.tz??null,
+  if(nextDue && snap.recurrence){
+    const cont={...snap,
+      id:uuid(), dueDate:nextDue, completed:false, completedAt:null,
+      snoozedUntil:null, dismissed:false,
       createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
-      source:orig.source||'manual', snoozedUntil:null, dismissed:false,
     };
     state.reminders.unshift(cont); persist();
   }
@@ -1797,7 +1831,7 @@ function renderSettings(){
       </div>
       <div class="set-row">
         <div class="sr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div class="sr-text"><div class="sr-title">Notifications</div><div class="sr-sub">${Notification?.permission==='granted'?'Enabled on this device':'Tap to enable browser alerts'}</div></div>
+        <div class="sr-text"><div class="sr-title">Notifications</div><div class="sr-sub">${(typeof Notification!=='undefined'&&Notification.permission==='granted')?'Enabled on this device':'Tap to enable browser alerts'}</div></div>
         <button class="toggle ${state.settings.notifs?'on':''}" data-set="notifs" id="notifToggle"></button>
       </div>
     </div>
@@ -2186,6 +2220,10 @@ async function init(){
   ui.board = !!state.settings.boardView;
   bindGlobal();
   render();
+  // PWA app-icon shortcuts (manifest.json) — were declared but never handled.
+  const _act=new URLSearchParams(location.search).get('action');
+  if(_act==='add') openAdd();
+  else if(_act==='triage' && allOverdue().length) startTriage();
   syncIntegrations();   // pull StudyTrack (+ Finance) data → generate [Auto] reminders
   if('Notification' in window && state.settings.notifs && Notification.permission==='granted') setTimeout(checkNudges, 1500);
   // register SW
