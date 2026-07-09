@@ -33,6 +33,7 @@ struct ContentView: View {
     @State private var signingDaysLeft: Int?
     @State private var expiryDismissedAtDays: Int?   // hide the expiry banner until it gets more urgent
     @State private var isAuthenticating = false      // a Face ID prompt is in flight (prevents double-trigger)
+    @State private var backgroundedAt: Date?          // when the app last left the foreground (nil = not backgrounded)
     @State private var rescheduleTarget: Reminder?
     @State private var showTimetable = false
     @State private var smartCollection: SmartCollection?
@@ -165,17 +166,32 @@ struct ContentView: View {
                 // Blur immediately so the iOS app-switcher snapshot never shows content.
                 // Skipped on Mac: there .inactive fires on every window-focus loss
                 // (e.g. cmd-tab), which would flash the blur constantly.
+                // This is just the snapshot blur, not a lock decision — it doesn't
+                // depend on the grace period.
                 #if !targetEnvironment(macCatalyst)
                 if settings.appLock { LockShield.shared.show(interactive: isLocked) }
                 #endif
             case .background:
-                if settings.appLock { isLocked = true; LockShield.shared.show(interactive: true) }
+                if settings.appLock { backgroundedAt = Date() }
                 // Queue the overnight AI carry-over so iOS can run it while Nudge is closed.
                 #if !targetEnvironment(macCatalyst)
                 CarryOverBGTask.schedule()
                 #endif
             case .active:
+                // isLocked staying true across a background/foreground cycle means a
+                // previous Face ID attempt was cancelled/failed — never silently clear
+                // that, regardless of the grace period, or an incomplete auth becomes a
+                // bypass. The grace period only prevents *newly* locking an app that was
+                // sitting unlocked when it went to background.
                 if isLocked {
+                    #if targetEnvironment(macCatalyst)
+                    LockShield.shared.show(interactive: true)
+                    #else
+                    attemptUnlock()
+                    #endif
+                } else if settings.appLock && shouldRelockAfterGracePeriod() {
+                    isLocked = true
+                    backgroundedAt = nil
                     #if targetEnvironment(macCatalyst)
                     // Mac: focus flips constantly (Stage Manager, ⌘-tab) and .active fires
                     // while Nudge is merely visible, not focused — auto-prompting Touch ID
@@ -186,7 +202,12 @@ struct ContentView: View {
                     #else
                     attemptUnlock()
                     #endif
-                } else { LockShield.shared.hide() }
+                } else {
+                    // Within the grace window and was unlocked when backgrounded — resume
+                    // with no Face ID prompt.
+                    backgroundedAt = nil
+                    LockShield.shared.hide()
+                }
                 if didLoad {
                     Task { await store.refresh(); store.purgeOldCompleted()
                            stuckCount = store.stuckCount()
@@ -203,10 +224,23 @@ struct ContentView: View {
         // actually switch TO Nudge — never while it's just visible in a Stage Manager group.
         #if targetEnvironment(macCatalyst)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NSApplicationDidBecomeActiveNotification"))) { _ in
-            if settings.appLock && isLocked { attemptUnlock() }
+            guard settings.appLock else { return }
+            // Same rule as the iOS scenePhase handler: a still-locked app (cancelled/
+            // failed prior auth) always re-prompts — the grace period never bypasses
+            // an incomplete authentication, only a fresh re-lock decision.
+            if isLocked {
+                attemptUnlock()
+            } else if shouldRelockAfterGracePeriod() {
+                isLocked = true
+                backgroundedAt = nil
+                attemptUnlock()
+            } else {
+                backgroundedAt = nil
+                LockShield.shared.hide()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NSApplicationDidResignActiveNotification"))) { _ in
-            if settings.appLock { isLocked = true; LockShield.shared.show(interactive: true) }
+            if settings.appLock { backgroundedAt = Date() }
         }
         #endif
         .onChange(of: store.reminders) { _, _ in stuckCount = store.stuckCount() }
@@ -993,7 +1027,21 @@ struct ContentView: View {
         .padding(.horizontal, 18).padding(.bottom, 8)
     }
 
+    /// Grace period: leaving and returning to Nudge within this window skips Face ID.
+    private static let lockGracePeriod: TimeInterval = 60
+
+    /// True if enough time has passed since the app left the foreground that it
+    /// should re-lock and prompt Face ID. False (no re-lock) if we're still inside
+    /// the grace window, or if the app was never backgrounded (e.g. first launch,
+    /// handled separately by `lock()`).
+    private func shouldRelockAfterGracePeriod() -> Bool {
+        guard let backgroundedAt else { return false }
+        return Date().timeIntervalSince(backgroundedAt) >= Self.lockGracePeriod
+    }
+
     /// Lock the app: cover the screen (over any open sheet) and prompt to unlock.
+    /// Called on genuine cold launch, where there's no prior `backgroundedAt` to
+    /// check against — always requires Face ID.
     private func lock() {
         isLocked = true
         LockShield.shared.show(interactive: true)
