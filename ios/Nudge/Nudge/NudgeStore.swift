@@ -1022,6 +1022,62 @@ final class NudgeStore: ObservableObject {
         #endif
     }
 
+    /// Apple-Calendar "This Event Only" for a recurring reminder.
+    /// 1) Snapshots the ORIGINAL series (settings + recurrence) and its next occurrence.
+    /// 2) Applies the user's edits to THIS reminder and strips its recurrence → a one-off.
+    /// 3) Inserts a copy of the ORIGINAL reminder (all fields preserved) due on the next
+    ///    occurrence, so the series continues unchanged. If there is no next date
+    ///    (no dueDate / past `until`), the series simply ends here.
+    func saveReminderThisOccurrenceOnly(editing: Reminder?, title: String, notes: String,
+                                        hasDue: Bool, due: Date, hasTime: Bool,
+                                        listId: String, priority: String,
+                                        recurrence: Recurrence? = nil, tz: String? = nil,
+                                        url: String? = nil, location: String? = nil,
+                                        lat: Double? = nil, lng: Double? = nil,
+                                        pinned: Bool = false, remindBefores: [Int] = [],
+                                        subtasks: [Subtask] = [], routine: Bool = false,
+                                        escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
+                                        urgent: Bool = false) {
+        // Snapshot the ORIGINAL (unedited) reminder before any mutation.
+        guard let original = editing,
+              let orig = reminders.first(where: { $0.id == original.id }),
+              let origRec = orig.recurrence else {
+            // Not actually recurring — fall back to a normal edit.
+            saveReminder(editing: editing, title: title, notes: notes, hasDue: hasDue, due: due,
+                         hasTime: hasTime, listId: listId, priority: priority, recurrence: recurrence,
+                         tz: tz, url: url, location: location, lat: lat, lng: lng, pinned: pinned,
+                         remindBefores: remindBefores, subtasks: subtasks, routine: routine,
+                         escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent)
+            return
+        }
+        let nextDue = nextOccurrence(after: orig.dueDate, rec: origRec)
+
+        // 1) Detach THIS occurrence: apply the edits, but force recurrence off → one-off.
+        saveReminder(editing: editing, title: title, notes: notes, hasDue: hasDue, due: due,
+                     hasTime: hasTime, listId: listId, priority: priority,
+                     recurrence: nil,
+                     tz: tz, url: url, location: location, lat: lat, lng: lng, pinned: pinned,
+                     remindBefores: remindBefores, subtasks: subtasks, routine: routine,
+                     escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent)
+
+        // 2) Continue the ORIGINAL series from the next date, if one exists. Copy the whole
+        //    original value so every field (prep links, groups, alerts, tz…) is preserved,
+        //    then override only what a fresh next occurrence needs.
+        guard let nextDue else { return }
+        var cont = orig
+        cont.id = "r" + String(UUID().uuidString.prefix(12))
+        cont.dueDate = nextDue
+        cont.recurrence = origRec        // freq / interval / until preserved
+        cont.completed = false
+        cont.completedAt = nil
+        cont.snoozedUntil = nil
+        cont.dismissed = false
+        cont.createdAt = iso(Date())
+        cont.updatedAt = iso(Date())
+        reminders.insert(cont, at: 0)
+        persist()
+    }
+
     // MARK: - Grouping
     func open() -> [Reminder] { reminders.filter { !($0.completed ?? false) && !($0.dismissed ?? false) } }
 

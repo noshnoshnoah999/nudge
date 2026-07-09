@@ -2,7 +2,7 @@
 
 Date: 2026-07-09
 Author: Cowork session
-Scope: Web app (`index.html`) only. No iOS change in this task.
+Scope: Web app (`index.html`) AND iOS/macOS (SwiftUI, one Catalyst codebase).
 
 ## Goal
 When the user edits **anything** on a reminder that currently has recurrence, Nudge
@@ -52,7 +52,48 @@ is nothing to roll forward. This is intentional fallback behavior, not a bug.
 - Confirmed `ui` is a mutable object literal (safe to attach `pendingRecurEdit`).
 - Confirmed no function-name collisions.
 
-## Next steps
-- Manually test both branches in the browser.
-- If keeping parity, replicate the split logic on iOS (`AddReminderView.swift` /
-  wherever recurring edits are saved).
+---
+
+## iOS / macOS (added same day)
+
+One SwiftUI codebase runs iOS and Mac (Mac Catalyst — confirmed via
+`!targetEnvironment(macCatalyst)` guards in `saveReminder`). No separate Mac target,
+so this was built once.
+
+### Files changed
+- `ios/Nudge/Nudge/AddReminderView.swift`
+- `ios/Nudge/Nudge/NudgeStore.swift`
+
+### AddReminderView.swift
+- New `@State private var showRecurScopeDialog`.
+- New `.confirmationDialog("How should this change be applied?")` with three buttons:
+  Save for This Event Only → `saveThisEventOnly()`, Save for Future Events → `save()`,
+  Cancel.
+- `attemptSave()` unchanged conflict check, but its else-branch and the conflict
+  alert's "Schedule anyway" now call new `afterConflict()`.
+- `afterConflict()`: if `editing != nil && editing.recurrence != nil` → show scope
+  dialog; else `save()`. **Order per user: calendar-conflict alert FIRST, then scope.**
+- `saveThisEventOnly()`: mirrors `save()` but routes to the new store method.
+
+### NudgeStore.swift
+- New `saveReminderThisOccurrenceOnly(...)` (same signature shape as `saveReminder`):
+  1. Snapshots the ORIGINAL reminder + computes `nextOccurrence(after:rec:)` first.
+  2. Calls existing `saveReminder(..., recurrence: nil, ...)` → edited reminder becomes
+     a one-off with the user's edits.
+  3. Copies the ORIGINAL struct value (`var cont = orig`, preserving every field —
+     prep links, groups, alerts, tz) and overrides id/dueDate/timestamps/completion,
+     re-setting `recurrence = origRec`. Inserts it → series continues from next date.
+  4. No next date (no dueDate / past `until`) → series ends, nothing inserted.
+  - Non-recurring fallback: delegates to plain `saveReminder`.
+
+### Design note
+The continuation copies `groupId`/`groupTitle`, so if the original was in a group the
+next occurrence rejoins that group card. Intended (same logical series) — flag if not.
+
+### NOT done / verify
+- **No Swift build run** — the Cowork sandbox is Linux with no Swift toolchain. Must be
+  compiled/tested in Xcode on the Mac. Watch for: the memberwise-copy approach relies on
+  `Reminder` being a value type (it is, a struct); `iso()` / `nextOccurrence` are on the
+  same `NudgeStore` class (accessible).
+- Test both branches on device: edit a recurring reminder → conflict prompt (if clashing)
+  → scope prompt → verify This Event detaches + series continues, Future edits the series.

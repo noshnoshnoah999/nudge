@@ -70,6 +70,7 @@ struct AddReminderView: View {
     @State private var claudeRuleApplied = false   // same, for the "Claude - " → Claude list rule
     @State private var showConflictAlert = false
     @State private var conflictMsg: String?
+    @State private var showRecurScopeDialog = false   // "This event / Future events" when editing a recurring reminder
     @FocusState private var notesFocused: Bool
 
     private let zones: [(String, String)] = [
@@ -368,10 +369,16 @@ struct AddReminderView: View {
                 }
             }
             .alert("You're busy then", isPresented: $showConflictAlert) {
-                Button("Schedule anyway") { save() }
+                Button("Schedule anyway") { afterConflict() }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Your calendar has \(conflictMsg ?? "an event") at that time.")
+            }
+            .confirmationDialog("How should this change be applied?",
+                                isPresented: $showRecurScopeDialog, titleVisibility: .visible) {
+                Button("Save for This Event Only") { saveThisEventOnly() }
+                Button("Save for Future Events") { save() }
+                Button("Cancel", role: .cancel) {}
             }
             .onAppear(perform: load)
             .onChange(of: pickerItems) { _, items in
@@ -725,13 +732,49 @@ struct AddReminderView: View {
     }
 
     /// Save, but first warn if the chosen time lands on a calendar event.
+    /// Order: calendar-conflict alert first, then (for recurring edits) the scope prompt.
     private func attemptSave() {
         if hasDue, hasTime, let clash = CalendarService.shared.conflictDescription(at: due) {
             conflictMsg = clash
             showConflictAlert = true
         } else {
+            afterConflict()
+        }
+    }
+
+    /// After the calendar-conflict step: if we're editing a reminder that currently
+    /// recurs, ask how the change should apply (This Event / Future Events); else save.
+    private func afterConflict() {
+        if let e = editing, e.recurrence != nil {
+            showRecurScopeDialog = true
+        } else {
             save()
         }
+    }
+
+    /// Apple-Calendar "This Event Only": detach the edited occurrence as a one-off and
+    /// let the original series roll on unchanged from its next date.
+    private func saveThisEventOnly() {
+        for u in removedURLs { ImageStore.delete(u) }
+        for n in newImages { ImageStore.save(n.data, for: reminderId) }
+        addSubtask()
+        applyBuyRule()
+        applyClaudeRule()
+        var rec: Recurrence? = nil
+        if repeatFreq != "none" {
+            rec = Recurrence(freq: repeatFreq, interval: repeatInterval,
+                             until: hasUntil ? iso(Calendar.current.startOfDay(for: until)) : nil)
+        }
+        store.saveReminderThisOccurrenceOnly(
+            editing: editing, title: title, notes: notes,
+            hasDue: hasDue, due: due, hasTime: hasTime,
+            listId: listId, priority: priority,
+            recurrence: rec, tz: tz.isEmpty ? nil : tz,
+            url: url, location: location, lat: lat, lng: lng,
+            pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
+            routine: routine, escalation: escalation, reviewFrequency: askToReview,
+            urgent: urgent)
+        dismiss()
     }
 
     private func save() {
