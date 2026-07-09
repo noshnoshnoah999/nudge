@@ -20,6 +20,7 @@ struct ReminderCardView: View {
     // list springs to bunch up (the removal animation lives on the parent list).
     @State private var trace: CGFloat = 0
     @State private var slideOff = false
+    @State private var showRecurDeleteDialog = false   // "Delete this event / all future" for recurring reminders
 
     private var radius: CGFloat { settings.compact ? 14 : 18 }
     private let gold = Color(red: 0.98, green: 0.78, blue: 0.30)
@@ -37,7 +38,23 @@ struct ReminderCardView: View {
             Button { store.snooze(reminder, minutes: 60) } label: { Label("Snooze 1 hour", systemImage: "moon.zzz") }
             Button { showReschedule = true } label: { Label("Reschedule…", systemImage: "calendar.badge.clock") }
             Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
-            Button(role: .destructive) { withAnimation { store.deleteReminder(reminder) } } label: { Label("Delete", systemImage: "trash") }
+            Button(role: .destructive) {
+                if reminder.recurrence != nil {
+                    showRecurDeleteDialog = true
+                } else {
+                    withAnimation { store.deleteReminder(reminder) }
+                }
+            } label: { Label("Delete", systemImage: "trash") }
+        }
+        .confirmationDialog("Delete recurring reminder?",
+                            isPresented: $showRecurDeleteDialog, titleVisibility: .visible) {
+            Button("Delete This Event Only", role: .destructive) {
+                withAnimation { _ = store.deleteThisOccurrence(reminder) }
+            }
+            Button("Delete All Future Events", role: .destructive) {
+                withAnimation { store.deleteReminder(reminder) }
+            }
+            Button("Cancel", role: .cancel) {}
         }
     }
 

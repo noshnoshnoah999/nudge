@@ -35,6 +35,35 @@ struct AddReminderView: View {
         else { newImages.removeAll { "new-" + $0.id.uuidString == img.id } }
     }
 
+    @ViewBuilder
+    private func subtaskRow(_ s: Binding<Subtask>) -> some View {
+        HStack(spacing: 10) {
+            Button { s.wrappedValue.done.toggle() } label: {
+                Image(systemName: s.wrappedValue.done ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(s.wrappedValue.done ? Theme.sage : Theme.textMeta).frame(width: 22)
+            }.buttonStyle(.plain)
+            TextField("Subtask", text: s.title)
+                .foregroundStyle(s.wrappedValue.done ? Theme.textMeta : Theme.textMain)
+                .strikethrough(s.wrappedValue.done)
+            Button { subtasks.removeAll { $0.id == s.wrappedValue.id } } label: {
+                Image(systemName: "minus.circle.fill").foregroundStyle(Theme.textMeta.opacity(0.6))
+            }.buttonStyle(.plain)
+        }.padding(.vertical, 9)
+    }
+
+    @ViewBuilder
+    private func photoThumb(_ img: AttachedImage) -> some View {
+        Image(uiImage: img.image).resizable().scaledToFill()
+            .frame(width: 72, height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                Button { remove(img) } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Color.white, Color.black.opacity(0.5))
+                }.padding(2)
+            }
+            .onTapGesture { previewImage = img.image }
+    }
+
     @State private var title = ""
     @State private var notes = ""
     @State private var hasDue = false
@@ -71,6 +100,7 @@ struct AddReminderView: View {
     @State private var showConflictAlert = false
     @State private var conflictMsg: String?
     @State private var showRecurScopeDialog = false   // "This event / Future events" when editing a recurring reminder
+    @State private var showRecurDeleteDialog = false   // "Delete this event / all future" when deleting a recurring reminder
     @FocusState private var notesFocused: Bool
 
     private let zones: [(String, String)] = [
@@ -252,15 +282,7 @@ struct AddReminderView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 10) {
                                     ForEach(visibleImages) { img in
-                                        Image(uiImage: img.image).resizable().scaledToFill()
-                                            .frame(width: 72, height: 72)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                            .overlay(alignment: .topTrailing) {
-                                                Button { remove(img) } label: {
-                                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black.opacity(0.5))
-                                                }.padding(2)
-                                            }
-                                            .onTapGesture { previewImage = img.image }
+                                        photoThumb(img)
                                     }
                                 }.padding(.vertical, 8)
                             }
@@ -277,18 +299,7 @@ struct AddReminderView: View {
                     // Subtasks
                     section("Subtasks") {
                         ForEach($subtasks) { $s in
-                            HStack(spacing: 10) {
-                                Button { s.done.toggle() } label: {
-                                    Image(systemName: s.done ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(s.done ? Theme.sage : Theme.textMeta).frame(width: 22)
-                                }.buttonStyle(.plain)
-                                TextField("Subtask", text: $s.title)
-                                    .foregroundStyle(s.done ? Theme.textMeta : Theme.textMain)
-                                    .strikethrough(s.done)
-                                Button { subtasks.removeAll { $0.id == s.id } } label: {
-                                    Image(systemName: "minus.circle.fill").foregroundStyle(Theme.textMeta.opacity(0.6))
-                                }.buttonStyle(.plain)
-                            }.padding(.vertical, 9)
+                            subtaskRow($s)
                             divider
                         }
                         HStack(spacing: 10) {
@@ -309,7 +320,11 @@ struct AddReminderView: View {
 
                     if let e = editing {
                         Button(role: .destructive) {
-                            withAnimation(Theme.spring) { store.deleteReminder(e) }; dismiss()
+                            if e.recurrence != nil {
+                                showRecurDeleteDialog = true
+                            } else {
+                                withAnimation(Theme.spring) { store.deleteReminder(e) }; dismiss()
+                            }
                         } label: {
                             Label("Delete Reminder", systemImage: "trash")
                                 .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.coral)
@@ -378,6 +393,18 @@ struct AddReminderView: View {
                                 isPresented: $showRecurScopeDialog, titleVisibility: .visible) {
                 Button("Save for This Event Only") { saveThisEventOnly() }
                 Button("Save for Future Events") { save() }
+                Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog("Delete recurring reminder?",
+                                isPresented: $showRecurDeleteDialog, titleVisibility: .visible) {
+                Button("Delete This Event Only", role: .destructive) {
+                    if let e = editing { withAnimation(Theme.spring) { _ = store.deleteThisOccurrence(e) } }
+                    dismiss()
+                }
+                Button("Delete All Future Events", role: .destructive) {
+                    if let e = editing { withAnimation(Theme.spring) { store.deleteReminder(e) } }
+                    dismiss()
+                }
                 Button("Cancel", role: .cancel) {}
             }
             .onAppear(perform: load)

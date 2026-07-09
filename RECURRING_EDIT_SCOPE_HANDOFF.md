@@ -97,3 +97,43 @@ next occurrence rejoins that group card. Intended (same logical series) — flag
   same `NudgeStore` class (accessible).
 - Test both branches on device: edit a recurring reminder → conflict prompt (if clashing)
   → scope prompt → verify This Event detaches + series continues, Future edits the series.
+
+---
+
+## DELETE scope (added same day — fixes bug Noah hit)
+
+**Bug:** deleting a recurring reminder wiped the WHOLE series with no prompt. Noah moved a
+call to Tuesday (edit split worked), then tried to delete a Thursday occurrence and lost
+the entire recurrence (had to Undo). Delete had never been gated — only edit was.
+
+**Fix (Apple-Calendar style):** deliberate single deletes of a recurring reminder now ask
+"Delete recurring reminder?" → **Delete This Event Only** / **Delete All Future Events** /
+**Cancel**. "This Event Only" = advance the series to its next occurrence (`nextOccurrence`)
+so the shown occurrence is gone but future ones remain. No next date → full delete.
+
+### Scope decision (Noah's call)
+Gate the DELIBERATE single deletes only:
+- Web: `#qaDelete` (edit sheet) + `animateDelete` (swipe card).
+- iOS: `AddReminderView` delete button + `ReminderCardView` context-menu delete.
+Triage + Clean-Up are LEFT AS-IS (fast batch flows; a modal per item would break them).
+Noah explicitly chose to leave triage/cleanup unchanged.
+
+Note: "This Event Only" deletes the occurrence CURRENTLY SHOWING (the next due one — the
+only real object). Skipping an arbitrary far-future date is NOT built (would need an
+excluded-dates list + UI). Noah confirmed he only deletes the one showing in the list.
+
+### Web (`index.html`)
+- New `#recurDelOverlay` prompt.
+- `deleteThisOccurrence(id)` — advances series to next date; returns kept/deleted.
+- `requestDelete(id, doDeleteNow)` — central gate: recurring → prompt; else run callback
+  (preserves each caller's own undo/animation). `recurDelThis/Future/Cancel` handlers wired.
+
+### iOS/macOS
+- `NudgeStore.deleteThisOccurrence(_:) -> Bool` (@discardableResult) — advances series;
+  falls back to `deleteReminder` (with undo) when no next date.
+- `AddReminderView`: `showRecurDeleteDialog` + confirmationDialog; delete button gated.
+- `ReminderCardView`: `showRecurDeleteDialog` + confirmationDialog; context-menu delete gated.
+
+### Verify (Swift not compiled — Linux sandbox)
+- Build in Xcode. Test: delete recurring FaceTime Dad → prompt → This Event Only keeps the
+  series and rolls it forward; All Future removes it; non-recurring deletes stay instant.

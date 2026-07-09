@@ -469,6 +469,28 @@ final class NudgeStore: ObservableObject {
         persist()
     }
 
+    /// Delete only the CURRENT occurrence of a recurring reminder: advance the series to
+    /// its next date so this one is gone but all future occurrences remain. Falls back to a
+    /// full delete when there is no next date (no dueDate / past `until`).
+    /// Returns true if the series was advanced (kept), false if deleted outright.
+    @discardableResult
+    func deleteThisOccurrence(_ r: Reminder) -> Bool {
+        guard let i = reminders.firstIndex(where: { $0.id == r.id }),
+              let rec = reminders[i].recurrence,
+              let next = nextOccurrence(after: reminders[i].dueDate, rec: rec) else {
+            deleteReminder(r)   // nothing to keep → normal delete (with undo)
+            return false
+        }
+        clearNotifications(for: r.id)          // clear the alert for the occurrence being skipped
+        reminders[i].dueDate = next
+        reminders[i].completed = false
+        reminders[i].completedAt = nil
+        reminders[i].snoozedUntil = nil
+        reminders[i].updatedAt = iso(Date())
+        persist()
+        return true
+    }
+
     /// Bring back the last swipe/menu-deleted reminder.
     func undoDelete() {
         guard let r = recentlyDeleted else { return }

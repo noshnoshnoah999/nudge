@@ -798,6 +798,19 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
   </div>
 </div>
 
+<!-- RECURRING DELETE SCOPE PROMPT -->
+<div class="overlay" id="recurDelOverlay">
+  <div class="sheet" id="recurDelSheet" style="max-width:440px;">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Delete recurring reminder?</div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:14px;">
+      <button class="btn btn-primary" id="recurDelThis" style="width:100%;">Delete This Event Only</button>
+      <button class="btn btn-primary" id="recurDelFuture" style="width:100%;">Delete All Future Events</button>
+      <button class="btn btn-ghost" id="recurDelCancel" style="width:100%;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- SMART LIST BUILDER -->
 <div class="overlay" id="smartOverlay">
   <div class="sheet" id="smartSheet" style="max-width:460px;">
@@ -1172,6 +1185,43 @@ function completeReminder(id){
   persist();
 }
 function deleteReminder(id){ state.reminders=state.reminders.filter(x=>x.id!==id); persist(); }
+
+/* Delete only the CURRENT occurrence of a recurring reminder: advance the series to its
+   next date so this one is gone but all future ones remain. Returns true if the series
+   was advanced (kept), false if it was deleted outright (no next occurrence). */
+function deleteThisOccurrence(id){
+  const r=state.reminders.find(x=>x.id===id); if(!r) return false;
+  if(r.recurrence && r.dueDate){
+    const next=nextOccurrence(r);
+    if(next){ r.dueDate=next; r.completed=false; r.completedAt=null; r.snoozedUntil=null; r.updatedAt=new Date().toISOString(); persist(); return true; }
+  }
+  deleteReminder(id); return false;   // no next date → nothing to keep
+}
+
+/* Central delete entry point. If the reminder currently recurs, ask the user how to
+   apply the delete (This Event / All Future / Cancel); otherwise delete immediately via
+   the supplied callback (which preserves each caller's own undo/animation behaviour). */
+function requestDelete(id, doDeleteNow){
+  const r=state.reminders.find(x=>x.id===id);
+  if(r && r.recurrence){
+    ui.pendingDelete={ id, doDeleteNow };
+    showOverlay('#recurDelOverlay');
+    return;
+  }
+  doDeleteNow();   // non-recurring: behave exactly as before
+}
+function recurDelThis(){
+  const p=ui.pendingDelete; if(!p){ hideOverlay('#recurDelOverlay'); return; }
+  const kept=deleteThisOccurrence(p.id);
+  ui.pendingDelete=null; hideOverlay('#recurDelOverlay'); hideOverlay('#addOverlay');
+  render(); showToast(kept?'This event deleted · series kept':'Deleted');
+}
+function recurDelFuture(){
+  const p=ui.pendingDelete; if(!p){ hideOverlay('#recurDelOverlay'); return; }
+  const fn=p.doDeleteNow; ui.pendingDelete=null; hideOverlay('#recurDelOverlay');
+  fn();   // whole-series delete via the caller's own path (keeps its undo toast)
+}
+function recurDelCancel(){ ui.pendingDelete=null; hideOverlay('#recurDelOverlay'); }
 function snoozeReminder(id, days){
   const r=state.reminders.find(x=>x.id===id); if(!r) return;
   const base = r.dueDate && new Date(r.dueDate)>new Date() ? new Date(r.dueDate) : new Date();
@@ -1405,12 +1455,14 @@ function animateComplete(card,id){
   setTimeout(render, 240);
 }
 function animateDelete(card,id,confirm){
-  const r=state.reminders.find(x=>x.id===id);
-  card.classList.add('removing');
-  const snapshot={...r};
-  deleteReminder(id);
-  showToast('Deleted','Undo',()=>{ state.reminders.unshift(snapshot); persist(); render(); });
-  setTimeout(render, 240);
+  requestDelete(id, ()=>{
+    const r=state.reminders.find(x=>x.id===id);
+    card.classList.add('removing');
+    const snapshot={...r};
+    deleteReminder(id);
+    showToast('Deleted','Undo',()=>{ state.reminders.unshift(snapshot); persist(); render(); });
+    setTimeout(render, 240);
+  });
 }
 
 /* ---------- counts + sidebar ---------- */
@@ -1975,7 +2027,7 @@ function checkNudges(){
 function bindGlobal(){
   $('#fab').onclick=openAdd;
   $('#qaSave').onclick=saveQA;
-  $('#qaDelete').onclick=()=>{ if(ui.editingId){ deleteReminder(ui.editingId); hideOverlay('#addOverlay'); render(); showToast('Deleted'); } };
+  $('#qaDelete').onclick=()=>{ if(ui.editingId){ const id=ui.editingId; requestDelete(id, ()=>{ deleteReminder(id); hideOverlay('#addOverlay'); render(); showToast('Deleted'); }); } };
   $('#qaTitle').oninput=()=>{
     const v=$('#qaTitle').value;
     $('#qaSave').disabled = !v.trim();
@@ -2011,6 +2063,9 @@ function bindGlobal(){
   $('#recurThisOnly').onclick=applyRecurThisOnly;
   $('#recurFuture').onclick=applyRecurFuture;
   $('#recurCancel').onclick=cancelRecurEdit;
+  $('#recurDelThis').onclick=recurDelThis;
+  $('#recurDelFuture').onclick=recurDelFuture;
+  $('#recurDelCancel').onclick=recurDelCancel;
 
   // smart lists
   $('#addSmartBtn').onclick=()=>openSmartBuilder();
