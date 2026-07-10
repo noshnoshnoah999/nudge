@@ -1,0 +1,11 @@
+-- ===========================================================================
+-- 5. RETIREMENT OF nudge_data — DO NOT RUN YET
+-- ===========================================================================
+-- Only after BOTH devices have run the new build for a couple of weeks and the two-device
+-- delete test passes. Until then `nudge_data` is the rollback: revert the app build and
+-- the old blob is still there, untouched.
+--
+--   alter table public.nudge_data rename to nudge_data_archived_20260710;
+--
+-- Rollback, at any point before that: just reinstall the previous app build. This script
+-- only ever ADDS tables. Nothing above deletes or rewrites a single byte of nudge_data.

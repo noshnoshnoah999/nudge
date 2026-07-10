@@ -146,9 +146,11 @@ it (we watched a Mac click return `otp_expired` after the iPhone had already red
 code can be typed into several clients before it expires, so the template fix turns 2 sends into 1.
 
 ### Engineering, in priority order
-- **D1 — whole-blob last-write-wins sync.** Still the last data-loss class after S2. The iPhone app
-  and the Mac app both write the entire blob, so near-simultaneous edits clobber each other silently.
-  Proper fix: per-reminder merge on `updatedAt`. Needs its own design pass.
+- ~~**D1 — whole-blob last-write-wins sync.**~~ ✅ **FIXED 2026-07-10.** Shipped as one cloud row per
+  reminder/list/smart-list with `deleted_at` tombstones and a per-item merge. Deployed to both devices,
+  two-device delete test passed. Spec of record: `D1_SYNC_DESIGN_per-reminder-merge.md` **§11**
+  (§1–10 are the original design and are wrong in five places). Migration: `supabase/d1/`.
+  Still open: schedule `04_purge_tombstones.sql`; do NOT run `05_retire_nudge_data.sql` before ~2026-07-24.
 - **S3 runtime verification** — snooze a routine, wait 30 min, confirm its early alert reschedules.
 - **D3** — `dismissed` is never set by any writer, but iOS filters on it.
 - **D4/D5/D6** — were web-vs-iOS parity bugs. **Mostly moot now the web app is retired.** Re-read

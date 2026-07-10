@@ -1,5 +1,6 @@
 // NudgeStore.swift — Nudge (iOS)
-// Loads/saves the shared Supabase `nudge_data` blob so iOS ⇄ web ⇄ cloud stay in sync.
+// Loads/saves reminders, lists and smart lists as individual Supabase rows so iPhone ⇄ Mac
+// ⇄ cloud stay in sync without clobbering each other. See CloudSync.swift for the merge.
 
 import Foundation
 import SwiftUI
@@ -20,14 +21,27 @@ final class NudgeStore: ObservableObject {
     @Published var syncState: String = "Local"
 
     private var settings: [String: JSONValue]? = nil
+    private var settingsStamp: String = epochStamp
+    private var settingsPushedStamp: String? = nil
     private var pushTask: Task<Void, Never>? = nil
-    /// True from the moment a local edit is made until its debounced cloud push
-    /// finishes. While true, an incoming cloud refresh must NOT overwrite local
-    /// state — our edit hasn't been published yet and would be lost from view.
-    private var hasPendingPush = false
+
+    /// Per-table sync bookkeeping: row stamps, tombstones, and the pushed/current
+    /// signatures that derive the dirty set. See CloudSync.swift.
+    private var remindersMeta = SyncMeta()
+    private var listsMeta = SyncMeta()
+    private var smartListsMeta = SyncMeta()
+
+    /// Whether a pull has ever succeeded on this install. Until it has, we must not push:
+    /// a device whose cache is stale (offline while the other device was edited) would
+    /// otherwise upload its whole stale copy over the newer one on its first sync.
+    private var pulledOnce = false
+
+    /// Sync is serialised — the 15s background poll and a debounced push must never
+    /// interleave at an `await` and merge into each other's half-written state.
+    private var isSyncing = false
 
     // Supabase project + anon key live in Shared/Secrets.swift (gitignored). There is
-    // no row secret any more: RLS picks the row by auth.uid() = user_id.
+    // no row secret any more: RLS picks rows by auth.uid() = user_id.
 
     private var cacheURL: URL {
         nudgeSupportDirectory().appendingPathComponent("nudge_cache.json")
@@ -35,60 +49,208 @@ final class NudgeStore: ObservableObject {
 
     init() { loadCache() }
 
-    // MARK: - Load
+    // MARK: - Local cache
+
+    /// v2 cache: the items plus everything sync needs to resume mid-flight — the delta
+    /// cursor, the tombstones, and the last-pushed signatures. All of it must survive an
+    /// app kill, or an unpushed delete would be forgotten and the reminder would come back.
+    private struct CacheFile: Codable {
+        var version: Int
+        var reminders: [Reminder]
+        var lists: [ReminderList]
+        var smartLists: [SmartList]
+        var settings: [String: JSONValue]?
+        var settingsStamp: String
+        var settingsPushedStamp: String?
+        var remindersMeta: SyncMeta
+        var listsMeta: SyncMeta
+        var smartListsMeta: SyncMeta
+        var pulledOnce: Bool
+    }
+
     private func loadCache() {
-        if let d = try? Data(contentsOf: cacheURL),
-           let blob = try? JSONDecoder().decode(NudgeData.self, from: d) {
-            apply(blob)
+        guard let d = try? Data(contentsOf: cacheURL) else { return }
+        if let c = try? JSONDecoder().decode(CacheFile.self, from: d), c.version >= 2 {
+            hiddenSource = c.reminders.filter(isHiddenSource)
+            reminders = c.reminders.filter { !isHiddenSource($0) }
+            lists = c.lists
+            smartLists = c.smartLists
+            settings = c.settings
+            settingsStamp = c.settingsStamp
+            settingsPushedStamp = c.settingsPushedStamp
+            remindersMeta = c.remindersMeta
+            listsMeta = c.listsMeta
+            smartListsMeta = c.smartListsMeta
+            pulledOnce = c.pulledOnce
+            purgeOldTombstones()
+        } else if let blob = try? JSONDecoder().decode(NudgeData.self, from: d) {
+            adoptLegacyBlob(blob)
         }
     }
 
-    struct Row: Codable { var data: NudgeData }
+    /// First launch on the per-item build: take over the old whole-blob cache. Items are
+    /// seeded as already-pushed with stamps from their own `updatedAt` — the same value the
+    /// server-side backfill derives each row's `updated_at` from — so local and cloud agree
+    /// and this launch pushes nothing. See `seedMigratedMeta`.
+    private func adoptLegacyBlob(_ blob: NudgeData) {
+        hiddenSource = blob.reminders.filter(isHiddenSource)
+        reminders = blob.reminders.filter { !isHiddenSource($0) }
+        lists = blob.lists
+        smartLists = blob.smartLists ?? []
+        settings = blob.settings
+        settingsStamp = epochStamp
+        settingsPushedStamp = epochStamp
+        remindersMeta = seedMigratedMeta(blob.reminders)
+        listsMeta = seedMigratedMeta(blob.lists)
+        smartListsMeta = seedMigratedMeta(blob.smartLists ?? [])
+        pulledOnce = false
+        writeCache()
+    }
+
+    private func writeCache() {
+        let c = CacheFile(version: 2, reminders: fullReminders(), lists: lists, smartLists: smartLists,
+                          settings: settings, settingsStamp: settingsStamp,
+                          settingsPushedStamp: settingsPushedStamp,
+                          remindersMeta: remindersMeta, listsMeta: listsMeta,
+                          smartListsMeta: smartListsMeta, pulledOnce: pulledOnce)
+        if let d = try? JSONEncoder().encode(c) { try? d.write(to: cacheURL) }
+    }
+
+    /// Drop tombstones older than the server's 90-day retention. Keeping them past that
+    /// point is pointless (the cloud row is gone) and they'd accumulate forever.
+    private func purgeOldTombstones() {
+        let cutoff = syncStamp(Date().addingTimeInterval(-90 * 86_400))
+        purgeOldTombstones(&remindersMeta, before: cutoff)
+        purgeOldTombstones(&listsMeta, before: cutoff)
+        purgeOldTombstones(&smartListsMeta, before: cutoff)
+    }
+    private func purgeOldTombstones(_ meta: inout SyncMeta, before cutoff: String) {
+        for (id, deletedAt) in meta.tombstone where deletedAt < cutoff {
+            meta.tombstone.removeValue(forKey: id)
+            meta.stamp.removeValue(forKey: id)
+            meta.sig.removeValue(forKey: id)
+            meta.pushedSig.removeValue(forKey: id)
+        }
+    }
+
+    // MARK: - Sync
+
+    /// Serialise sync work. `refresh()` (15s poll) and `push()` (debounced edit) both
+    /// suspend at `await`, and on a shared @MainActor that is enough for one to observe the
+    /// other's partially-merged arrays.
+    private func acquireSyncLock() async {
+        while isSyncing { try? await Task.sleep(nanoseconds: 50_000_000) }
+        isSyncing = true
+    }
+    private func releaseSyncLock() { isSyncing = false }
 
     func refresh() async {
-        // Signed out → local-only. RLS answers an unauthenticated read with [], which
-        // must never reach apply(): the app would be told the cloud is empty.
+        // Signed out → local-only. RLS answers an unauthenticated read with [], which must
+        // never reach the merge: the app would be told every item was deleted.
         guard AuthStore.isAuthed, await Auth.ensureSession() else {
             setSync("Local")
             syncPrepReminders()
             return
         }
-        if await fetchCloud() == 401, await Auth.refreshSession() { _ = await fetchCloud() }
+        await acquireSyncLock()
+        var code = await pullAll()
+        if code == 401, await Auth.refreshSession() { code = await pullAll() }
+        if (200..<300).contains(code) { pulledOnce = true; setSync("Synced") } else { setSync("Offline") }
+        writeCache()
+        releaseSyncLock()
         syncPrepReminders()   // keep linked "prep" reminders (e.g. buy ginger ingredients) aligned
     }
 
-    /// One GET. Returns the HTTP status so refresh() can retry once after a 401.
-    private func fetchCloud() async -> Int {
-        guard let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/nudge_data?select=data") else { return -1 }
-        var req = URLRequest(url: u)
-        req.setValue(Secrets.supabaseAnon, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(Auth.bearer())", forHTTPHeaderField: "Authorization")
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            if code == 401 { return 401 }   // caller refreshes the token and retries
-            guard (200..<300).contains(code) else { setSync("Offline"); return code }
-            let rows = try JSONDecoder().decode([Row].self, from: data)
-            if let blob = rows.first?.data {
-                if hasPendingPush || (sameReminders(blob.reminders, fullReminders()) && blob.lists == lists) {
-                    // Either we have un-uploaded local edits (the older cloud copy
-                    // would stomp them), or nothing actually changed — don't churn.
-                    setSync("Synced")
-                } else {
-                    backupSnapshot("cloud")   // preserve current local before the cloud copy replaces it
-                    apply(blob); cache(blob); setSync("Synced")
-                    WidgetCenter.shared.reloadAllTimelines()
-                }
-            } else {
-                // Authenticated but no row yet — the first push creates it. Emphatically
-                // not a reason to touch local data.
-                setSync("Synced")
-            }
-            return code
-        } catch {
-            setSync("Offline")
-            return -1
+    /// Delta-pull every table and merge per item. Returns the HTTP status of the first
+    /// failure so the caller can retry once after refreshing the token.
+    ///
+    /// An id absent from a pull is NOT a deletion — a pull is a delta, not a census. Only
+    /// an explicit tombstone row removes anything.
+    private func pullAll() async -> Int {
+        let (rRows, rCode) = await CloudAPI.pull(.reminders, since: remindersMeta.cursor, as: Reminder.self)
+        guard let rRows else { return rCode }
+        let (lRows, lCode) = await CloudAPI.pull(.lists, since: listsMeta.cursor, as: ReminderList.self)
+        guard let lRows else { return lCode }
+        let (sRows, sCode) = await CloudAPI.pull(.smart_lists, since: smartListsMeta.cursor, as: SmartList.self)
+        guard let sRows else { return sCode }
+        let (setRow, setCode) = await CloudAPI.pullSettings()
+        guard (200..<300).contains(setCode) else { return setCode }
+
+        let hasRows = !rRows.isEmpty || !lRows.isEmpty || !sRows.isEmpty
+        let settingsNewer = (setRow?.updated_at ?? epochStamp) > settingsStamp
+        // The overwhelmingly common case: a poll that finds nothing. The settings row is
+        // always returned (it's a single row, not a delta), so it can't be used as evidence
+        // that anything changed.
+        guard hasRows || settingsNewer else { return 200 }
+
+        // Insurance while the merge rules are young: a rotating on-disk snapshot before any
+        // incoming row can touch local state. Throttled to one per 10 minutes, so unlike the
+        // old per-poll backup this only fires on pulls that actually carry changes.
+        if hasRows { backupSnapshot("cloud-merge") }
+
+        var all = fullReminders()
+        var newLists = lists
+        var newSmart = smartLists
+        let outcome = mergeRows(rRows, into: &all, meta: &remindersMeta)
+        mergeRows(lRows, into: &newLists, meta: &listsMeta)
+        mergeRows(sRows, into: &newSmart, meta: &smartListsMeta)
+
+        // A reminder deleted on another device must take its alerts down with it, exactly as
+        // a local delete does. Its photos are left alone: the delete may yet be undone on the
+        // device that made it, and an orphaned image is cheap where a lost one is not.
+        for id in outcome.deletedIds { clearNotifications(for: id) }
+
+        hiddenSource = all.filter(isHiddenSource)
+        reminders = all.filter { !isHiddenSource($0) }
+        lists = newLists
+        smartLists = newSmart
+
+        if settingsNewer, let setRow {
+            settings = setRow.data
+            settingsStamp = setRow.updated_at
+            settingsPushedStamp = setRow.updated_at
         }
+
+        if outcome.changed {
+            WidgetCenter.shared.reloadAllTimelines()
+            LocationMonitor.shared.sync(reminders: reminders)
+        }
+        return 200
+    }
+
+    /// Upload every dirty row, one batched upsert per table. Deletes go up as tombstones
+    /// (`deleted_at` set), never as DELETEs — the row has to survive so the other device
+    /// learns of the delete on its next pull.
+    private func pushAll() async -> Int {
+        refreshSignatures(fullReminders(), meta: &remindersMeta)
+        refreshSignatures(lists, meta: &listsMeta)
+        refreshSignatures(smartLists, meta: &smartListsMeta)
+
+        let rIds = dirtyIds(remindersMeta)
+        let code = await CloudAPI.push(.reminders, rows: dirtyRows(rIds, items: fullReminders(), meta: remindersMeta))
+        guard (200..<300).contains(code) else { return code }
+        markPushed(rIds, &remindersMeta)
+
+        let lIds = dirtyIds(listsMeta)
+        let lCode = await CloudAPI.push(.lists, rows: dirtyRows(lIds, items: lists, meta: listsMeta))
+        guard (200..<300).contains(lCode) else { return lCode }
+        markPushed(lIds, &listsMeta)
+
+        let sIds = dirtyIds(smartListsMeta)
+        let sCode = await CloudAPI.push(.smart_lists, rows: dirtyRows(sIds, items: smartLists, meta: smartListsMeta))
+        guard (200..<300).contains(sCode) else { return sCode }
+        markPushed(sIds, &smartListsMeta)
+
+        if settingsStamp != settingsPushedStamp {
+            let setCode = await CloudAPI.pushSettings(SettingsRow(data: settings, updated_at: settingsStamp))
+            guard (200..<300).contains(setCode) else { return setCode }
+            settingsPushedStamp = settingsStamp
+        }
+        return 200
+    }
+
+    private func markPushed(_ ids: [String], _ meta: inout SyncMeta) {
+        for id in ids { meta.pushedSig[id] = meta.sig[id] }
     }
 
     /// Publish syncState only when it actually changes — otherwise the 15s background
@@ -104,23 +266,9 @@ final class NudgeStore: ObservableObject {
     private func isHiddenSource(_ r: Reminder) -> Bool {
         r.source == "studytrack" || r.source == "finance"
     }
-    /// The complete reminder set (visible + hidden) for anything written to the cloud/cache.
+    /// The complete reminder set (visible + hidden) — the unit everything sync touches.
+    /// Hidden-source rows sync exactly like any other; only the UI hides them.
     private func fullReminders() -> [Reminder] { reminders + hiddenSource }
-    /// Order-insensitive content comparison (the blob keeps both groups interleaved).
-    private func sameReminders(_ a: [Reminder], _ b: [Reminder]) -> Bool {
-        a.count == b.count && Set(a) == Set(b)
-    }
-
-    private func apply(_ blob: NudgeData) {
-        hiddenSource = blob.reminders.filter { isHiddenSource($0) }
-        reminders = blob.reminders.filter { !isHiddenSource($0) }
-        lists = blob.lists
-        smartLists = blob.smartLists ?? []
-        settings = blob.settings
-    }
-    private func cache(_ blob: NudgeData) {
-        if let d = try? JSONEncoder().encode(blob) { try? d.write(to: cacheURL) }
-    }
 
     // Created once on first access — backupSnapshot + lastBackup hit this on every
     // sync, so re-creating the dir each time was flagged as excessive I/O.
@@ -193,25 +341,38 @@ final class NudgeStore: ObservableObject {
         guard let d = try? Data(contentsOf: info.url),
               let blob = try? JSONDecoder().decode(NudgeData.self, from: d) else { return }
         backupSnapshot("pre-restore", force: true)
-        apply(blob)
+        hiddenSource = blob.reminders.filter { isHiddenSource($0) }
+        reminders = blob.reminders.filter { !isHiddenSource($0) }
+        lists = blob.lists
+        smartLists = blob.smartLists ?? []
+        settings = blob.settings
+        // A restored reminder outranks its own tombstone: without clearing these, an item
+        // the user deleted before restoring would stay dead, and the backup would silently
+        // fail to bring it back. `refreshSignatures` re-stamps each revived id past its
+        // tombstone, so the resurrection propagates.
+        for r in blob.reminders { remindersMeta.tombstone.removeValue(forKey: r.id) }
+        for l in blob.lists { listsMeta.tombstone.removeValue(forKey: l.id) }
+        for s in blob.smartLists ?? [] { smartListsMeta.tombstone.removeValue(forKey: s.id) }
         persist()
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    // MARK: - Save (debounced upsert)
-    // No user_key: the server fills user_id from auth.uid() via column default.
-    struct Payload: Codable { var data: NudgeData; var updated_at: String }
+    // MARK: - Save (debounced per-item upsert)
 
     func persist(notify: Bool = true) {
-        let blob = NudgeData(reminders: fullReminders(), lists: lists, smartLists: smartLists, settings: settings)
-        cache(blob)
+        // Stamp changed items NOW, at edit time — not at push time. An edit made offline
+        // must keep the moment it was actually made, or it would outrank a later edit from
+        // the other device simply by reconnecting last.
+        refreshSignatures(fullReminders(), meta: &remindersMeta)
+        refreshSignatures(lists, meta: &listsMeta)
+        refreshSignatures(smartLists, meta: &smartListsMeta)
+        writeCache()
         setSync("Syncing…")
-        hasPendingPush = true
         pushTask?.cancel()
         pushTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 700_000_000)
             if Task.isCancelled { return }
-            await self?.push(blob)
+            await self?.push()
         }
         // Let the EventKit mirror know local data changed (it debounces). The sync
         // engine's own write-backs pass notify:false to avoid a feedback loop.
@@ -221,6 +382,7 @@ final class NudgeStore: ObservableObject {
         // covers add / edit / complete / dismiss without scattering calls around.
         LocationMonitor.shared.sync(reminders: reminders)
     }
+
     /// Push the current state to the cloud RIGHT NOW, awaited. The debounced persist()
     /// is fine for foreground edits, but a notification action (Complete/Snooze) is
     /// handled in the background — iOS suspends the app the moment the async handler
@@ -228,41 +390,35 @@ final class NudgeStore: ObservableObject {
     /// stomped by the next refresh(). Call this to flush before the handler returns.
     func persistNow() async {
         pushTask?.cancel()
-        let blob = NudgeData(reminders: fullReminders(), lists: lists, smartLists: smartLists, settings: settings)
-        cache(blob)
-        hasPendingPush = true
-        await push(blob)
+        refreshSignatures(fullReminders(), meta: &remindersMeta)
+        refreshSignatures(lists, meta: &listsMeta)
+        refreshSignatures(smartLists, meta: &smartListsMeta)
+        writeCache()
+        await push()
     }
 
-    private func push(_ blob: NudgeData) async {
-        defer { hasPendingPush = false }
-        // Signed out → keep the edit local. Pushing with the anon key would be
-        // rejected by RLS anyway; this just says so honestly in the UI.
+    private func push() async {
+        // Signed out → keep the edit local. Pushing with the anon key would be rejected by
+        // RLS anyway; this just says so honestly in the UI. The dirty set persists, so the
+        // edit uploads once signed in.
         guard AuthStore.isAuthed, await Auth.ensureSession() else { setSync("Local"); return }
-        if await pushCloud(blob) == 401, await Auth.refreshSession() { _ = await pushCloud(blob) }
-    }
+        await acquireSyncLock()
+        defer { writeCache(); releaseSyncLock() }
 
-    /// One upsert. Returns the HTTP status so push() can retry once after a 401.
-    private func pushCloud(_ blob: NudgeData) async -> Int {
-        guard let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/nudge_data?on_conflict=user_id") else { return -1 }
-        var req = URLRequest(url: u); req.httpMethod = "POST"
-        req.setValue(Secrets.supabaseAnon, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(Auth.bearer())", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
-        req.httpBody = try? JSONEncoder().encode(Payload(data: blob, updated_at: iso(Date())))
-        do {
-            let (_, resp) = try await URLSession.shared.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            if code == 401 { return 401 }
-            // URLSession doesn't throw on 4xx, so the old code reported "Synced" even
-            // when the server rejected the write. Check the status.
-            setSync((200..<300).contains(code) ? "Synced" : "Offline")
-            return code
-        } catch {
-            setSync("Offline")
-            return -1
+        // Never upload before seeing the cloud at least once. On a freshly-migrated or
+        // reinstalled device the local cache can be arbitrarily stale, and pushing first
+        // would overwrite the other device's newer rows — the very clobber per-item sync
+        // exists to prevent.
+        if !pulledOnce {
+            var code = await pullAll()
+            if code == 401, await Auth.refreshSession() { code = await pullAll() }
+            guard (200..<300).contains(code) else { setSync("Offline"); return }
+            pulledOnce = true
         }
+
+        var code = await pushAll()
+        if code == 401, await Auth.refreshSession() { code = await pushAll() }
+        setSync((200..<300).contains(code) ? "Synced" : "Offline")
     }
 
     // MARK: - Mutations
@@ -498,9 +654,25 @@ final class NudgeStore: ObservableObject {
     /// are not purged until the undo window passes (see `finalizeDelete`).
     @Published var recentlyDeleted: Reminder?
 
+    /// The ONLY way a reminder leaves the local array. Dropping it directly — as the old
+    /// `deleteReminder` and RemindersSync both did — leaves no trace, and a delete with no
+    /// trace cannot be told apart from "this device simply hasn't heard of it". The other
+    /// device, still holding the item, re-uploads it and the delete is undone.
+    ///
+    /// A tombstone is that trace: the id survives with its `deletedAt`, gets pushed as a
+    /// row with `deleted_at` set, and outranks any older copy on every other device.
+    func tombstoneReminders(_ ids: some Collection<String>) {
+        guard !ids.isEmpty else { return }
+        let deletedAt = syncStamp()
+        for id in ids { remindersMeta.tombstone[id] = deletedAt }
+        let set = Set(ids)
+        reminders.removeAll { set.contains($0.id) }
+        hiddenSource.removeAll { set.contains($0.id) }
+    }
+
     func deleteReminder(_ r: Reminder) {
         finalizeDelete()                 // commit any earlier pending deletion first
-        reminders.removeAll { $0.id == r.id }
+        tombstoneReminders([r.id])
         clearNotifications(for: r.id)    // clear any delivered/pending alert
         #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
         if #available(iOS 26.0, *) { NudgeAlarms.cancel(reminderId: r.id) }   // stop any urgent alarm
@@ -532,9 +704,19 @@ final class NudgeStore: ObservableObject {
     }
 
     /// Bring back the last swipe/menu-deleted reminder.
+    ///
+    /// Clearing the tombstone is what makes this stick. `refreshSignatures` then re-stamps
+    /// the revived id strictly past its own `deletedAt`, so it beats the tombstone that may
+    /// already have reached the cloud. Leave the tombstone in place and the other device
+    /// pulls it, applies "delete wins", and the undo silently reverts on both.
     func undoDelete() {
         guard let r = recentlyDeleted else { return }
-        if !reminders.contains(where: { $0.id == r.id }) { reminders.insert(r, at: 0) }
+        remindersMeta.tombstone.removeValue(forKey: r.id)
+        if isHiddenSource(r) {
+            if !hiddenSource.contains(where: { $0.id == r.id }) { hiddenSource.append(r) }
+        } else if !reminders.contains(where: { $0.id == r.id }) {
+            reminders.insert(r, at: 0)
+        }
         recentlyDeleted = nil
         persist()
     }
@@ -557,8 +739,7 @@ final class NudgeStore: ObservableObject {
         }
         guard !stale.isEmpty else { return 0 }
         for r in stale { ImageStore.deleteAll(for: r.id); clearNotifications(for: r.id) }
-        let ids = Set(stale.map { $0.id })
-        reminders.removeAll { ids.contains($0.id) }
+        tombstoneReminders(stale.map { $0.id })
         persist()
         return stale.count
     }

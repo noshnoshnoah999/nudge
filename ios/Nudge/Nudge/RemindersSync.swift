@@ -157,7 +157,7 @@ final class RemindersSync: ObservableObject {
         guard let nudge else { return 0 }
         let removeIds = Set(groups.flatMap { $0.remove.map(\.id) })
         guard !removeIds.isEmpty else { return 0 }
-        nudge.reminders.removeAll { removeIds.contains($0.id) }
+        nudge.tombstoneReminders(removeIds)   // must leave a tombstone, or the other device re-adds them
 
         // Apple side: for each confirmed group, keep ONE matching Apple item, remove the rest.
         let groupKeys = Set(groups.map { dedupKey($0.keep) })
@@ -449,7 +449,7 @@ final class RemindersSync: ObservableObject {
             if nudgeIdsToDelete.count > max(5, initialLinkCount * 3 / 10) {
                 nudge.backupSnapshot("sync-massdelete", force: true)
             }
-            nudge.reminders.removeAll { nudgeIdsToDelete.contains($0.id) }
+            nudge.tombstoneReminders(nudgeIdsToDelete)   // Apple-side delete must propagate, not just vanish locally
             nudgeChanged = true
         }
 

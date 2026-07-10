@@ -49,7 +49,10 @@ Web `isOverdue()` used `dueDate < now`; iOS treats a no-time reminder as overdue
 
 ## Part 3 — FOR OPUS: cross-platform / design decisions (discuss with Noah first)
 
-### D1. Whole-blob last-write-wins sync (architectural)
+### D1. Whole-blob last-write-wins sync (architectural) — ✅ FIXED 2026-07-10
+Shipped as per-item rows + tombstones. See `D1_SYNC_DESIGN_per-reminder-merge.md` **§11 (as built)** and
+`supabase/d1/`. The description below is the original diagnosis, kept for context.
+
 Both platforms POST the entire `nudge_data` blob. iOS at least guards pulls with `hasPendingPush`; web pulls once at load and unconditionally overwrites localStorage. Offline web edits die on next load if another device pushed meanwhile; two devices editing near-simultaneously clobber each other item-by-item. Proper fix is a per-reminder merge keyed on `updatedAt` (both models already carry it). Non-trivial; needs a design pass.
 
 ### D2. Secrets in the client (SECURITY — ACTION REQUIRED, Noah has approved fixing this)

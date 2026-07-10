@@ -36,6 +36,14 @@ enum JSONValue: Codable {
     }
 }
 
+/// Anything stored as its own cloud row. `updatedAt` is the item's own notion of "last
+/// meaningful edit" — it is NOT the sync ordering key. Sync orders by the row's
+/// `updated_at` column, which advances whenever the item's bytes change (see CloudSync).
+protocol SyncItem: Codable, Identifiable, Hashable {
+    var id: String { get }
+    var updatedAt: String? { get set }
+}
+
 struct Recurrence: Codable, Hashable {
     var freq: String          // hourly / daily / weekly / monthly / yearly
     var interval: Int?
@@ -67,7 +75,7 @@ struct Subtask: Codable, Hashable, Identifiable {
     var done: Bool
 }
 
-struct Reminder: Codable, Identifiable, Hashable {
+struct Reminder: Codable, Identifiable, Hashable, SyncItem {
     var id: String
     var title: String
     var notes: String?
@@ -149,13 +157,14 @@ struct Reminder: Codable, Identifiable, Hashable {
     }
 }
 
-struct ReminderList: Codable, Identifiable, Hashable {
+struct ReminderList: Codable, Identifiable, Hashable, SyncItem {
     var id: String
     var name: String
     var color: String
     var builtin: Bool?
     var special: String?
     var linked: String?
+    var updatedAt: String?
 }
 
 struct SmartRules: Codable, Hashable {
@@ -166,11 +175,12 @@ struct SmartRules: Codable, Hashable {
     var listId: String?
 }
 
-struct SmartList: Codable, Identifiable, Hashable {
+struct SmartList: Codable, Identifiable, Hashable, SyncItem {
     var id: String
     var name: String
     var color: String
     var rules: SmartRules?
+    var updatedAt: String?
 }
 
 // The whole `data` blob stored in the Supabase `nudge_data` row.
