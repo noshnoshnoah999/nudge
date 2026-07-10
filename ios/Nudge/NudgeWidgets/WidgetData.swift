@@ -23,18 +23,19 @@ struct WData: Codable { var reminders: [WReminder]; var lists: [WList] }
 private struct WRow: Codable { var data: WData }
 
 enum NudgeFeed {
-    // Same Supabase project + anon key + row as NudgeStore.
-    static let baseURL = "https://epaiazxcdcseijkhrncm.supabase.co"
-    static let anon = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwYWlhenhjZGNzZWlqa2hybmNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjQ0MzQsImV4cCI6MjA5MjYwMDQzNH0.h2t_kFLZ_YPvuJlzPPiyXVbOnW4Ub_52hdaYosMoOus"
-    static let userKey = "2631e558-19f1-4961-9502-d701f4b15826"
-
+    /// Reads the session the app wrote to the shared Keychain group. Returns nil
+    /// whenever it can't authenticate — signed out, or an expired token — so the
+    /// widget keeps its last rendered state rather than blanking. The extension
+    /// never refreshes tokens; the app does that the next time it opens.
     static func fetch() async -> WData? {
-        guard let u = URL(string: "\(baseURL)/rest/v1/nudge_data?user_key=eq.\(userKey)&select=data") else { return nil }
+        guard let session = AuthStore.load(),
+              let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/nudge_data?select=data") else { return nil }
         var req = URLRequest(url: u)
-        req.setValue(anon, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(anon)", forHTTPHeaderField: "Authorization")
+        req.setValue(Secrets.supabaseAnon, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
         req.cachePolicy = .reloadIgnoringLocalCacheData
-        guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else { return nil }
         return (try? JSONDecoder().decode([WRow].self, from: data))?.first?.data
     }
 }

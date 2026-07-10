@@ -26,10 +26,8 @@ final class NudgeStore: ObservableObject {
     /// state — our edit hasn't been published yet and would be lost from view.
     private var hasPendingPush = false
 
-    // Same Supabase project + anon key as the web app (anon key is public-tier).
-    private let baseURL = "https://epaiazxcdcseijkhrncm.supabase.co"
-    private let anon = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwYWlhenhjZGNzZWlqa2hybmNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjQ0MzQsImV4cCI6MjA5MjYwMDQzNH0.h2t_kFLZ_YPvuJlzPPiyXVbOnW4Ub_52hdaYosMoOus"
-    private let userKey = "2631e558-19f1-4961-9502-d701f4b15826"
+    // Supabase project + anon key live in Shared/Secrets.swift (gitignored). There is
+    // no row secret any more: RLS picks the row by auth.uid() = user_id.
 
     private var cacheURL: URL {
         nudgeSupportDirectory().appendingPathComponent("nudge_cache.json")
@@ -48,12 +46,28 @@ final class NudgeStore: ObservableObject {
     struct Row: Codable { var data: NudgeData }
 
     func refresh() async {
-        guard let u = URL(string: "\(baseURL)/rest/v1/nudge_data?user_key=eq.\(userKey)&select=data") else { return }
+        // Signed out → local-only. RLS answers an unauthenticated read with [], which
+        // must never reach apply(): the app would be told the cloud is empty.
+        guard AuthStore.isAuthed, await Auth.ensureSession() else {
+            setSync("Local")
+            syncPrepReminders()
+            return
+        }
+        if await fetchCloud() == 401, await Auth.refreshSession() { _ = await fetchCloud() }
+        syncPrepReminders()   // keep linked "prep" reminders (e.g. buy ginger ingredients) aligned
+    }
+
+    /// One GET. Returns the HTTP status so refresh() can retry once after a 401.
+    private func fetchCloud() async -> Int {
+        guard let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/nudge_data?select=data") else { return -1 }
         var req = URLRequest(url: u)
-        req.setValue(anon, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(anon)", forHTTPHeaderField: "Authorization")
+        req.setValue(Secrets.supabaseAnon, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(Auth.bearer())", forHTTPHeaderField: "Authorization")
         do {
-            let (data, _) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if code == 401 { return 401 }   // caller refreshes the token and retries
+            guard (200..<300).contains(code) else { setSync("Offline"); return code }
             let rows = try JSONDecoder().decode([Row].self, from: data)
             if let blob = rows.first?.data {
                 if hasPendingPush || (sameReminders(blob.reminders, fullReminders()) && blob.lists == lists) {
@@ -65,11 +79,16 @@ final class NudgeStore: ObservableObject {
                     apply(blob); cache(blob); setSync("Synced")
                     WidgetCenter.shared.reloadAllTimelines()
                 }
+            } else {
+                // Authenticated but no row yet — the first push creates it. Emphatically
+                // not a reason to touch local data.
+                setSync("Synced")
             }
+            return code
         } catch {
             setSync("Offline")
+            return -1
         }
-        syncPrepReminders()   // keep linked "prep" reminders (e.g. buy ginger ingredients) aligned
     }
 
     /// Publish syncState only when it actually changes — otherwise the 15s background
@@ -180,7 +199,8 @@ final class NudgeStore: ObservableObject {
     }
 
     // MARK: - Save (debounced upsert)
-    struct Payload: Codable { var user_key: String; var data: NudgeData; var updated_at: String }
+    // No user_key: the server fills user_id from auth.uid() via column default.
+    struct Payload: Codable { var data: NudgeData; var updated_at: String }
 
     func persist(notify: Bool = true) {
         let blob = NudgeData(reminders: fullReminders(), lists: lists, smartLists: smartLists, settings: settings)
@@ -213,16 +233,33 @@ final class NudgeStore: ObservableObject {
 
     private func push(_ blob: NudgeData) async {
         defer { hasPendingPush = false }
-        guard let u = URL(string: "\(baseURL)/rest/v1/nudge_data") else { return }
+        // Signed out → keep the edit local. Pushing with the anon key would be
+        // rejected by RLS anyway; this just says so honestly in the UI.
+        guard AuthStore.isAuthed, await Auth.ensureSession() else { setSync("Local"); return }
+        if await pushCloud(blob) == 401, await Auth.refreshSession() { _ = await pushCloud(blob) }
+    }
+
+    /// One upsert. Returns the HTTP status so push() can retry once after a 401.
+    private func pushCloud(_ blob: NudgeData) async -> Int {
+        guard let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/nudge_data?on_conflict=user_id") else { return -1 }
         var req = URLRequest(url: u); req.httpMethod = "POST"
-        req.setValue(anon, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(anon)", forHTTPHeaderField: "Authorization")
+        req.setValue(Secrets.supabaseAnon, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(Auth.bearer())", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
-        let payload = Payload(user_key: userKey, data: blob, updated_at: iso(Date()))
-        req.httpBody = try? JSONEncoder().encode(payload)
-        do { _ = try await URLSession.shared.data(for: req); setSync("Synced") }
-        catch { setSync("Offline") }
+        req.httpBody = try? JSONEncoder().encode(Payload(data: blob, updated_at: iso(Date())))
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if code == 401 { return 401 }
+            // URLSession doesn't throw on 4xx, so the old code reported "Synced" even
+            // when the server rejected the write. Check the status.
+            setSync((200..<300).contains(code) ? "Synced" : "Offline")
+            return code
+        } catch {
+            setSync("Offline")
+            return -1
+        }
     }
 
     // MARK: - Mutations

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import UIKit
+import WidgetKit
 
 struct SyncSettingsView: View {
     @EnvironmentObject var sync: RemindersSync
@@ -18,6 +19,12 @@ struct SyncSettingsView: View {
     @AppStorage("autoGroupNightly") private var autoGroupNightly = true
     @State private var groupingBusy = false
     @State private var groupingResult: String?
+    @State private var session: Session? = AuthStore.load()
+    @State private var authEmail = ""
+    @State private var authCode = ""
+    @State private var codeSent = false
+    @State private var authBusy = false
+    @State private var authError: String?
 
     var body: some View {
         NavigationStack {
@@ -72,6 +79,59 @@ struct SyncSettingsView: View {
                     }
                 } footer: {
                     Text("Quickly delete reminders you don't need — swipe a row, or tap Select to remove several at once.")
+                }
+                .listRowBackground(Theme.surface)
+
+                // MARK: Cloud sync (Supabase Auth)
+                Section {
+                    if let s = session {
+                        HStack {
+                            Text("Signed in").foregroundStyle(Theme.textMain)
+                            Spacer()
+                            Text(s.email ?? "—").foregroundStyle(Theme.textMeta)
+                        }
+                        Button(role: .destructive) {
+                            AuthStore.clear()
+                            session = nil; codeSent = false; authCode = ""; authError = nil
+                            WidgetCenter.shared.reloadAllTimelines()
+                        } label: {
+                            Text("Sign out")
+                        }
+                    } else {
+                        TextField("you@example.com", text: $authEmail)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                            .keyboardType(.emailAddress)
+                        if codeSent {
+                            TextField("6-digit code", text: $authCode)
+                                .keyboardType(.numberPad)
+                                .disableAutocorrection(true)
+                        }
+                        Button {
+                            Task { codeSent ? await verifyCode() : await sendCode() }
+                        } label: {
+                            HStack {
+                                Text(codeSent ? "Verify code" : "Send code")
+                                if authBusy { Spacer(); ProgressView() }
+                            }
+                        }
+                        .disabled(authBusy || (codeSent ? authCode.isEmpty : authEmail.isEmpty))
+                        if codeSent {
+                            Button("Use a different email") {
+                                codeSent = false; authCode = ""; authError = nil
+                            }
+                            .foregroundStyle(Theme.textMeta)
+                        }
+                        if let e = authError {
+                            Text(e).font(.footnote).foregroundStyle(.red)
+                        }
+                    }
+                } header: {
+                    Text("Cloud sync")
+                } footer: {
+                    Text(session == nil
+                         ? "Sign in to sync reminders across your devices. We email you a 6-digit code — no password. Signed out, Nudge keeps working on this device and never uploads or erases anything."
+                         : "Reminders sync to your private row, protected by row-level security. Signing out leaves your local data untouched.")
                 }
                 .listRowBackground(Theme.surface)
 
@@ -387,5 +447,32 @@ struct SyncSettingsView: View {
         let url = URL(string: UIApplication.openSettingsURLString)
         #endif
         if let url { UIApplication.shared.open(url) }
+    }
+
+    // MARK: - Cloud sign-in
+    private func sendCode() async {
+        authBusy = true; authError = nil
+        defer { authBusy = false }
+        do {
+            try await Auth.sendCode(email: authEmail.trimmingCharacters(in: .whitespaces))
+            codeSent = true
+        } catch {
+            authError = error.localizedDescription
+        }
+    }
+
+    private func verifyCode() async {
+        authBusy = true; authError = nil
+        defer { authBusy = false }
+        do {
+            try await Auth.verifyCode(email: authEmail.trimmingCharacters(in: .whitespaces),
+                                      token: authCode.trimmingCharacters(in: .whitespaces))
+            session = AuthStore.load()
+            authCode = ""; codeSent = false
+            await store.refresh()                      // pull the cloud copy now that we can read it
+            WidgetCenter.shared.reloadAllTimelines()   // widget reads the new session from the Keychain
+        } catch {
+            authError = error.localizedDescription
+        }
     }
 }

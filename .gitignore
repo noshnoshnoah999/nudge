@@ -14,3 +14,6 @@ nudge_backup_*.json
 **/*.xcuserstate
 **/DerivedData/
 .claude/
+
+# iOS Supabase credentials (anon-tier, but kept out of git)
+ios/Nudge/Shared/Secrets.swift
