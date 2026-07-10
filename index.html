@@ -10,6 +10,8 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Nudge</title>
+<!-- Local secrets & endpoints. Untracked (see config.example.js). Loaded before the app. -->
+<script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -852,17 +854,68 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--text);}
    Phase 1: localStorage-first, Supabase-ready
    ===================================================================== */
 
-/* ---------- Supabase config (paste creds here to enable cloud sync) ---------- */
-const SUPABASE = {
-  url:  'https://epaiazxcdcseijkhrncm.supabase.co',                 // StudyTrack project (shared)
-  anon: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwYWlhenhjZGNzZWlqa2hybmNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjQ0MzQsImV4cCI6MjA5MjYwMDQzNH0.h2t_kFLZ_YPvuJlzPPiyXVbOnW4Ub_52hdaYosMoOus',
-  userKey: '2631e558-19f1-4961-9502-d701f4b15826'                   // secret row key (hardened)
-};
+/* ---------- Supabase config (from untracked config.js → window.NUDGE_CONFIG) ---------- */
+/* SECURITY (D2): secrets moved out of this file. Data access is gated by a signed-in
+   Supabase Auth session + Row Level Security — NOT a secret row key. The old user_key
+   model is gone. If config.js is missing, the app runs local-only (never wipes data). */
+const _CFG = (typeof window !== 'undefined' && window.NUDGE_CONFIG) ? window.NUDGE_CONFIG : {};
+const SUPABASE = { url: (_CFG.supabase&&_CFG.supabase.url)||'', anon: (_CFG.supabase&&_CFG.supabase.anon)||'' };
 const CLOUD = !!(SUPABASE.url && SUPABASE.anon);
 /* StudyTrack shares this same Supabase project (study_data key-value table). */
 const STUDYTRACK = { url: SUPABASE.url, anon: SUPABASE.anon };
-/* Finance is a separate project — paste its anon key to enable finance auto-reminders. */
-const FINANCE = { url:'https://ipjwpkqcuztahumijici.supabase.co', anon:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlwandwa3FjdXp0YWh1bWlqaWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTg0NjAsImV4cCI6MjA5MjU5NDQ2MH0.aCrIwHvNLkCtA_RXPdzIybRp2EMCrBeIVS5ABCtjl48', userKey:'f7e2a914-3b8c-4d5e-9a1f-6c2d7b0e8f3a' };
+/* Finance is a separate project. anon '' → finance auto-reminders disabled. */
+const FINANCE = { url: (_CFG.finance&&_CFG.finance.url)||'', anon: (_CFG.finance&&_CFG.finance.anon)||'' };
+
+/* ---------- Auth session (magic-link; token persisted locally by us) ---------- */
+const AUTH_KEY = 'nudge.auth.v1';   // { access_token, refresh_token, expires_at, email }
+let AUTH = null;
+try { const raw = localStorage.getItem(AUTH_KEY); if(raw) AUTH = JSON.parse(raw); } catch(e){}
+function authed(){ return !!(AUTH && AUTH.access_token); }
+function saveAuth(a){ AUTH = a; try{ a ? localStorage.setItem(AUTH_KEY, JSON.stringify(a)) : localStorage.removeItem(AUTH_KEY); }catch(e){} }
+/* Bearer for data calls: the USER's session token when signed in, else the anon key.
+   With RLS on, the anon key alone returns/writes nothing — so unsynced == safe, not broken. */
+function bearer(){ return authed() ? AUTH.access_token : SUPABASE.anon; }
+/* Refresh an expired access token using the refresh token. Returns true on success. */
+async function refreshSession(){
+  if(!AUTH || !AUTH.refresh_token || !CLOUD) return false;
+  try{
+    const res = await fetch(`${SUPABASE.url}/auth/v1/token?grant_type=refresh_token`,{
+      method:'POST', headers:{ apikey:SUPABASE.anon, 'Content-Type':'application/json' },
+      body: JSON.stringify({ refresh_token: AUTH.refresh_token })
+    });
+    if(!res.ok){ if(res.status===400||res.status===401) saveAuth(null); return false; }
+    const j = await res.json();
+    saveAuth({ access_token:j.access_token, refresh_token:j.refresh_token, expires_at: Date.now()+((j.expires_in||3600)*1000), email:(j.user&&j.user.email)||(AUTH&&AUTH.email) });
+    return true;
+  }catch(e){ return false; }
+}
+/* Ensure a live token before a data call. Refreshes if within 60s of expiry. */
+async function ensureSession(){
+  if(!authed()) return false;
+  if(AUTH.expires_at && Date.now() > AUTH.expires_at - 60000){ return await refreshSession(); }
+  return true;
+}
+/* Send a magic link to the user's email. */
+async function sendMagicLink(email){
+  if(!CLOUD) throw new Error('Cloud not configured');
+  const res = await fetch(`${SUPABASE.url}/auth/v1/otp`,{
+    method:'POST', headers:{ apikey:SUPABASE.anon, 'Content-Type':'application/json' },
+    body: JSON.stringify({ email, create_user:true, options:{ email_redirect_to: location.origin+location.pathname } })
+  });
+  if(!res.ok) throw new Error('Sign-in failed ('+res.status+')');
+  return true;
+}
+/* On load, capture tokens Supabase appends to the URL hash after the magic link. */
+function captureAuthRedirect(){
+  if(!location.hash || location.hash.indexOf('access_token')<0) return false;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const at = p.get('access_token');
+  if(!at) return false;
+  saveAuth({ access_token:at, refresh_token:p.get('refresh_token')||'', expires_at: Date.now()+((parseInt(p.get('expires_in'))||3600)*1000), email: AUTH&&AUTH.email });
+  history.replaceState(null,'',location.pathname+location.search);   // strip tokens from URL bar
+  return true;
+}
+function signOut(){ saveAuth(null); setSync('local'); render && render(); }
 
 /* ---------- constants ---------- */
 const LIST_COLORS = ['#5B4FCF','#E85D4A','#E8A23D','#7CA982','#3D9BE8','#D45A9E','#8B5C3D','#6B6B78'];
@@ -1012,20 +1065,28 @@ function persist(){
   if(CLOUD){ setSync('syncing'); clearTimeout(syncTimer); syncTimer=setTimeout(cloudPush, 800); }
 }
 async function cloudPush(){
+  if(!authed()){ setSync('local'); return; }         // not signed in → local-only, never push
+  if(!(await ensureSession())){ setSync('local'); return; }
   try{
-    const res = await fetch(`${SUPABASE.url}/rest/v1/nudge_data?user_key=eq.${SUPABASE.userKey}`,{
+    // RLS: server sets user_id = auth.uid() by default and enforces one row per user.
+    // We upsert on user_id, so no secret row key is sent from the client.
+    const res = await fetch(`${SUPABASE.url}/rest/v1/nudge_data?on_conflict=user_id`,{
       method:'POST',
-      headers:{ apikey:SUPABASE.anon, Authorization:`Bearer ${SUPABASE.anon}`, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates' },
-      body: JSON.stringify({ user_key:SUPABASE.userKey, data:{reminders:state.reminders, lists:state.lists, smartLists:state.smartLists, settings:state.settings}, updated_at:new Date().toISOString() })
+      headers:{ apikey:SUPABASE.anon, Authorization:`Bearer ${bearer()}`, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates' },
+      body: JSON.stringify({ data:{reminders:state.reminders, lists:state.lists, smartLists:state.smartLists, settings:state.settings}, updated_at:new Date().toISOString() })
     });
+    if(res.status===401){ if(await refreshSession()) return cloudPush(); setSync('local'); return; }
     setSync(res.ok ? 'synced' : 'local');
   }catch(e){ setSync('local'); }
 }
 async function cloudPull(){
+  if(!authed()){ setSync('local'); return; }         // not signed in → keep local data untouched
+  if(!(await ensureSession())){ setSync('local'); return; }
   try{
-    const res = await fetch(`${SUPABASE.url}/rest/v1/nudge_data?user_key=eq.${SUPABASE.userKey}&select=data`,{
-      headers:{ apikey:SUPABASE.anon, Authorization:`Bearer ${SUPABASE.anon}` }
+    const res = await fetch(`${SUPABASE.url}/rest/v1/nudge_data?select=data`,{
+      headers:{ apikey:SUPABASE.anon, Authorization:`Bearer ${bearer()}` }
     });
+    if(res.status===401){ if(await refreshSession()) return cloudPull(); setSync('local'); return; }
     if(!res.ok) throw new Error('HTTP '+res.status);
     const rows = await res.json();
     if(rows && rows[0] && rows[0].data){
@@ -1849,7 +1910,10 @@ function renderSettings(){
       </button>
       <div class="set-row">
         <div class="sr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
-        <div class="sr-text"><div class="sr-title">Cloud sync</div><div class="sr-sub">${CLOUD?'Connected to Supabase':'Add Supabase keys in index.html to sync across devices'}</div></div>
+        <div class="sr-text"><div class="sr-title">Cloud sync</div><div class="sr-sub">${!CLOUD?'Not configured (config.js missing)':(authed()?('Signed in as '+(AUTH.email||'your account')):'Sign in to sync across devices')}</div></div>
+        ${CLOUD?(authed()
+          ?'<button class="sr-btn" id="signOutBtn" style="padding:7px 14px;border-radius:9px;border:1px solid var(--line);background:var(--card);font-size:13px;">Sign out</button>'
+          :'<button class="sr-btn" id="signInBtn" style="padding:7px 14px;border-radius:9px;border:none;background:var(--accent,#5B4FCF);color:#fff;font-size:13px;">Sign in</button>'):''}
       </div>
     </div>
 
@@ -1865,6 +1929,13 @@ function bindSettings(){
     state.settings[k]=!state.settings[k]; persist(); render();
   });
   const ia=$('#importApple'); if(ia) ia.onclick=()=>showToast('Apple Reminders sync arrives with the iOS app (Phase 3)');
+  const si=$('#signInBtn'); if(si) si.onclick=async()=>{
+    const email=(prompt('Email for your Nudge account:')||'').trim();
+    if(!email) return;
+    try{ await sendMagicLink(email); saveAuth({...(AUTH||{}), email}); showToast('Magic link sent — check '+email); }
+    catch(e){ showToast('Sign-in failed: '+e.message); }
+  };
+  const so=$('#signOutBtn'); if(so) so.onclick=()=>{ if(confirm('Sign out? Local data stays on this device; cloud sync stops.')){ signOut(); showToast('Signed out'); } };
 }
 
 /* ============ TRIAGE ENGINE ============ */
@@ -2165,8 +2236,12 @@ function seedSample(){
 /* StudyTrack auto-reminders removed — app unlinked from Nudge 2026-06-11. */
 async function financeAuto(){
   if(!FINANCE.anon) return [];
-  const res=await fetch(`${FINANCE.url}/rest/v1/finance_data?user_key=eq.${FINANCE.userKey}&select=data`,{headers:{apikey:FINANCE.anon,Authorization:`Bearer ${FINANCE.anon}`}});
-  if(!res.ok) throw new Error('fin '+res.status);
+  // D2: finance is a SEPARATE Supabase project. Its data is now protected by RLS too,
+  // so it needs its own signed-in session. Until finance Auth is wired up (see runbook),
+  // this stays disabled rather than sending a bare anon key that RLS will (correctly) reject.
+  if(!authed()) return [];
+  const res=await fetch(`${FINANCE.url}/rest/v1/finance_data?select=data`,{headers:{apikey:FINANCE.anon,Authorization:`Bearer ${FINANCE.anon}`}});
+  if(!res.ok){ if(res.status===401||res.status===403) return []; throw new Error('fin '+res.status); }
   const rows=await res.json(); const d=rows&&rows[0]?rows[0].data:null;
   if(!d||!d.settings) return [];
   const out=[]; const ym=new Date().toISOString().slice(0,7); const due=new Date(); due.setHours(20,0,0,0);
@@ -2209,7 +2284,8 @@ async function syncIntegrations(){
 /* ---------- init ---------- */
 async function init(){
   loadLocal();
-  if(CLOUD){ await cloudPull(); }
+  captureAuthRedirect();               // grab tokens from magic-link redirect hash, if present
+  if(CLOUD && authed()){ await cloudPull(); }
   else setSync('local');
   if(state.settings.firstRun && state.reminders.length===0) seedSample();
   const _dd=dedupeReminders();   // self-heal any duplicate pile-ups (e.g. repeated Apple imports)

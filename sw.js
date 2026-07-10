@@ -1,5 +1,5 @@
 /* Nudge service worker — offline shell caching */
-const CACHE = 'nudge-v1';
+const CACHE = 'nudge-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -24,8 +24,8 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   // Always go to network for Supabase API calls
   if (url.hostname.endsWith('supabase.co')) return;
-  // Network-first for the app HTML so updates land; cache fallback for offline
-  if (e.request.mode === 'navigate' || url.pathname.endsWith('index.html')) {
+  // Network-first for app HTML AND config.js so updates / rotated keys always land fresh
+  if (e.request.mode === 'navigate' || url.pathname.endsWith('index.html') || url.pathname.endsWith('config.js')) {
     e.respondWith(
       fetch(e.request).then((res) => {
         const copy = res.clone();

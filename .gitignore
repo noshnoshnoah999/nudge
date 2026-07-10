@@ -6,6 +6,9 @@ make_icons.py
 
 nudge_backup_*.json
 
+# Local secrets — NEVER commit. Ship config.example.js instead.
+config.js
+
 # Xcode (native app)
 **/xcuserdata/
 **/*.xcuserstate
