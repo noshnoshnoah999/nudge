@@ -142,10 +142,13 @@ final class NotificationManager: NSObject, ObservableObject {
             var mainFire = due
             if let s = parseDate(r.snoozedUntil), s > mainFire { mainFire = s }
             if mainFire > now { pending.append((r, mainFire, 0)) }
-            // Early-reminder alerts (skipped once snoozed past their lead time).
+            // Early-reminder alerts, suppressed only while a snooze is still pending.
+            // snoozedUntil is never cleared once it passes, so testing it for mere
+            // presence silenced a reminder's early alerts for good after one snooze.
+            let snoozed = parseDate(r.snoozedUntil).map { $0 > now } ?? false
             for off in r.earlyAlerts {
                 let f = due.addingTimeInterval(-Double(off * 60))
-                if f > now && parseDate(r.snoozedUntil) == nil { pending.append((r, f, off)) }
+                if f > now && !snoozed { pending.append((r, f, off)) }
             }
         }
         pending.sort { $0.fire < $1.fire }
