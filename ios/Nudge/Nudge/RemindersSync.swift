@@ -198,9 +198,11 @@ final class RemindersSync: ObservableObject {
 
     enum SyncError: LocalizedError {
         case noSource
+        case emptyFetch
         var errorDescription: String? {
             switch self {
             case .noSource: return "No Reminders account available to create the Nudge list."
+            case .emptyFetch: return "Apple returned no reminders — skipped to protect data."
             }
         }
     }
@@ -300,6 +302,16 @@ final class RemindersSync: ObservableObject {
         // counterparts as deletions.
         if freshCalendar { links = [:] }
         let eks = await fetchReminders(in: cal)
+
+        // A transient empty fetch (iCloud hiccup) is indistinguishable from a real
+        // empty calendar, and every linked reminder below would be read as an
+        // Apple-side deletion. If we had links a moment ago, refuse to reconcile.
+        if eks.isEmpty && !links.isEmpty { throw SyncError.emptyFetch }
+
+        // Loop 1 clears links as it consumes them, so snapshot the count now for the
+        // mass-delete threshold below.
+        let initialLinkCount = links.count
+
         var ekByExt: [String: EKReminder] = [:]
         for e in eks { ekByExt[e.calendarItemExternalIdentifier] = e }
 
@@ -377,8 +389,30 @@ final class RemindersSync: ObservableObject {
                         if (rr.routine ?? false) && (rr.completed ?? false) {
                             nudge.advanceRoutine(&rr, night: parseDate(cur.dueDate) ?? Date())
                         }
+                        // Completing a repeating reminder in Apple must spawn the next
+                        // occurrence, exactly as toggleComplete does. Sync never calls
+                        // toggleComplete, so without this the series silently ends here.
+                        // The completed one stays as history.
+                        var spawnedNext: Reminder?
+                        if !(rr.routine ?? false), rr.completed ?? false, !(cur.completed ?? false),
+                           let rec = rr.recurrence, rec.freq != "none",
+                           let next = nudge.nextOccurrence(after: rr.dueDate, rec: rec) {
+                            var copy = rr
+                            copy.id = "r" + String(UUID().uuidString.prefix(12))
+                            copy.completed = false
+                            copy.completedAt = nil
+                            copy.snoozedUntil = nil
+                            copy.dueDate = next
+                            copy.createdAt = iso(Date())
+                            copy.updatedAt = iso(Date())
+                            spawnedNext = copy
+                        }
                         nudge.reminders[idx] = rr; nudgeChanged = true
                         links[nid]?.snap = snapshot(rr)
+                        // Insert only after the in-place write above — inserting at 0
+                        // shifts idx. The copy carries no link, so loop 2 creates its
+                        // Apple twin with recurrence intact.
+                        if let copy = spawnedNext { nudge.reminders.insert(copy, at: 0) }
                     } else {
                         writeToEK(ek, from: cur); try ek_save(ek); commitEK = true
                         links[nid]?.snap = nSnap
@@ -409,6 +443,12 @@ final class RemindersSync: ObservableObject {
         }
 
         if !nudgeIdsToDelete.isEmpty {
+            // The opening snapshot is 10-min throttled and may have been skipped. A
+            // delete this large is the shape of a bug, not a user action — force one
+            // while the doomed reminders are still in the array.
+            if nudgeIdsToDelete.count > max(5, initialLinkCount * 3 / 10) {
+                nudge.backupSnapshot("sync-massdelete", force: true)
+            }
             nudge.reminders.removeAll { nudgeIdsToDelete.contains($0.id) }
             nudgeChanged = true
         }
