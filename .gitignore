@@ -6,8 +6,8 @@ make_icons.py
 
 nudge_backup_*.json
 
-# Local secrets — NEVER commit. Ship config.example.js instead.
-config.js
+# config.js holds ONLY publishable anon keys (safe with RLS on) and is committed
+# so GitHub Pages serves it. NEVER put user_key / service_role keys in it.
 
 # Xcode (native app)
 **/xcuserdata/

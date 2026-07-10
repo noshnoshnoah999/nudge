@@ -2,45 +2,47 @@
 
 Paste the block below into Claude Code (run from the `nudge` repo root).
 
-**Safety notes before you run this:**
-- `config.js` holds live secrets and is gitignored. It must **never** be committed. The prompt verifies this.
-- Do NOT paste any keys into chat. Everything needed is already in local files.
-- This commits the WEB portion only. The iOS/widget Swift work (Part B of `D2_HANDOFF.md`) is a separate task you'll do in Xcode afterward.
+**Why config.js is now committed:** the app is hosted on GitHub Pages (public). RLS is live on Supabase (verified 2026-07-10 — anon-only REST read returns `[]`), so the anon key is safe to expose publicly — that is its designed purpose. `config.js` holds ONLY publishable anon keys, no `user_key` or `service_role`. So it must be committed for GitHub Pages to serve it, otherwise the app shows "Local only / config.js missing".
+
+**Safety rule that still holds:** never let a `user_key` UUID or a `service_role` key into `config.js` or `index.html`. The prompt verifies this.
 
 ---
 
 ```
 Commit and push the D2 security web changes in this repo. Before committing, VERIFY SAFETY:
 
-1. Run `git check-ignore config.js` — it MUST print `config.js`. If it does NOT, STOP and tell me: config.js is not ignored and must not be committed.
-2. Run `git status --short` and confirm `config.js` is NOT listed as staged or tracked. If it appears, STOP.
-3. Run `grep -cE "2631e558|f7e2a914|userKey" index.html` — it MUST print `0`. If not, STOP: old row secrets are still in index.html.
+1. Run: grep -cE "2631e558|f7e2a914" config.js index.html
+   MUST print 0 for both (no user_key row secrets anywhere). If not, STOP.
+2. Confirm config.js contains only anon-role keys. For each JWT in config.js, decode the middle segment and check "role":"anon" (NOT "service_role"). If any service_role key is present, STOP.
+3. Run: grep -cE "userKey|user_key" index.html
+   MUST print 0. If not, STOP: old row-key logic is still in index.html.
 
-If all three checks pass, stage and commit exactly these files:
+If all checks pass, stage and commit exactly these files:
 - index.html
 - sw.js
 - .gitignore
+- config.js            (publishable anon keys only — safe with RLS on; needed by GitHub Pages)
 - config.example.js
 - D2_HANDOFF.md
 - SECURITY_D2_RUNBOOK.md
 - D2_CLAUDE_CODE_PROMPT.md
-
-Do NOT stage config.js (it is gitignored and contains secrets).
+- D2_IOS_CLAUDE_CODE_PROMPT.md
 
 Commit message:
-"D2 security: move Supabase secrets to untracked config.js; add magic-link Auth + RLS-ready sync (web)
+"D2 security: Supabase Auth + RLS-ready sync (web); commit config.js (anon keys, safe with RLS)
 
-- Remove hardcoded anon keys + user_key row secrets from index.html
-- Load config from window.NUDGE_CONFIG (config.js, gitignored; config.example.js template)
-- Add magic-link auth: session token used for cloud read/write, upsert on user_id (no row key)
+- Remove hardcoded user_key row secrets from index.html
+- Config in window.NUDGE_CONFIG via config.js (anon keys only; RLS makes them safe to serve publicly on GitHub Pages)
+- Magic-link auth: user session token used for cloud read/write, upsert on user_id (no row key)
 - cloudPush/cloudPull fail safe to local-only when signed out (never wipe local data)
 - financeAuto gated on auth; sw.js cache v2 + config.js network-first
-- iOS/widget spec + Supabase RLS runbook included for follow-up
+- RLS live on nudge_data/study_data/finance_data; anon-only read returns [] (verified)
+- iOS/widget migration spec included (D2_IOS_CLAUDE_CODE_PROMPT.md)
 
-NOTE: current anon keys are in git history and must be rotated after RLS lands (see SECURITY_D2_RUNBOOK.md)."
+Anon-key rotation still pending (Step 5) — do AFTER iOS is migrated so all clients cut over together."
 
 Then push to origin. After pushing, remove any stale git lock files so the next session is clean:
-- `rm -f .git/index.lock .git/refs/heads/*.lock .git/HEAD.lock 2>/dev/null; true`
+- rm -f .git/index.lock .git/refs/heads/*.lock .git/HEAD.lock 2>/dev/null; true
 
-Report the commit hash and confirm config.js was not included in the commit (run `git show --stat HEAD | grep -c config.js` — expect 0, ignoring config.example.js).
+Report the commit hash.
 ```

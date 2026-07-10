@@ -87,9 +87,15 @@ Finance is a different project with different JWT signing keys, so your Nudge se
    ```
    With RLS on, this must return `[]` (empty). If it returns your data, RLS is not correctly applied — STOP and fix before rotating.
 
-## Step 5 — Rotate the anon keys (only after Step 4 passes)
+## Step 5 — Rotate the anon keys (do this LAST, after iOS is migrated too)
 
-Dashboard → **Project Settings → API → "Reset" / roll the anon (publishable) key**, for BOTH the Nudge and Finance projects. Then:
+**⚠️ DO NOT rotate until the iOS/widget Swift migration (D2_HANDOFF.md Part B) is done and rebuilt.**
+Rotating instantly kills the old anon key everywhere. Any client still using it — the deployed web app, iOS, the widget, your local config.js — loses even the ability to authenticate (auth calls need a valid anon key too). Web is already migrated, but iOS/widget still hardcode the old key, so rotating now breaks iOS sync until Part B ships.
+
+This is safe to defer: RLS has already neutralized the leaked keys (the Step-4 negative test returns `[]`). The old key in git history can no longer read or write data. Rotation is now hygiene, not an emergency — so wait until all clients are on Auth, then rotate ONCE and update every client in the same pass.
+
+**When you do rotate (order matters to avoid a lockout):**
+Dashboard → **Project Settings → API → "Reset" / roll the anon (publishable) key**, for BOTH the Nudge and Finance projects. Immediately after, before closing the tab:
 
 1. Paste the new anon keys into your local `config.js` (never commit it — it's gitignored).
 2. Update the iOS/widget `anon` constant (Claude Code will have parameterized it; see the iOS spec).
