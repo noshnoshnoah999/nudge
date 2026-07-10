@@ -96,10 +96,40 @@ fi
 # an ad-hoc-signed app, so the notifications toggle could never turn on. Real Apple
 # Development signing fixes that. Trade-off: the Mac app now also carries the free-team
 # 7-day expiry — but this script resets that clock on every run anyway.
-if xcodebuild -project Nudge.xcodeproj -scheme Nudge -destination 'platform=macOS,variant=Mac Catalyst' -allowProvisioningUpdates build 2>&1 | tail -3; then
+# pipefail so a build failure isn't masked by the trailing `tail` — otherwise a broken
+# build reported success and we'd reinstall nothing.
+if ( set -o pipefail; xcodebuild -project Nudge.xcodeproj -scheme Nudge -destination 'platform=macOS,variant=Mac Catalyst' -allowProvisioningUpdates build 2>&1 | tail -3 ); then
   MACAPP=$(ls -td "$HOME/Library/Developer/Xcode/DerivedData/Nudge-"*/Build/Products/Debug-maccatalyst/Nudge.app 2>/dev/null | head -1)
-  [ -n "$MACAPP" ] && { pkill -x Nudge >/dev/null 2>&1; sleep 1; /usr/bin/open "$MACAPP"; }
-  echo "Mac refreshed."
+  if [ -z "$MACAPP" ]; then
+    notify "Nudge Mac refresh failed" "No Mac build output." "Basso"
+  else
+    # INSTALL into /Applications rather than just launching the DerivedData bundle.
+    # Launching from DerivedData left /Applications/Nudge.app — what the Dock and
+    # Spotlight actually open — frozen at whatever build first landed there, so the
+    # Mac silently ran stale code while this script reported success.
+    pkill -x Nudge >/dev/null 2>&1; sleep 1
+    STAGE="/Applications/.Nudge.app.staging"
+    OLD="/Applications/.Nudge.app.previous"
+    rm -rf "$STAGE" "$OLD"
+    # ditto preserves the code signature; stage-then-swap so a half-copied bundle can
+    # never replace a working one.
+    if ditto "$MACAPP" "$STAGE" 2>/dev/null; then
+      [ -d /Applications/Nudge.app ] && mv /Applications/Nudge.app "$OLD"
+      if mv "$STAGE" /Applications/Nudge.app; then
+        rm -rf "$OLD"
+        /usr/bin/open /Applications/Nudge.app
+        echo "Mac reinstalled to /Applications."
+      else
+        # Swap failed — put the working copy back rather than leaving no app at all.
+        [ -d "$OLD" ] && mv "$OLD" /Applications/Nudge.app
+        rm -rf "$STAGE"
+        notify "Nudge Mac refresh failed" "Couldn't replace /Applications/Nudge.app." "Basso"
+      fi
+    else
+      rm -rf "$STAGE"
+      notify "Nudge Mac refresh failed" "Couldn't copy the new build to /Applications." "Basso"
+    fi
+  fi
 else
   notify "Nudge Mac refresh failed" "The Mac app couldn't rebuild." "Basso"
 fi
