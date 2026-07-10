@@ -217,6 +217,9 @@ final class NudgeStore: ObservableObject {
         // engine's own write-backs pass notify:false to avoid a feedback loop.
         if notify { NotificationCenter.default.post(name: .nudgeDataChanged, object: nil) }
         WidgetCenter.shared.reloadAllTimelines()
+        // Single choke point for keeping the monitored geofences in step with the data —
+        // covers add / edit / complete / dismiss without scattering calls around.
+        LocationMonitor.shared.sync(reminders: reminders)
     }
     /// Push the current state to the cloud RIGHT NOW, awaited. The debounced persist()
     /// is fine for foreground edits, but a notification action (Complete/Snooze) is
@@ -996,6 +999,7 @@ final class NudgeStore: ObservableObject {
                       recurrence: Recurrence? = nil, tz: String? = nil,
                       url: String? = nil, location: String? = nil,
                       lat: Double? = nil, lng: Double? = nil,
+                      geofenceEnabled: Bool = false, geofenceTrigger: String? = nil,
                       pinned: Bool = false, remindBefores: [Int] = [],
                       subtasks: [Subtask] = [], routine: Bool = false,
                       escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
@@ -1016,6 +1020,9 @@ final class NudgeStore: ObservableObject {
         }
         let cleanURL = url?.trimmingCharacters(in: .whitespaces)
         let cleanLoc = location?.trimmingCharacters(in: .whitespaces)
+        // A geofence is meaningless without a coordinate: dropping the place drops the trigger.
+        let hasPlace = (cleanLoc?.isEmpty == false) && lat != nil && lng != nil
+        let geoOn = hasPlace && geofenceEnabled
         let rec = (recurrence?.freq == "none") ? nil : recurrence
         if let existing = editing, let i = reminders.firstIndex(where: { $0.id == existing.id }) {
             reminders[i].title = cleanTitle
@@ -1030,6 +1037,8 @@ final class NudgeStore: ObservableObject {
             reminders[i].location = (cleanLoc?.isEmpty == false) ? cleanLoc : nil
             reminders[i].lat = (cleanLoc?.isEmpty == false) ? lat : nil
             reminders[i].lng = (cleanLoc?.isEmpty == false) ? lng : nil
+            reminders[i].geofenceEnabled = geoOn ? true : nil
+            reminders[i].geofenceTrigger = geoOn ? (geofenceTrigger ?? "arrive") : nil
             reminders[i].pinned = pinned ? true : nil
             let early = Array(Set(remindBefores.filter { $0 > 0 })).sorted(by: >)
             reminders[i].remindBefores = early.isEmpty ? nil : early
@@ -1057,6 +1066,8 @@ final class NudgeStore: ObservableObject {
                 location: (cleanLoc?.isEmpty == false) ? cleanLoc : nil,
                 lat: (cleanLoc?.isEmpty == false) ? lat : nil,
                 lng: (cleanLoc?.isEmpty == false) ? lng : nil,
+                geofenceEnabled: geoOn ? true : nil,
+                geofenceTrigger: geoOn ? (geofenceTrigger ?? "arrive") : nil,
                 createdAt: iso(Date()), updatedAt: iso(Date()),
                 source: "manual", snoozedUntil: nil, dismissed: false,
                 pinned: pinned ? true : nil,
@@ -1093,6 +1104,7 @@ final class NudgeStore: ObservableObject {
                                         recurrence: Recurrence? = nil, tz: String? = nil,
                                         url: String? = nil, location: String? = nil,
                                         lat: Double? = nil, lng: Double? = nil,
+                                        geofenceEnabled: Bool = false, geofenceTrigger: String? = nil,
                                         pinned: Bool = false, remindBefores: [Int] = [],
                                         subtasks: [Subtask] = [], routine: Bool = false,
                                         escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
@@ -1104,7 +1116,8 @@ final class NudgeStore: ObservableObject {
             // Not actually recurring — fall back to a normal edit.
             saveReminder(editing: editing, title: title, notes: notes, hasDue: hasDue, due: due,
                          hasTime: hasTime, listId: listId, priority: priority, recurrence: recurrence,
-                         tz: tz, url: url, location: location, lat: lat, lng: lng, pinned: pinned,
+                         tz: tz, url: url, location: location, lat: lat, lng: lng,
+                         geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger, pinned: pinned,
                          remindBefores: remindBefores, subtasks: subtasks, routine: routine,
                          escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent)
             return
@@ -1115,7 +1128,8 @@ final class NudgeStore: ObservableObject {
         saveReminder(editing: editing, title: title, notes: notes, hasDue: hasDue, due: due,
                      hasTime: hasTime, listId: listId, priority: priority,
                      recurrence: nil,
-                     tz: tz, url: url, location: location, lat: lat, lng: lng, pinned: pinned,
+                     tz: tz, url: url, location: location, lat: lat, lng: lng,
+                     geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger, pinned: pinned,
                      remindBefores: remindBefores, subtasks: subtasks, routine: routine,
                      escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent)
 

@@ -86,6 +86,10 @@ struct Reminder: Codable, Identifiable, Hashable {
     var location: String?     // a place / address (tap → Maps)
     var lat: Double?          // location coordinate
     var lng: Double?
+    // Location-triggered reminders (geofencing). All optional for back-compat with old blobs.
+    var geofenceEnabled: Bool? = nil   // true = fire a notification on arrive/leave at lat/lng
+    var geofenceTrigger: String? = nil // "arrive" | "leave"  (nil treated as "arrive")
+    var geofenceRadius: Double? = nil  // metres; nil → default 150. Reserved for future UI.
     var section: String?      // named section within its list (nil = ungrouped)
     var createdAt: String?
     var updatedAt: String?    // last local edit; used as tiebreak vs Apple's lastModifiedDate

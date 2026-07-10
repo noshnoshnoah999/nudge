@@ -4,6 +4,8 @@
 
 import SwiftUI
 import PhotosUI
+import UIKit
+import CoreLocation
 
 struct AddReminderView: View {
     @EnvironmentObject var store: NudgeStore
@@ -93,6 +95,10 @@ struct AddReminderView: View {
     @State private var location = ""
     @State private var lat: Double?
     @State private var lng: Double?
+    @State private var geofenceEnabled = false
+    @State private var geofenceTrigger = "arrive"
+    @State private var pendingAlwaysUpgrade = false
+    @StateObject private var locationMonitor = LocationMonitor.shared
     @State private var showLocationPicker = false
     @FocusState private var titleFocused: Bool
     @State private var buyRuleApplied = false   // so the live "buy" rule fires once per appearance of the word
@@ -281,6 +287,11 @@ struct AddReminderView: View {
                             }.padding(.vertical, 12)
                         }
                         .buttonStyle(.plain)
+
+                        if lat != nil, lng != nil {
+                            divider
+                            geofenceControls
+                        }
                     }
 
                     // Photos
@@ -425,7 +436,7 @@ struct AddReminderView: View {
             .sheet(isPresented: $showLocationPicker) {
                 LocationPickerView(initialName: location, initialLat: lat, initialLng: lng,
                                    onSelect: { n, la, lo in location = n; lat = la; lng = lo },
-                                   onRemove: { location = ""; lat = nil; lng = nil })
+                                   onRemove: { location = ""; lat = nil; lng = nil; geofenceEnabled = false })
             }
         }
         .tint(Theme.accent)
@@ -511,6 +522,8 @@ struct AddReminderView: View {
         url = r.url ?? ""
         location = r.location ?? ""
         lat = r.lat; lng = r.lng
+        geofenceEnabled = r.geofenceEnabled ?? false
+        geofenceTrigger = r.geofenceTrigger ?? "arrive"
         earlyAlerts = r.earlyAlerts
         subtasks = r.subtasks ?? []
         routine = r.routine ?? false
@@ -671,6 +684,87 @@ struct AddReminderView: View {
         .padding(.vertical, 8)
     }
 
+    /// Arrive/leave geofence controls, revealed once a place has a coordinate.
+    /// Mac (Catalyst) can't monitor regions, so it shows an honest label instead of a toggle
+    /// and never asks for location permission — the fields still save and sync to the iPhone.
+    @ViewBuilder private var geofenceControls: some View {
+        #if targetEnvironment(macCatalyst)
+        HStack(spacing: 10) {
+            Image(systemName: "location.circle").foregroundStyle(Theme.accent).frame(width: 22)
+            Text(geofenceEnabled
+                 ? "📍 Location reminder — fires on your iPhone."
+                 : "📍 Location reminders can be set up on your iPhone.")
+                .font(.caption).foregroundStyle(Theme.textMeta)
+            Spacer()
+        }.padding(.vertical, 12)
+        #else
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "location.circle").foregroundStyle(Theme.accent).frame(width: 22)
+                Text("Notify at this place").foregroundStyle(Theme.textMain)
+                Spacer()
+                Toggle("", isOn: $geofenceEnabled).labelsHidden().tint(Theme.accent)
+            }
+
+            if geofenceEnabled {
+                Picker("", selection: $geofenceTrigger) {
+                    Text("Arrive").tag("arrive")
+                    Text("Leave").tag("leave")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                if let note = permissionNote {
+                    Text(note).font(.caption).foregroundStyle(Theme.textMeta)
+                }
+                if locationMonitor.isDenied {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                }
+                if locationMonitor.capped {
+                    Text("Nudge can watch up to 20 places at once; the nearest 20 are active.")
+                        .font(.caption).foregroundStyle(Theme.textMeta)
+                }
+            }
+        }
+        .padding(.vertical, 12)
+        .onChange(of: geofenceEnabled) { _, on in
+            guard on else { return }
+            switch locationMonitor.authStatus {
+            case .notDetermined:
+                // Step 1 of the escalation; step 2 fires from the authStatus change below.
+                pendingAlwaysUpgrade = true
+                locationMonitor.requestWhenInUse()
+            case .authorizedWhenInUse:
+                locationMonitor.requestAlways()
+            default:
+                break
+            }
+        }
+        .onChange(of: locationMonitor.authStatus) { _, status in
+            if pendingAlwaysUpgrade, status == .authorizedWhenInUse {
+                pendingAlwaysUpgrade = false
+                locationMonitor.requestAlways()   // step 2: upgrade so it fires when closed
+            }
+        }
+        #endif
+    }
+
+    /// Honest copy about what will actually happen — never promise a background fire we can't make.
+    private var permissionNote: String? {
+        if locationMonitor.isDenied {
+            return "Location access is off — this reminder won't fire at the place."
+        }
+        if locationMonitor.authStatus == .authorizedWhenInUse {
+            return "May only fire while Nudge is open."
+        }
+        return nil
+    }
+
     private func relativeDateText(_ d: Date) -> String {
         let cal = Calendar.current
         if cal.isDateInToday(d) { return "Today" }
@@ -800,6 +894,7 @@ struct AddReminderView: View {
             listId: listId, priority: priority,
             recurrence: rec, tz: tz.isEmpty ? nil : tz,
             url: url, location: location, lat: lat, lng: lng,
+            geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger,
             pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
             routine: routine, escalation: escalation, reviewFrequency: askToReview,
             urgent: urgent)
@@ -822,6 +917,7 @@ struct AddReminderView: View {
                            listId: listId, priority: priority,
                            recurrence: rec, tz: tz.isEmpty ? nil : tz,
                            url: url, location: location, lat: lat, lng: lng,
+                           geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger,
                            pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
                            routine: routine, escalation: escalation, reviewFrequency: askToReview,
                            urgent: urgent,

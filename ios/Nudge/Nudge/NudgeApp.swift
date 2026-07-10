@@ -15,6 +15,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // later (NotificationManager.attach, after the SwiftUI scene exists) — setting it this
         // early delivers a launch tap into the half-built window and UIKit asserts (crash).
         MainActor.assumeIsolated { NotificationManager.shared.registerCategories() }
+        // Build the geofence manager here too, for the same reason: the OS relaunches us
+        // straight into a region event with no scene, so the `.task` that syncs regions never
+        // runs. CLLocationManager only delivers to a delegate that already exists at launch.
+        MainActor.assumeIsolated { _ = LocationMonitor.shared }
         // Register the overnight carry-over background task before launch finishes (required
         // by BGTaskScheduler). Scheduling the first request happens when we go to background.
         #if !targetEnvironment(macCatalyst)
@@ -59,6 +63,7 @@ struct NudgeApp: App {
     @StateObject private var sync = RemindersSync()
     @StateObject private var notifier = NotificationManager.shared
     @StateObject private var settings = AppSettings()
+    @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
             RootContainer()
@@ -68,7 +73,13 @@ struct NudgeApp: App {
                 .environmentObject(settings)
                 .tint(settings.accent)
                 .preferredColorScheme(settings.colorScheme)
-                .task { sync.attach(store); notifier.attach(store) }
+                // Touching `shared` here builds the CLLocationManager at launch, which is what
+                // lets the OS relaunch us straight into a region event. Its delegate must exist
+                // before any geofence can fire.
+                .task { sync.attach(store); notifier.attach(store); LocationMonitor.shared.sync(reminders: store.reminders) }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { LocationMonitor.shared.sync(reminders: store.reminders) }
+                }
                 .onOpenURL { url in
                     // Lock Screen quick-add widget deep link → open the same Quick Catch
                     // chooser as the Control Centre button (Quick Note vs Reminder).

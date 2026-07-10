@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Nudge uses your location to remind you when you arrive at or leave a place.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Allow Always so Nudge can remind you at a place even when the app is closed.</string>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>Nudge sets an alarm for reminders you mark Urgent, so they ring at the due time even when the app is closed.</string>
 	<key>UIBackgroundModes</key>
