@@ -28,21 +28,23 @@ Web `isOverdue()` used `dueDate < now`; iOS treats a no-time reminder as overdue
 
 ---
 
-## Part 2 — FOR OPUS: Swift bugs (need Xcode build + device test)
+## Part 2 — Swift bugs — ALL FIXED (was: FOR OPUS)
 
-### S1. Completing a recurring reminder in Apple Reminders kills the series (HIGH)
+**STATUS 2026-07-11:** All three shipped. S1 + S2 device-verified; S3 code-done but runtime-unverified (needs a routine snooze test — see below). Git: `32f6544` (S1+S2), `7523222` (S3).
+
+### S1. Completing a recurring reminder in Apple Reminders kills the series (HIGH) — ✅ FIXED `32f6544`, device-verified
 `RemindersSync.swift` → `reconcile()` step 1: when Apple's copy is newer, `writeToNudge()` sets `completed = true` on the Nudge reminder. Routines are special-cased (`advanceRoutine`), but a plain **recurring** reminder just completes — nothing spawns the next occurrence (that only happens in `toggleComplete`, which sync never calls). `writeToEK` deliberately flattens recurrence on the Apple side ("Nudge is the single owner of recurrence"), so Apple won't advance it either. The series silently dies.
 
 **Fix:** in the `eChanged && eTime > nTime` branch of `reconcile()`, after `writeToNudge(&rr, from: ek)`, add: if `rr.completed == true`, `rr.recurrence` is set (freq != "none"), and the previous state was incomplete, spawn the next occurrence exactly like `toggleComplete` does (full copy, new id, `nextOccurrence(after:rec:)`, insert at 0, `nudgeChanged = true`). Keep the completed one as history.
 
-### S2. Transient empty EventKit fetch could mass-delete Nudge data (HIGH, data-loss class)
+### S2. Transient empty EventKit fetch could mass-delete Nudge data (HIGH, data-loss class) — ✅ FIXED `32f6544`, verified live
 `reconcile()` case `(idx?, nil)`: a linked reminder whose Apple twin is missing gets deleted from Nudge (after re-link attempts fail). If `fetchReminders` returns an empty/partial list transiently (iCloud hiccup, permission blip — the completion handler maps `nil → []`), EVERY linked reminder is treated as Apple-deleted and removed in one pass. The pre-merge `backupSnapshot("sync")` is 10-minute throttled, so the safety snapshot may not even be taken. This matches the class of incident behind `nudge_recovery/`.
 
 **Fix (two parts):**
 1. In `reconcile()`, before processing links: `if eks.isEmpty && !links.isEmpty { status = .error("Apple returned no reminders — skipped to protect data"); return }`. A user legitimately emptying the Apple list is rarer and still recoverable via backups; silently nuking the store is not.
 2. If `nudgeIdsToDelete.count` exceeds a small threshold (e.g. 5 or >30% of links), force a backup (`backupSnapshot("sync-massdelete", force: true)`) before applying, or require confirmation.
 
-### S3. Early alerts stay suppressed after a snooze expires (LOW)
+### S3. Early alerts stay suppressed after a snooze expires (LOW) — ✅ CODE FIXED `7523222`, ⏳ runtime-unverified (snooze a routine, wait 30 min, confirm reschedule)
 `Notifications.swift` `reschedule()`: early alerts are skipped whenever `parseDate(r.snoozedUntil) != nil` — but `snoozedUntil` stays set after it passes (only complete/edit clears it). Should skip only when the snooze is still in the future.
 
 ---
@@ -55,7 +57,10 @@ Shipped as per-item rows + tombstones. See `D1_SYNC_DESIGN_per-reminder-merge.md
 
 Both platforms POST the entire `nudge_data` blob. iOS at least guards pulls with `hasPendingPush`; web pulls once at load and unconditionally overwrites localStorage. Offline web edits die on next load if another device pushed meanwhile; two devices editing near-simultaneously clobber each other item-by-item. Proper fix is a per-reminder merge keyed on `updatedAt` (both models already carry it). Non-trivial; needs a design pass.
 
-### D2. Secrets in the client (SECURITY — ACTION REQUIRED, Noah has approved fixing this)
+### D2. Secrets in the client (SECURITY) — ✅ FIXED & CLOSED 2026-07-11
+Supabase Auth + RLS live; iOS/widget migrated (`42053ca`), both clients signed in and syncing. RLS negative test returns `[]` (leaked keys neutralized). Anon rotation is now OPTIONAL hygiene, not required. Original diagnosis kept below for context.
+
+
 `index.html` ships the Supabase anon key AND the secret `user_key` row keys (Nudge + Finance projects) in plain text. Anyone who can view the page source can read AND write all reminder + finance data (writes use the same anon key + user_key). The same keys are compiled into the iOS app and the widget extension (`NudgeStore.swift`, `WidgetData.swift`) — extractable from the binary too.
 
 **Noah's instruction: get these secrets out of sight. Be honest about the limits — a client-side app cannot truly hide a credential it uses; the fix is to make the credential worthless to an attacker, not invisible.** Do it in this order:

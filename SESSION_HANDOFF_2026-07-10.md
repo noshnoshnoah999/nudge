@@ -1,5 +1,12 @@
 # Nudge — Session Handoff (2026-07-10)
 
+> **⚠️ SUPERSEDED (2026-07-11).** This was the EARLY 2026-07-10 session. Everything below is
+> outdated: D2 is fully closed (both clients signed in and syncing, iOS/widget migrated in
+> `42053ca`), S1/S2/S3 all shipped (`32f6544`, `7523222`), D1 shipped + audited (`5de79fb`),
+> web app retired. The rate-limit blocker is moot. For current state read
+> `SESSION_HANDOFF_2026-07-11.md`, then `SESSION_HANDOFF_2026-07-10_ios-d2-and-sync-fixes.md`.
+> Kept for history only.
+
 Session focused on **D2 (secrets-in-client security fix)**. Web code is done; Supabase RLS is live and verified; end-to-end web sign-in is NOT yet confirmed (blocked on a Supabase email rate limit). iOS/widget migration + remaining audit bugs are spec'd for Claude Code. Read this to resume cleanly.
 
 ---

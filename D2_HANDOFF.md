@@ -59,7 +59,9 @@ In the app (a small `Auth.swift` or on `NudgeStore`):
 ### B5. Sign-in UI
 Add a Sign in / Sign out control to `SyncSettingsView.swift` (it already has the API-key `SecureField`; add an email field + "Send code" + code entry for the OTP flow, and a signed-in/out status line).
 
-### ⚠️ Interaction with pending Swift bugs S1/S2
+### ⚠️ Interaction with Swift bugs S1/S2 — BOTH SINCE FIXED (`32f6544`)
+**UPDATE 2026-07-11:** S1 and S2 are now fixed and device/live-verified in `32f6544`. The note below was a warning to whoever did the D2 work — it was correct that D2's auth gating did NOT by itself fix S2, and S2 was subsequently fixed as its own change. Kept for history; no longer open.
+
 S2 (transient-empty-fetch mass-delete) partly overlaps here: gating `refresh()` on `isAuthed` closes the *unauthenticated* empty-fetch path, but the **authenticated** empty-fetch path (iCloud/EK hiccup) in `RemindersSync.swift` is separate and still needs the S2 guard. Do NOT consider S2 fixed by this change. Keep them as distinct fixes.
 
 ---

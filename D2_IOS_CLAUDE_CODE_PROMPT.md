@@ -56,6 +56,7 @@ STEP 6 — Build & test in Xcode.
 - Build both targets. Sign in with noah@flouty.uk, enter the emailed code, confirm reminders load and sync (syncState "Synced"). Confirm the widget shows data after a reload. Confirm that signed OUT, the app is local-only and never wipes the local cache. Report any build errors and fix them.
 
 IMPORTANT — do NOT claim the S2 data-loss bug is fixed by this. Gating refresh() on isAuthed only closes the UNauthenticated empty-fetch path. The authenticated iCloud/EventKit empty-fetch mass-delete in RemindersSync.swift (S2 in BUG_AUDIT_HANDOFF.md) is a SEPARATE fix and still pending. Keep them distinct.
+[UPDATE 2026-07-11: This prompt has already been executed — the D2 iOS/widget migration shipped in 42053ca. And S2 has since been fixed separately in 32f6544. This file is spent history; do not re-run it.]
 
 When everything builds and the manual tests pass, commit with a clear message describing the Auth+Keychain migration, push to origin, and then remove any stale git locks:
 `rm -f .git/index.lock .git/refs/heads/*.lock .git/HEAD.lock 2>/dev/null; true`
