@@ -52,14 +52,20 @@ enum Palettes {
         Palette(id: "ocean",    name: "Ocean",    bg: "C3DBEC", card: "D8E9F5", cardStrong: "AFCFE6", hairline: "AECDE3", text: "122D42", textSoft: "4A7290", accent: "1B5C8C"),
         Palette(id: "orange",   name: "Orange",   bg: "F6D9BE", card: "FAE8D4", cardStrong: "EFC190", hairline: "EEBE8C", text: "452408", textSoft: "8C5A28", accent: "D9641A"),
         Palette(id: "red",      name: "Red",      bg: "F3D2CE", card: "F8E3E0", cardStrong: "E7B3AC", hairline: "E6ACA5", text: "401412", textSoft: "96453F", accent: "B8271F"),
-        Palette(id: "yellow",   name: "Yellow",   bg: "FAF3D6", card: "FCF8E8", cardStrong: "F0DE8E", hairline: "EAD9A0", text: "3D3009", textSoft: "8A7530", accent: "A6820A"),
-        // The following 3 palettes are built from real colour pairs in Wada Sanzo's
+        Palette(id: "mustard",  name: "Mustard",  bg: "F2E7C9", card: "F7EFDB", cardStrong: "D9B24A", hairline: "D3A83A", text: "3A2E08", textSoft: "8A6E1E", accent: "A67C0A"),
+        // The following 3 palettes use real named colours from Wada Sanzo's
         // "A Dictionary of Color Combinations" (Seigensha) — no official ranking exists
-        // in the source, so these are hand-picked combos adapted to this app's tonal
-        // bg/card/cardStrong/hairline/text/textSoft/accent structure.
-        Palette(id: "kyoto",    name: "Kyoto",    bg: "BEE3E4", card: "D9F0F0", cardStrong: "A0D4D6", hairline: "9ECFD2", text: "0D3538", textSoft: "3E7A7E", accent: "007A85"),
-        Palette(id: "sansai",   name: "Sansai",   bg: "D3E8B0", card: "E5F1CC", cardStrong: "BADB85", hairline: "B7D97F", text: "1F3510", textSoft: "4F6E2E", accent: "3D6B2E"),
-        Palette(id: "akane",    name: "Akane",    bg: "F7C4BE", card: "FADAD6", cardStrong: "F0A196", hairline: "EF9A8E", text: "470F0B", textSoft: "9A3D33", accent: "C21730")
+        // in the source, so these are hand-picked 3-colour combos. cardStrong, hairline,
+        // and accent below are the *exact* dictionary hex values (unmodified); only
+        // bg/card are lighter tints derived from them, since none of the dictionary
+        // colours are pale enough to use directly as a background without repeating
+        // the over-intense-yellow mistake.
+        Palette(id: "kyoto",    name: "Kyoto",    bg: "D8F0F1", card: "E8F7F8", cardStrong: "BCE4E5", hairline: "A5C8D1", text: "042A40", textSoft: "0B4E70", accent: "005B8D"),
+        // Kyoto = Nile Blue (BCE4E5) + Light Glaucous Blue (A5C8D1) + Helvetia Blue (005B8D)
+        Palette(id: "sansai",   name: "Sansai",   bg: "E7F2D3", card: "F0F8E4", cardStrong: "AFD472", hairline: "87C540", text: "132B0A", textSoft: "2F5A20", accent: "1A7444"),
+        // Sansai = Yellow Green (AFD472) + Night Green (87C540) + Diamine Green (1A7444)
+        Palette(id: "akane",    name: "Akane",    bg: "FBE1DE", card: "FDEEEC", cardStrong: "F58E84", hairline: "F37F94", text: "40060F", textSoft: "8A1B2E", accent: "CC1236")
+        // Akane = Coral Red (F58E84) + Eosine Pink (F37F94) + Carmine (CC1236)
     ]
     static func by(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
 }
