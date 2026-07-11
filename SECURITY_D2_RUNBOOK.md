@@ -97,7 +97,7 @@ This is safe to defer: RLS has already neutralized the leaked keys (the Step-4 n
 **When you do rotate (order matters to avoid a lockout):**
 Dashboard → **Project Settings → API → "Reset" / roll the anon (publishable) key**, for BOTH the Nudge and Finance projects. Immediately after, before closing the tab:
 
-1. Paste the new anon keys into your local `config.js` (never commit it — it's gitignored).
+1. Paste the new anon keys into `config.js`. NOTE: `config.js` is **committed to git**, NOT gitignored (`.gitignore` says so explicitly — it holds only publishable anon keys, safe with RLS on). Since the web app is now retired, the cleaner move is to **delete `config.js` entirely** after rotating rather than update it — nothing loads it anymore.
 2. Update the iOS/widget `anon` constant (Claude Code will have parameterized it; see the iOS spec).
 3. Re-run the Step 4 negative test with the OLD key — it must now fail entirely.
 
@@ -118,4 +118,4 @@ Keep a backup export first.
 - App requires sign-in to sync; local-only (never wipes) when signed out.
 - Anon key alone returns `[]` from the REST API (Step 4 negative test).
 - Old anon keys + `user_key`s rotated/dropped and treated as burned.
-- Nothing secret remains in `index.html` or the Swift source (only in gitignored `config.js` and the iOS Keychain).
+- Nothing secret remains in `index.html` or the Swift source. The only credential left is the publishable anon key in `config.js` (committed, but safe under RLS) — and since the web app is retired, `config.js` should be deleted after rotation. The iOS session lives in the Keychain.
