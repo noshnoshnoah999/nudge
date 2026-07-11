@@ -52,7 +52,14 @@ enum Palettes {
         Palette(id: "ocean",    name: "Ocean",    bg: "C3DBEC", card: "D8E9F5", cardStrong: "AFCFE6", hairline: "AECDE3", text: "122D42", textSoft: "4A7290", accent: "1B5C8C"),
         Palette(id: "orange",   name: "Orange",   bg: "F6D9BE", card: "FAE8D4", cardStrong: "EFC190", hairline: "EEBE8C", text: "452408", textSoft: "8C5A28", accent: "D9641A"),
         Palette(id: "red",      name: "Red",      bg: "F3D2CE", card: "F8E3E0", cardStrong: "E7B3AC", hairline: "E6ACA5", text: "401412", textSoft: "96453F", accent: "B8271F"),
-        Palette(id: "yellow",   name: "Yellow",   bg: "FAF3D6", card: "FCF8E8", cardStrong: "F0DE8E", hairline: "EAD9A0", text: "3D3009", textSoft: "8A7530", accent: "A6820A")
+        Palette(id: "yellow",   name: "Yellow",   bg: "FAF3D6", card: "FCF8E8", cardStrong: "F0DE8E", hairline: "EAD9A0", text: "3D3009", textSoft: "8A7530", accent: "A6820A"),
+        // The following 3 palettes are built from real colour pairs in Wada Sanzo's
+        // "A Dictionary of Color Combinations" (Seigensha) — no official ranking exists
+        // in the source, so these are hand-picked combos adapted to this app's tonal
+        // bg/card/cardStrong/hairline/text/textSoft/accent structure.
+        Palette(id: "kyoto",    name: "Kyoto",    bg: "BEE3E4", card: "D9F0F0", cardStrong: "A0D4D6", hairline: "9ECFD2", text: "0D3538", textSoft: "3E7A7E", accent: "007A85"),
+        Palette(id: "sansai",   name: "Sansai",   bg: "D3E8B0", card: "E5F1CC", cardStrong: "BADB85", hairline: "B7D97F", text: "1F3510", textSoft: "4F6E2E", accent: "3D6B2E"),
+        Palette(id: "akane",    name: "Akane",    bg: "F7C4BE", card: "FADAD6", cardStrong: "F0A196", hairline: "EF9A8E", text: "470F0B", textSoft: "9A3D33", accent: "C21730")
     ]
     static func by(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
 }
