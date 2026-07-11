@@ -44,13 +44,15 @@ struct Palette: Identifiable {
 
 enum Palettes {
     static let all: [Palette] = [
-        Palette(id: "mocha",    name: "Mocha",    bg: "CDB088", card: "E0CEAF", cardStrong: "BFA274", hairline: "BC9F71", text: "2E1F12", textSoft: "7C6038", accent: "5E3A1E"),
+        Palette(id: "mocha",    name: "Mocha",    bg: "C2986A", card: "D6B689", cardStrong: "AD8358", hairline: "AA7F52", text: "2A1608", textSoft: "6E4A22", accent: "5E3A1E"),
         Palette(id: "sage",     name: "Sage",     bg: "CFE1C5", card: "DFEAD6", cardStrong: "BFD3B2", hairline: "BDD2B1", text: "23391E", textSoft: "5C7A53", accent: "3C6A34"),
-        Palette(id: "slate",    name: "Slate",    bg: "D4DAE3", card: "E5E9F0", cardStrong: "C3CCD9", hairline: "C2CAD6", text: "212833", textSoft: "5C6A7C", accent: "3C5167"),
-        Palette(id: "rose",     name: "Rose",     bg: "ECD8D6", card: "F4E7E5", cardStrong: "DCC2C0", hairline: "DCC5C3", text: "3A2426", textSoft: "8A5E60", accent: "8C4A50"),
-        Palette(id: "lavender", name: "Lavender", bg: "D9D2EC", card: "E8E3F4", cardStrong: "C6BDDF", hairline: "C7BEDF", text: "29243F", textSoft: "6A6294", accent: "5B4FCF"),
+        Palette(id: "rose",     name: "Rose",     bg: "F5D9E3", card: "FAEAF0", cardStrong: "EABDD0", hairline: "E9C0D2", text: "3D1B2C", textSoft: "96566F", accent: "B33A6B"),
+        Palette(id: "lavender", name: "Lavender", bg: "DECBEF", card: "ECDFF6", cardStrong: "C9ADE3", hairline: "CBB0E3", text: "2B1D40", textSoft: "6A4B94", accent: "6B2FB8"),
         Palette(id: "graphite", name: "Graphite", bg: "DBDCDF", card: "EBECEE", cardStrong: "C9CBCF", hairline: "C8CACE", text: "23252A", textSoft: "676C74", accent: "3A3E46"),
-        Palette(id: "ocean",    name: "Ocean",    bg: "C3DBEC", card: "D8E9F5", cardStrong: "AFCFE6", hairline: "AECDE3", text: "122D42", textSoft: "4A7290", accent: "1B5C8C")
+        Palette(id: "ocean",    name: "Ocean",    bg: "C3DBEC", card: "D8E9F5", cardStrong: "AFCFE6", hairline: "AECDE3", text: "122D42", textSoft: "4A7290", accent: "1B5C8C"),
+        Palette(id: "orange",   name: "Orange",   bg: "F6D9BE", card: "FAE8D4", cardStrong: "EFC190", hairline: "EEBE8C", text: "452408", textSoft: "8C5A28", accent: "D9641A"),
+        Palette(id: "red",      name: "Red",      bg: "F3D2CE", card: "F8E3E0", cardStrong: "E7B3AC", hairline: "E6ACA5", text: "401412", textSoft: "96453F", accent: "B8271F"),
+        Palette(id: "yellow",   name: "Yellow",   bg: "F5E08A", card: "F9EAB0", cardStrong: "EBCE4E", hairline: "E8C838", text: "3D3009", textSoft: "7A6415", accent: "A6820A")
     ]
     static func by(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
 }
