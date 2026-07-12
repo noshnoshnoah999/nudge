@@ -169,10 +169,9 @@ final class NotificationManager: NSObject, ObservableObject {
             let listName = shopping ? "Shopping" : (nudge.list(for: p.r.listId)?.name ?? "")
             if !listName.isEmpty { content.subtitle = listName }
             var lines: [String] = []
-            // iOS truncates the banner TITLE to one line — so a long reminder gets cut off.
-            // Repeat the full title in the body (which wraps to several lines) so nothing is
-            // lost. Short titles aren't repeated (the title already shows in full).
-            if title.count > 30 { lines.append(title) }
+            // Title carries the full reminder text on its own (iOS may truncate a long title
+            // to one line in the compact banner — accepted tradeoff). Body holds only
+            // supplementary info, never a repeat of the title.
             if early, let due = parseDate(p.r.dueDate) {
                 let f = DateFormatter(); f.timeStyle = .short
                 lines.append("In \(Self.leadLabel(p.off)) · due \(f.string(from: due))")
