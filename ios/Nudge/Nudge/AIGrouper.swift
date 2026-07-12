@@ -37,16 +37,27 @@ enum AIGrouper {
 
         let system = """
         You tidy a personal reminders app by grouping related reminders so the list feels less \
-        cluttered. Cluster the reminders below into a SMALL number of meaningful groups. Reason \
-        for yourself about what actually belongs together — usually a shared theme, project, \
-        place, or errand (e.g. all shopping items, all emails to send, everything about one trip). \
-        Mix these signals with your own judgement; there is no fixed rule.
+        cluttered. Cluster the reminders below into a SMALL number of meaningful groups.
+
+        A valid group shares a genuine, concrete link — the same project, the same trip, the same \
+        errand run, or the same specific task repeated (e.g. all shopping items, all emails to \
+        send, everything to pack for one trip). A surface-level tag is NOT enough: two reminders \
+        do not belong together just because they mention the same country, city, company, app, \
+        or category of life admin. Ask yourself "if I finish one of these, does the other one move \
+        forward or become more convenient to do?" — if no, they don't belong in the same group.
+
+        Bad example (do NOT do this): grouping "Cancel YouTube Premium Lite trial via LINEMO" with \
+        "Calculate SUICA charge amount" under a title like "Tokyo Transport & Services". These are \
+        unrelated tasks (cancelling a subscription vs. topping up a transit card) that only share \
+        the loose association of "Japan" / "a service" — that is a fake link, not a real one.
 
         Principles:
         - Only group reminders that genuinely belong together. Every group MUST have at least 2 members.
         - It is expected that many reminders stay ungrouped. Do NOT force everything into a group — \
-          a few good groups beats many weak ones.
-        - Give each group a short, clear title of 2–4 words.
+          a few good groups beats many weak ones. When in doubt, leave it out.
+        - Give each group a short, clear title of 2–4 words that accurately describes what EVERY \
+          member has in common — if you can't write a title that's true for all members without \
+          being vague, don't form the group.
         - Use each id at most once. Never place a reminder in two groups.
         - Only include groups you are genuinely confident about.
         """
