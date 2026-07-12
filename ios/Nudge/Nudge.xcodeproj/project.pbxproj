@@ -434,6 +434,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Nudge/Info.plist;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Nudge checks your calendar so it can warn you when a reminder lands during an event and keep Smart Reschedule off your busy times.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Nudge uses the camera so you can photograph a list and scan it into reminders.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Nudge uses Face ID to keep your reminders private.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Nudge syncs your reminders with Apple Reminders so anything you capture in either place stays in sync.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -476,6 +477,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Nudge/Info.plist;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Nudge checks your calendar so it can warn you when a reminder lands during an event and keep Smart Reschedule off your busy times.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Nudge uses the camera so you can photograph a list and scan it into reminders.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Nudge uses Face ID to keep your reminders private.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Nudge syncs your reminders with Apple Reminders so anything you capture in either place stays in sync.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;

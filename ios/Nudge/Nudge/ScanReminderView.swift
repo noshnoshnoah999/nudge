@@ -14,13 +14,28 @@ struct ScanReminderView: View {
     @EnvironmentObject var store: NudgeStore
     @Environment(\.dismiss) private var dismiss
 
+    /// Called only when the user actually SAVED items (not on cancel). Lets a presenting
+    /// screen (e.g. AddReminderView) close itself only on a real save.
+    var onSaved: () -> Void = {}
+
     private enum Phase { case pick, working, review }
     @State private var phase: Phase = .pick
     @State private var pickerItem: PhotosPickerItem?
+    @State private var showCamera = false
     @State private var items: [ScannedItem] = []
     @State private var listId = "reminders"
     @State private var errorText: String?
     @State private var statusText = "Reading image…"
+
+    /// Live camera capture only exists on iPhone/iPad. Mac Catalyst has no camera picker, so
+    /// the Take Photo button is hidden there.
+    private var cameraAvailable: Bool {
+        #if targetEnvironment(macCatalyst)
+        return false
+        #else
+        return UIImagePickerController.isSourceTypeAvailable(.camera)
+        #endif
+    }
 
     private var aiKey: String { APIKeyStore.load() }
 
@@ -74,6 +89,11 @@ struct ScanReminderView: View {
             }
 
             VStack(spacing: 12) {
+                if cameraAvailable {
+                    Button { showCamera = true } label: { label("camera", "Take Photo") }
+                        .disabled(aiKey.isEmpty)
+                }
+
                 PhotosPicker(selection: $pickerItem, matching: .images) {
                     label("photo.on.rectangle", "Choose Image")
                 }
@@ -101,6 +121,12 @@ struct ScanReminderView: View {
                     errorText = "Couldn't load that image."
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in
+                if let image { Task { await run(on: image) } }
+            }
+            .ignoresSafeArea()
         }
     }
 
@@ -194,7 +220,38 @@ struct ScanReminderView: View {
             )
         }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        onSaved()   // tell a presenting screen we saved (so it can close); no-op from the FAB.
         dismiss()
+    }
+}
+
+/// UIImagePickerController wrapped for SwiftUI, camera source. iPhone/iPad only — the caller
+/// gates this behind `cameraAvailable`, and it's never shown on Mac Catalyst. Returns the
+/// captured image, or nil if the user cancelled.
+private struct CameraPicker: UIViewControllerRepresentable {
+    var onCapture: (UIImage?) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let vc = UIImagePickerController()
+        vc.sourceType = .camera
+        vc.delegate = context.coordinator
+        return vc
+    }
+    func updateUIViewController(_ vc: UIImagePickerController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(onCapture: onCapture) }
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let onCapture: (UIImage?) -> Void
+        init(onCapture: @escaping (UIImage?) -> Void) { self.onCapture = onCapture }
+
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            let image = info[.originalImage] as? UIImage
+            picker.dismiss(animated: true) { self.onCapture(image) }
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true) { self.onCapture(nil) }
+        }
     }
 }
 
