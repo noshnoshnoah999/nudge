@@ -71,10 +71,12 @@ struct NudgeApp: App {
                 .environmentObject(sync)
                 .environmentObject(notifier)
                 .environmentObject(settings)
-                // Bold Text: override the default environment font with a bold-weighted body.
-                // Text without an explicit font/weight inherits this; views that set their own
-                // font (some titles/buttons) keep their weight and need per-view follow-up.
-                .environment(\.font, settings.boldText ? .body.weight(.bold) : nil)
+                // Bold Text: a root-level .fontWeight() overrides the weight of ALL descendant
+                // text — even views that set their own .font(.headline) etc. — because weight is
+                // a separate modifier from font. This catches the ~270 .font(...) calls that don't
+                // pin their own weight. (Requires iOS 16+; deployment target is well past that.)
+                // Views that DO set an explicit weight keep it; those are the only stragglers.
+                .fontWeight(settings.boldText ? .bold : nil)
                 .tint(settings.accent)
                 .preferredColorScheme(settings.colorScheme)
                 // Touching `shared` here builds the CLLocationManager at launch, which is what
