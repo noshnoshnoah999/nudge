@@ -47,25 +47,11 @@ enum Palettes {
         Palette(id: "mocha",    name: "Mocha",    bg: "C2986A", card: "D6B689", cardStrong: "AD8358", hairline: "AA7F52", text: "2A1608", textSoft: "6E4A22", accent: "5E3A1E"),
         Palette(id: "sage",     name: "Sage",     bg: "CFE1C5", card: "DFEAD6", cardStrong: "BFD3B2", hairline: "BDD2B1", text: "23391E", textSoft: "5C7A53", accent: "3C6A34"),
         Palette(id: "rose",     name: "Rose",     bg: "F5D9E3", card: "FAEAF0", cardStrong: "EABDD0", hairline: "E9C0D2", text: "3D1B2C", textSoft: "96566F", accent: "B33A6B"),
-        Palette(id: "lavender", name: "Lavender", bg: "DECBEF", card: "ECDFF6", cardStrong: "C9ADE3", hairline: "CBB0E3", text: "2B1D40", textSoft: "6A4B94", accent: "6B2FB8"),
+        Palette(id: "lavender", name: "Lavender", bg: "C7AAE0", card: "D6C0EB", cardStrong: "AC85D2", hairline: "A379CC", text: "201433", textSoft: "573C7E", accent: "5A25A0"),
         Palette(id: "graphite", name: "Graphite", bg: "DBDCDF", card: "EBECEE", cardStrong: "C9CBCF", hairline: "C8CACE", text: "23252A", textSoft: "676C74", accent: "3A3E46"),
         Palette(id: "ocean",    name: "Ocean",    bg: "C3DBEC", card: "D8E9F5", cardStrong: "AFCFE6", hairline: "AECDE3", text: "122D42", textSoft: "4A7290", accent: "1B5C8C"),
-        Palette(id: "orange",   name: "Orange",   bg: "F6D9BE", card: "FAE8D4", cardStrong: "EFC190", hairline: "EEBE8C", text: "452408", textSoft: "8C5A28", accent: "D9641A"),
-        Palette(id: "red",      name: "Red",      bg: "F3D2CE", card: "F8E3E0", cardStrong: "E7B3AC", hairline: "E6ACA5", text: "401412", textSoft: "96453F", accent: "B8271F"),
-        Palette(id: "mustard",  name: "Mustard",  bg: "F2E7C9", card: "F7EFDB", cardStrong: "D9B24A", hairline: "D3A83A", text: "3A2E08", textSoft: "8A6E1E", accent: "A67C0A"),
-        // The following 3 palettes use real named colours from Wada Sanzo's
-        // "A Dictionary of Color Combinations" (Seigensha) — no official ranking exists
-        // in the source, so these are hand-picked 3-colour combos. cardStrong, hairline,
-        // and accent below are the *exact* dictionary hex values (unmodified); only
-        // bg/card are lighter tints derived from them, since none of the dictionary
-        // colours are pale enough to use directly as a background without repeating
-        // the over-intense-yellow mistake.
-        Palette(id: "kyoto",    name: "Kyoto",    bg: "D8F0F1", card: "E8F7F8", cardStrong: "BCE4E5", hairline: "A5C8D1", text: "042A40", textSoft: "0B4E70", accent: "005B8D"),
-        // Kyoto = Nile Blue (BCE4E5) + Light Glaucous Blue (A5C8D1) + Helvetia Blue (005B8D)
-        Palette(id: "sansai",   name: "Sansai",   bg: "E7F2D3", card: "F0F8E4", cardStrong: "AFD472", hairline: "87C540", text: "132B0A", textSoft: "2F5A20", accent: "1A7444"),
-        // Sansai = Yellow Green (AFD472) + Night Green (87C540) + Diamine Green (1A7444)
-        Palette(id: "akane",    name: "Akane",    bg: "FBE1DE", card: "FDEEEC", cardStrong: "F58E84", hairline: "F37F94", text: "40060F", textSoft: "8A1B2E", accent: "CC1236")
-        // Akane = Coral Red (F58E84) + Eosine Pink (F37F94) + Carmine (CC1236)
+        Palette(id: "orange",   name: "Orange",   bg: "E8C299", card: "EFD3B0", cardStrong: "DBA35A", hairline: "D89A4A", text: "371C05", textSoft: "7A4A1D", accent: "C2560F"),
+        Palette(id: "red",      name: "Red",      bg: "E8ADA4", card: "EEC1B9", cardStrong: "D68D82", hairline: "D38378", text: "350F0D", textSoft: "843A34", accent: "A31F18")
     ]
     static func by(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
 }

@@ -33,10 +33,10 @@ struct SyncSettingsView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Theme").font(.subheadline)
-                        // All 12 palettes wrap into a 3-column grid (4 even rows, no gaps)
+                        // All 8 palettes wrap into a 4-column grid (2 even rows, no gaps)
                         // so none are hidden off-screen (Ocean used to be clipped past the
                         // right edge of a horizontal scroll).
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3),
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
                                   spacing: 14) {
                             ForEach(Palettes.all) { p in
                                 Button { withAnimation(Theme.spring) { settings.theme = p.id } } label: {
