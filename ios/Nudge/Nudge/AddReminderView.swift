@@ -219,7 +219,7 @@ struct AddReminderView: View {
                                 MiniCalendar(date: $due)
                                     .padding(.vertical, 6)
                                 divider
-                                daySchedule
+                                daySchedule()
                             }
                             divider
                             schedRow("clock", "Time", subtitle: hasTime ? timeText(due) : nil,
@@ -240,6 +240,8 @@ struct AddReminderView: View {
                                     .datePickerStyle(.wheel)
                                     .tint(Theme.accent).labelsHidden()
                                     .frame(maxWidth: .infinity)
+                                divider
+                                daySchedule(highlightConflict: true)
                             }
                             divider
                             repeatSection
@@ -483,9 +485,20 @@ struct AddReminderView: View {
 
     private var divider: some View { Rectangle().fill(Theme.hairline).frame(height: 1) }
 
+    /// The non-all-day event the currently-picked `due` time falls strictly inside
+    /// (start <= due < end). All-day events are never a time conflict. Nil = no clash.
+    private var conflictingEvent: CalendarService.CalEvent? {
+        guard hasTime else { return nil }
+        return calSvc.events(on: due).first { e in
+            !e.isAllDay && due >= e.start && due < e.end
+        }
+    }
+
     /// That day's calendar events, shown inline while picking the date — so you can see
     /// what you're up against before choosing a time, instead of finding out after Save.
-    @ViewBuilder private var daySchedule: some View {
+    /// When `highlightConflict` is true (time picker open), the event the picked time
+    /// lands inside is emphasised and a "You're busy then" banner is shown above the list.
+    @ViewBuilder private func daySchedule(highlightConflict: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("YOUR SCHEDULE THAT DAY").font(.caption2.weight(.bold)).tracking(0.6)
                 .foregroundStyle(Theme.textMeta)
@@ -503,18 +516,41 @@ struct AddReminderView: View {
                 .buttonStyle(.plain)
             } else {
                 let events = calSvc.events(on: due)
+                let clash = highlightConflict ? conflictingEvent : nil
+
+                if highlightConflict, let c = clash {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2).foregroundStyle(Theme.coral)
+                        Text("You're busy then — \(c.title) (\(eventTimeRange(c)))")
+                            .font(.caption.weight(.semibold)).foregroundStyle(Theme.coral)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 6).padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.coral.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+
                 if events.isEmpty {
                     Text("Nothing on your calendar this day.")
                         .font(.caption).foregroundStyle(Theme.textMeta)
                 } else {
                     ForEach(events) { e in
+                        let isClash = clash?.id == e.id
                         HStack(spacing: 8) {
                             Image(systemName: e.isAllDay ? "calendar" : "clock")
-                                .font(.caption).foregroundStyle(Theme.accent).frame(width: 16)
-                            Text(e.title).font(.caption).foregroundStyle(Theme.textMain).lineLimit(1)
+                                .font(.caption)
+                                .foregroundStyle(isClash ? Theme.coral : Theme.accent)
+                                .frame(width: 16)
+                            Text(e.title)
+                                .font(isClash ? .caption.weight(.semibold) : .caption)
+                                .foregroundStyle(isClash ? Theme.coral : Theme.textMain)
+                                .lineLimit(1)
                             Spacer()
                             Text(e.isAllDay ? "All day" : eventTimeRange(e))
-                                .font(.caption2.weight(.medium)).foregroundStyle(Theme.textMeta)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(isClash ? Theme.coral : Theme.textMeta)
                         }
                     }
                 }
