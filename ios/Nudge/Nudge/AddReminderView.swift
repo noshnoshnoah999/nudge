@@ -103,8 +103,7 @@ struct AddReminderView: View {
     @FocusState private var titleFocused: Bool
     @State private var buyRuleApplied = false   // so the live "buy" rule fires once per appearance of the word
     @State private var claudeRuleApplied = false   // same, for the "Claude - " → Claude list rule
-    @State private var showConflictAlert = false
-    @State private var conflictMsg: String?
+    @ObservedObject private var calSvc = CalendarService.shared
     @State private var showRecurScopeDialog = false   // "This event / Future events" when editing a recurring reminder
     @State private var showRecurDeleteDialog = false   // "Delete this event / all future" when deleting a recurring reminder
     @FocusState private var notesFocused: Bool
@@ -200,6 +199,8 @@ struct AddReminderView: View {
                                 divider
                                 MiniCalendar(date: $due)
                                     .padding(.vertical, 6)
+                                divider
+                                daySchedule
                             }
                             divider
                             schedRow("clock", "Time", subtitle: hasTime ? timeText(due) : nil,
@@ -401,12 +402,6 @@ struct AddReminderView: View {
                         .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .alert("You're busy then", isPresented: $showConflictAlert) {
-                Button("Schedule anyway") { afterConflict() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Your calendar has \(conflictMsg ?? "an event") at that time.")
-            }
             .modifier(RecurringScopeDialogs(
                 showEditScope: $showRecurScopeDialog,
                 showDeleteScope: $showRecurDeleteDialog,
@@ -457,6 +452,51 @@ struct AddReminderView: View {
     }
 
     private var divider: some View { Rectangle().fill(Theme.hairline).frame(height: 1) }
+
+    /// That day's calendar events, shown inline while picking the date — so you can see
+    /// what you're up against before choosing a time, instead of finding out after Save.
+    @ViewBuilder private var daySchedule: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("YOUR SCHEDULE THAT DAY").font(.caption2.weight(.bold)).tracking(0.6)
+                .foregroundStyle(Theme.textMeta)
+
+            if !calSvc.authorized {
+                Button {
+                    Task { await calSvc.requestAccessIfNeeded() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.plus").foregroundStyle(Theme.accent)
+                        Text("Allow Calendar access to see your schedule here")
+                            .font(.caption).foregroundStyle(Theme.accent)
+                    }
+                }
+                .buttonStyle(.plain)
+            } else {
+                let events = calSvc.events(on: due)
+                if events.isEmpty {
+                    Text("Nothing on your calendar this day.")
+                        .font(.caption).foregroundStyle(Theme.textMeta)
+                } else {
+                    ForEach(events) { e in
+                        HStack(spacing: 8) {
+                            Image(systemName: e.isAllDay ? "calendar" : "clock")
+                                .font(.caption).foregroundStyle(Theme.accent).frame(width: 16)
+                            Text(e.title).font(.caption).foregroundStyle(Theme.textMain).lineLimit(1)
+                            Spacer()
+                            Text(e.isAllDay ? "All day" : eventTimeRange(e))
+                                .font(.caption2.weight(.medium)).foregroundStyle(Theme.textMeta)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func eventTimeRange(_ e: CalendarService.CalEvent) -> String {
+        let f = DateFormatter(); f.timeStyle = .short
+        return "\(f.string(from: e.start))–\(f.string(from: e.end))"
+    }
 
     private func rowLabel(_ text: String, _ icon: String) -> some View {
         HStack(spacing: 10) {
@@ -854,20 +894,11 @@ struct AddReminderView: View {
         if store.lists.contains(where: { $0.id == "claude" }) { listId = "claude" }
     }
 
-    /// Save, but first warn if the chosen time lands on a calendar event.
-    /// Order: calendar-conflict alert first, then (for recurring edits) the scope prompt.
+    /// Save. Calendar conflicts are now visible inline while picking the date (see
+    /// `daySchedule`), so there's no separate warn-on-save step. If we're editing a
+    /// reminder that currently recurs, ask how the change should apply first
+    /// (This Event / Future Events); else save straight away.
     private func attemptSave() {
-        if hasDue, hasTime, let clash = CalendarService.shared.conflictDescription(at: due) {
-            conflictMsg = clash
-            showConflictAlert = true
-        } else {
-            afterConflict()
-        }
-    }
-
-    /// After the calendar-conflict step: if we're editing a reminder that currently
-    /// recurs, ask how the change should apply (This Event / Future Events); else save.
-    private func afterConflict() {
         if let e = editing, e.recurrence != nil {
             showRecurScopeDialog = true
         } else {
