@@ -50,7 +50,7 @@ enum Palettes {
         Palette(id: "lavender", name: "Lavender", bg: "C7AAE0", card: "D6C0EB", cardStrong: "AC85D2", hairline: "A379CC", text: "201433", textSoft: "573C7E", accent: "5A25A0"),
         Palette(id: "graphite", name: "Graphite", bg: "DBDCDF", card: "EBECEE", cardStrong: "C9CBCF", hairline: "C8CACE", text: "23252A", textSoft: "676C74", accent: "3A3E46"),
         Palette(id: "ocean",    name: "Ocean",    bg: "C3DBEC", card: "D8E9F5", cardStrong: "AFCFE6", hairline: "AECDE3", text: "122D42", textSoft: "4A7290", accent: "1B5C8C"),
-        Palette(id: "orange",   name: "Orange",   bg: "E8C299", card: "EFD3B0", cardStrong: "DBA35A", hairline: "D89A4A", text: "371C05", textSoft: "7A4A1D", accent: "C2560F"),
+        Palette(id: "orange",   name: "Orange",   bg: "D8885A", card: "DF9D77", cardStrong: "DD672C", hairline: "D05B25", text: "3D1A0B", textSoft: "633520", accent: "C4461C"),
         Palette(id: "red",      name: "Red",      bg: "E8ADA4", card: "EEC1B9", cardStrong: "D68D82", hairline: "D38378", text: "350F0D", textSoft: "843A34", accent: "A31F18")
     ]
     static func by(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
