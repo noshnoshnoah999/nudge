@@ -14,6 +14,7 @@ struct ContentView: View {
 
     @State private var tab = 0
     @State private var showAdd = false
+    @State private var showScan = false
     @State private var showQuickCatch = false
     @State private var editingReminder: Reminder?
     @State private var showTriage = false
@@ -99,6 +100,7 @@ struct ContentView: View {
             GroupReviewView(entry: e).environmentObject(store)
         }
         .sheet(isPresented: $showAdd) { AddReminderView(editing: nil).environmentObject(store) }
+        .sheet(isPresented: $showScan) { ScanReminderView().environmentObject(store) }
         .sheet(isPresented: $showQuickCatch) { QuickCatchView().environmentObject(store) }
         .sheet(item: $editingReminder) { r in AddReminderView(editing: r).environmentObject(store) }
         .sheet(isPresented: $showSettings) {
@@ -877,6 +879,16 @@ struct ContentView: View {
                 .cardElevation(12, y: 4, opacity: 0.18)
         }
         .buttonStyle(PressableStyle(scale: 0.9))
+        // Tap = new reminder (fast path). Long-press (iOS) / right-click (Mac) = choose how
+        // to add, including scanning a list from an image.
+        .contextMenu {
+            Button {
+                showAdd = true
+            } label: { Label("New Reminder", systemImage: "square.and.pencil") }
+            Button {
+                showScan = true
+            } label: { Label("Scan Reminders", systemImage: "text.viewfinder") }
+        }
         .scaleEffect(shown ? 1 : 0.6).opacity(shown ? 1 : 0)
         .animation(Theme.bouncy, value: shown)
     }

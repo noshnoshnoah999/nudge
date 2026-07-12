@@ -107,6 +107,7 @@ struct AddReminderView: View {
     @State private var showRecurScopeDialog = false   // "This event / Future events" when editing a recurring reminder
     @State private var showRecurDeleteDialog = false   // "Delete this event / all future" when deleting a recurring reminder
     @FocusState private var notesFocused: Bool
+    @State private var showScan = false   // "Scan a list instead" → ScanReminderView
 
     private let zones: [(String, String)] = [
         ("Local (device)", ""),
@@ -179,6 +180,23 @@ struct AddReminderView: View {
                             TapGesture().onEnded { titleFocused = true },
                             including: titleFocused ? .subviews : .all
                         )
+
+                    // Second door into scanning (the FAB long-press is the first). Only when
+                    // creating a new reminder — irrelevant when editing an existing one.
+                    if editing == nil {
+                        Button { showScan = true } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "text.viewfinder")
+                                Text("Scan a list instead").fontWeight(.semibold)
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.accent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     // Schedule
                     section("When") {
@@ -432,6 +450,11 @@ struct AddReminderView: View {
                 LocationPickerView(initialName: location, initialLat: lat, initialLng: lng,
                                    onSelect: { n, la, lo in location = n; lat = la; lng = lo },
                                    onRemove: { location = ""; lat = nil; lng = nil; geofenceEnabled = false })
+            }
+            // Scanning opens over the add screen; when it saves it dismisses itself, then we
+            // dismiss the add screen too so the user lands back on their list.
+            .sheet(isPresented: $showScan, onDismiss: { dismiss() }) {
+                ScanReminderView().environmentObject(store)
             }
         }
         .tint(Theme.accent)

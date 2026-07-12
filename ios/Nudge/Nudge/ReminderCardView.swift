@@ -92,6 +92,15 @@ struct ReminderCardView: View {
                         .fixedSize(horizontal: false, vertical: compact ? false : true)
                 }
 
+                // Undated reminders get a quiet, informational label so undated items are
+                // easy to spot at a glance across the app. `dueDate == nil` = no date at all
+                // (a date without a time is still considered dated).
+                if r.dueDate == nil && !done {
+                    Text("No Date & Time")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Theme.textMeta.opacity(0.8))
+                }
+
                 // Primary metadata: when · which list · how important.
                 if dueLabel(r) != nil || store.list(for: r.listId) != nil
                     || r.priorityOrNormal != "normal" {
