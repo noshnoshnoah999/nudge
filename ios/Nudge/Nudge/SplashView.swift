@@ -1,7 +1,12 @@
 // SplashView.swift — Nudge (iOS)
-// A ~3-second branded launch screen: a "ping" bell that rings while concentric
-// ripples radiate outward (the nudge), with the wordmark + tagline animating in
-// and a trio of pulsing loader dots. Fades into the app via RootContainer.
+// A short, lightweight branded launch screen that matches the app icon: the
+// concentric-ring "nudge" mark radiates outward from the center (center dot →
+// inner ring → outer ring), followed by the wordmark + tagline. Fades into the
+// app via RootContainer.
+//
+// Deliberately avoids any `repeatForever` animations: the splash only holds for
+// ~1.3s, so every animation here is a one-shot transition. This keeps the launch
+// smooth (no continuously running layers churning while the app boots).
 
 import SwiftUI
 
@@ -33,47 +38,58 @@ struct RootContainer: View {
 }
 
 struct SplashView: View {
-    @State private var ripple = false   // concentric rings radiating out
-    @State private var pop    = false   // bell disc scales in
-    @State private var ring   = false   // bell wiggle ("ringing")
-    @State private var textIn = false   // wordmark
-    @State private var tagIn  = false   // tagline
-    @State private var dots   = false   // loader dots
+    // Each ring of the logo mark scales/fades in one after another, radiating out
+    // from the center. All one-shot — no forever loops.
+    @State private var centerIn = false   // solid center dot
+    @State private var innerIn  = false   // inner (cream) ring
+    @State private var outerIn  = false   // outer (tan) ring
+    @State private var pulse    = false   // single outward "nudge" ripple
+    @State private var textIn   = false   // wordmark
+    @State private var tagIn    = false   // tagline
+
+    // Sizes tuned to echo the app-icon proportions.
+    private let outerSize: CGFloat = 132
+    private let innerSize: CGFloat = 84
+    private let centerSize: CGFloat = 34
 
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
 
-            // Radiating "ping" ripples behind the bell.
-            ZStack {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .stroke(Theme.accent.opacity(0.30), lineWidth: 2)
-                        .frame(width: 130, height: 130)
-                        .scaleEffect(ripple ? 2.7 : 0.45)
-                        .opacity(ripple ? 0 : 0.7)
-                        .animation(
-                            .easeOut(duration: 1.9)
-                                .repeatForever(autoreverses: false)
-                                .delay(Double(i) * 0.63),
-                            value: ripple)
-                }
-            }
-
-            VStack(spacing: 22) {
-                // Bell disc — scales in with a spring, then rings.
+            VStack(spacing: 26) {
+                // Concentric-ring mark — matches the app icon.
                 ZStack {
+                    // A single soft ripple that expands out past the mark once,
+                    // reinforcing the "radiate outward" motion.
+                    Circle()
+                        .stroke(Theme.accent.opacity(0.25), lineWidth: 2)
+                        .frame(width: outerSize, height: outerSize)
+                        .scaleEffect(pulse ? 1.8 : 0.9)
+                        .opacity(pulse ? 0 : 0.6)
+
+                    // Outer ring (fainter / tan-like) — appears last.
+                    Circle()
+                        .stroke(Theme.accent.opacity(0.55), lineWidth: 6)
+                        .frame(width: outerSize, height: outerSize)
+                        .scaleEffect(outerIn ? 1 : 0.4)
+                        .opacity(outerIn ? 1 : 0)
+
+                    // Inner ring (solid cream/accent) — appears second.
+                    Circle()
+                        .stroke(Theme.accent, lineWidth: 12)
+                        .frame(width: innerSize, height: innerSize)
+                        .scaleEffect(innerIn ? 1 : 0.4)
+                        .opacity(innerIn ? 1 : 0)
+
+                    // Center dot — pops in first.
                     Circle()
                         .fill(Theme.accent)
-                        .frame(width: 96, height: 96)
-                        .cardElevation(20, y: 8, opacity: 0.22)
-                    Image(systemName: "bell.fill")
-                        .font(.system(size: 40, weight: .bold))
-                        .foregroundStyle(.white)
-                        .rotationEffect(.degrees(ring ? 9 : -9), anchor: .top)
+                        .frame(width: centerSize, height: centerSize)
+                        .scaleEffect(centerIn ? 1 : 0.2)
+                        .opacity(centerIn ? 1 : 0)
                 }
-                .scaleEffect(pop ? 1 : 0.55)
-                .opacity(pop ? 1 : 0)
+                .frame(width: outerSize, height: outerSize)
+                .cardElevation(20, y: 8, opacity: 0.18)
 
                 VStack(spacing: 7) {
                     Text("Nudge")
@@ -88,39 +104,19 @@ struct SplashView: View {
                         .offset(y: tagIn ? 0 : 8)
                 }
             }
-
-            // Loader dots near the bottom.
-            VStack {
-                Spacer()
-                HStack(spacing: 9) {
-                    ForEach(0..<3, id: \.self) { i in
-                        Circle()
-                            .fill(Theme.accent)
-                            .frame(width: 8, height: 8)
-                            .scaleEffect(dots ? 1 : 0.5)
-                            .opacity(dots ? 1 : 0.35)
-                            .animation(
-                                .easeInOut(duration: 0.55)
-                                    .repeatForever(autoreverses: true)
-                                    .delay(Double(i) * 0.18),
-                                value: dots)
-                    }
-                }
-                .padding(.bottom, 54)
-            }
         }
         .onAppear { runSequence() }
     }
 
     private func runSequence() {
-        ripple = true
-        dots = true
-        withAnimation(Theme.bouncy) { pop = true }
-        // Bell rings: a few quick wiggles shortly after it lands.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-            withAnimation(.easeInOut(duration: 0.11).repeatCount(7, autoreverses: true)) { ring = true }
-        }
-        withAnimation(Theme.spring.delay(0.40)) { textIn = true }
-        withAnimation(Theme.spring.delay(0.72)) { tagIn = true }
+        // Radiate outward: center → inner ring → outer ring, each a quick spring.
+        withAnimation(Theme.bouncy)                 { centerIn = true }
+        withAnimation(Theme.spring.delay(0.12))     { innerIn  = true }
+        withAnimation(Theme.spring.delay(0.24))     { outerIn  = true }
+        // One soft ripple out, in sync with the rings landing.
+        withAnimation(.easeOut(duration: 0.9).delay(0.24)) { pulse = true }
+        // Wordmark + tagline follow.
+        withAnimation(Theme.spring.delay(0.42))     { textIn = true }
+        withAnimation(Theme.spring.delay(0.60))     { tagIn  = true }
     }
 }
