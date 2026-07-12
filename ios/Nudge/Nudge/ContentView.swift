@@ -751,9 +751,6 @@ struct ContentView: View {
         let color = Color(hex: l.color)
         let inList = store.reminders.filter { $0.listIdOrDefault == l.id }
         let open = inList.filter { !($0.completed ?? false) }.count
-        let total = inList.count
-        let done = total - open
-        let frac = total > 0 ? Double(done) / Double(total) : 0
         return VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .top) {
                 Circle().fill(color).frame(width: 14, height: 14)
@@ -761,15 +758,6 @@ struct ContentView: View {
                 Text("\(open)").font(.system(size: 26, weight: .heavy)).foregroundStyle(Theme.textMain)
             }
             Text(l.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMain).lineLimit(1)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.hairline)
-                    Capsule().fill(color).frame(width: max(0, geo.size.width * frac))
-                }
-            }
-            .frame(height: 5)
-            Text(total == 0 ? "Empty" : "\(done)/\(total) done")
-                .font(.caption2.weight(.medium)).foregroundStyle(Theme.textMeta)
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
