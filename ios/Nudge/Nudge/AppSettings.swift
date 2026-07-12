@@ -16,6 +16,12 @@ final class AppSettings: ObservableObject {
     @Published var appLock: Bool {
         didSet { UserDefaults.standard.set(appLock, forKey: K.appLock) }
     }
+    /// Render all app text at bold weight. Applied app-wide via an environment font
+    /// override at the root; explicitly-weighted text (some titles/buttons) may need
+    /// per-view follow-up to pick this up.
+    @Published var boldText: Bool {
+        didSet { UserDefaults.standard.set(boldText, forKey: K.boldText) }
+    }
     /// List ids the user has chosen to surface as their own sections on the Upcoming
     /// tab, in display order (e.g. a "Subscriptions / Money" list pinned to the top).
     @Published var upcomingSections: [String] {
@@ -31,6 +37,7 @@ final class AppSettings: ObservableObject {
         static let theme = "pref.theme"
         static let compact = "pref.compact"
         static let appLock = "pref.appLock"
+        static let boldText = "pref.boldText"
         static let upcomingSections = "pref.upcomingSections"
         static let celebrationFeedback = "pref.celebrationFeedback"
     }
@@ -41,6 +48,7 @@ final class AppSettings: ObservableObject {
         theme = t
         compact = (UserDefaults.standard.object(forKey: K.compact) as? Bool) ?? true
         appLock = UserDefaults.standard.bool(forKey: K.appLock)
+        boldText = UserDefaults.standard.bool(forKey: K.boldText)
         upcomingSections = (UserDefaults.standard.array(forKey: K.upcomingSections) as? [String]) ?? []
         celebrationFeedback = (UserDefaults.standard.object(forKey: K.celebrationFeedback) as? Bool) ?? true
         Theme.palette = Palettes.by(t)   // didSet doesn't fire on init's first assignment

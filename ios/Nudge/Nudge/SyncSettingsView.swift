@@ -63,12 +63,15 @@ struct SyncSettingsView: View {
                     Toggle("Compact list", isOn: Binding(
                         get: { settings.compact }, set: { settings.compact = $0 }))
 
+                    Toggle("Bold text", isOn: Binding(
+                        get: { settings.boldText }, set: { settings.boldText = $0 }))
+
                     Toggle("Sound & haptics on complete", isOn: Binding(
                         get: { settings.celebrationFeedback }, set: { settings.celebrationFeedback = $0 }))
                 } header: {
                     Text("Appearance")
                 } footer: {
-                    Text("Pick a colour theme. Compact fits more reminders on screen. Turn off Sound & haptics to keep the completion animation silent.")
+                    Text("Pick a colour theme. Compact fits more reminders on screen. Bold text renders the app in a heavier weight. Turn off Sound & haptics to keep the completion animation silent.")
                 }
                 .listRowBackground(Theme.surface)
 
