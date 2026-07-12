@@ -50,8 +50,8 @@ enum Palettes {
         Palette(id: "lavender", name: "Lavender", bg: "C7AAE0", card: "D6C0EB", cardStrong: "AC85D2", hairline: "A379CC", text: "201433", textSoft: "573C7E", accent: "5A25A0"),
         Palette(id: "graphite", name: "Graphite", bg: "DBDCDF", card: "EBECEE", cardStrong: "C9CBCF", hairline: "C8CACE", text: "23252A", textSoft: "676C74", accent: "3A3E46"),
         Palette(id: "ocean",    name: "Ocean",    bg: "C3DBEC", card: "D8E9F5", cardStrong: "AFCFE6", hairline: "AECDE3", text: "122D42", textSoft: "4A7290", accent: "1B5C8C"),
-        Palette(id: "orange",   name: "Orange",   bg: "D8885A", card: "DF9D77", cardStrong: "DD672C", hairline: "D05B25", text: "3D1A0B", textSoft: "633520", accent: "C4461C"),
-        Palette(id: "red",      name: "Red",      bg: "E8ADA4", card: "EEC1B9", cardStrong: "D68D82", hairline: "D38378", text: "350F0D", textSoft: "843A34", accent: "A31F18")
+        Palette(id: "orange",   name: "Orange",   bg: "D8885A", card: "DF9D77", cardStrong: "DD672C", hairline: "A8441C", text: "3D1A0B", textSoft: "633520", accent: "7A2A0E"),
+        Palette(id: "red",      name: "Red",      bg: "E8ADA4", card: "EEC1B9", cardStrong: "D68D82", hairline: "A34B3F", text: "350F0D", textSoft: "843A34", accent: "6E1108")
     ]
     static func by(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
 }
@@ -74,8 +74,17 @@ enum Theme {
     static var violetSoft: Color { accentSoft }
 
     // Semantic colours used sparingly (overdue / done), kept readable on every tint.
-    static var coral: Color   { Color(hex: "B14B3A") }   // muted brick — gentler on the warm bg
-    static var coralBg: Color { Color(hex: "B14B3A").opacity(0.12) }
+    // On the orange/red palettes the default brick tone collides with the warm
+    // background (too close in hue+lightness to read as "alert"), so those two
+    // palettes get a deeper maroon that keeps real contrast against their cards.
+    private static var coralHex: String {
+        switch palette.id {
+        case "orange", "red": return "6E1810"
+        default: return "B14B3A"
+        }
+    }
+    static var coral: Color   { Color(hex: coralHex) }
+    static var coralBg: Color { Color(hex: coralHex).opacity(0.12) }
     static var sage: Color    { Color(hex: "4E7B54") }
 
     // Flat fills (no gradients — those read as tacky). Kept as gradients for API compat.
