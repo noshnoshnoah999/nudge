@@ -10,7 +10,8 @@ import SwiftUI
 struct QuickCatchView: View {
     @EnvironmentObject var store: NudgeStore
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("anthropic_api_key") private var aiKey = ""
+    // Key read from the Keychain (APIKeyStore) rather than UserDefaults.
+    private var aiKey: String { APIKeyStore.load() }
 
     private enum Phase { case chooser, input, thinking, confirm }
     @State private var phase: Phase = .chooser

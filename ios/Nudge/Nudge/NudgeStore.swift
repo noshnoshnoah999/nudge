@@ -911,7 +911,7 @@ final class NudgeStore: ObservableObject {
         guard !overdue.isEmpty else { return [] }
         CalendarService.shared.refresh()
         let busy = CalendarService.shared.busyIntervals()
-        let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
+        let key = APIKeyStore.load()
         if !key.isEmpty {
             let model = AIScheduler.defaultModel   // Sonnet — never Opus/Haiku
             if let ai = try? await AIScheduler.plan(overdue: overdue, busy: busy, now: Date(),
@@ -959,7 +959,7 @@ final class NudgeStore: ObservableObject {
         let target = carryOverTargetDay()
         guard CarryOverLog.shared.lastProcessedDay != target.key else { return }
 
-        let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
+        let key = APIKeyStore.load()
         guard !key.isEmpty else { return }   // no AI without a key; try again next launch
         let model = AIScheduler.defaultModel   // Sonnet — never Opus/Haiku
 
@@ -1070,7 +1070,7 @@ final class NudgeStore: ObservableObject {
     func groupNowAI() async -> Int? {
         let candidates = groupCandidates()
         guard candidates.count >= 2 else { return 0 }
-        let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
+        let key = APIKeyStore.load()
         guard !key.isEmpty else { return nil }
         let model = AIScheduler.defaultModel   // Sonnet — never Opus/Haiku
         guard let proposed = try? await AIGrouper.propose(candidates: candidates, apiKey: key, model: model),
@@ -1088,7 +1088,7 @@ final class NudgeStore: ObservableObject {
         let target = carryOverTargetDay()   // reuse the shared 23:50 day-key logic
         guard GroupLog.shared.lastProcessedDay != target.key else { return }
 
-        let key = UserDefaults.standard.string(forKey: "anthropic_api_key") ?? ""
+        let key = APIKeyStore.load()
         guard !key.isEmpty else { return }   // no AI without a key; retry next launch
         let model = AIScheduler.defaultModel
 

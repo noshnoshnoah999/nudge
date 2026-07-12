@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // later (NotificationManager.attach, after the SwiftUI scene exists) — setting it this
         // early delivers a launch tap into the half-built window and UIKit asserts (crash).
         MainActor.assumeIsolated { NotificationManager.shared.registerCategories() }
+        // Security: move any plaintext Anthropic key from UserDefaults into the Keychain and
+        // delete the plaintext copy. One-time, no-op after the first migrated launch.
+        APIKeyStore.migrateFromUserDefaultsIfNeeded()
         // Build the geofence manager here too, for the same reason: the OS relaunches us
         // straight into a region event with no scene, so the `.task` that syncs regions never
         // runs. CLLocationManager only delivers to a delegate that already exists at launch.

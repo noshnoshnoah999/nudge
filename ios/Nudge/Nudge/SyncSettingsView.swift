@@ -13,7 +13,9 @@ struct SyncSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var dedupResult: String?
     @State private var showCleanUp = false
-    @AppStorage("anthropic_api_key") private var aiKey = ""
+    // Anthropic key now lives in the Keychain (APIKeyStore), not UserDefaults. Seed the field
+    // from the Keychain and write back on every change.
+    @State private var aiKey = APIKeyStore.load()
     @State private var showDupPreview = false
     @State private var dupGroups: [DuplicateGroup] = []
     @AppStorage("autoGroupNightly") private var autoGroupNightly = true
@@ -143,6 +145,7 @@ struct SyncSettingsView: View {
                 Section {
                     SecureField("sk-ant-…", text: $aiKey)
                         .textInputAutocapitalization(.never).disableAutocorrection(true)
+                        .onChange(of: aiKey) { _, newValue in APIKeyStore.save(newValue) }
                     HStack {
                         Text("Model").foregroundStyle(Theme.textMain)
                         Spacer()
