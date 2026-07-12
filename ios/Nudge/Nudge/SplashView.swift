@@ -17,6 +17,15 @@ struct RootContainer: View {
     // the background reuses the same process (and an already-shown flag), so the
     // splash does not replay; a true cold start resets the flag and shows it again.
     @MainActor static var hasShownSplash = false
+
+    // True once the splash has fully dismissed on this cold launch. ContentView
+    // waits on this before presenting the Face ID lock, so the splash and the
+    // lock never render on top of each other (the old cause of the "lock for 1s,
+    // then a leftover animation" jank). When app-lock is OFF this still flips
+    // true, so nothing else waits on it. Starts true when there's no splash to
+    // show (warm relaunch) so the lock isn't held up.
+    @MainActor static var splashFinished = RootContainer.hasShownSplash
+
     @State private var showSplash = !RootContainer.hasShownSplash
 
     var body: some View {
@@ -31,8 +40,13 @@ struct RootContainer: View {
         .task {
             guard showSplash else { return }
             RootContainer.hasShownSplash = true
-            try? await Task.sleep(nanoseconds: 1_300_000_000)   // ~1.3s hold (≈1.8s incl. fade)
-            withAnimation(.easeInOut(duration: 0.5)) { showSplash = false }
+            // Short hold: long enough for the radiate-in to read, short enough that
+            // it doesn't linger in front of the Face ID prompt that follows it.
+            try? await Task.sleep(nanoseconds: 800_000_000)     // ~0.8s hold (≈1.1s incl. fade)
+            withAnimation(.easeInOut(duration: 0.3)) { showSplash = false }
+            // Splash is dismissing — release the lock gate so Face ID can present
+            // cleanly, with no overlap.
+            RootContainer.splashFinished = true
         }
     }
 }
