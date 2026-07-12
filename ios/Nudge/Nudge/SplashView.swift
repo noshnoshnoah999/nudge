@@ -40,9 +40,9 @@ struct RootContainer: View {
         .task {
             guard showSplash else { return }
             RootContainer.hasShownSplash = true
-            // Short hold: long enough for the radiate-in to read, short enough that
-            // it doesn't linger in front of the Face ID prompt that follows it.
-            try? await Task.sleep(nanoseconds: 800_000_000)     // ~0.8s hold (≈1.1s incl. fade)
+            // Hold long enough for the radiate-in to read fully before the Face ID
+            // prompt that follows it.
+            try? await Task.sleep(nanoseconds: 1_800_000_000)   // ~1.8s hold (≈2.1s incl. fade)
             withAnimation(.easeInOut(duration: 0.3)) { showSplash = false }
             // Splash is dismissing — release the lock gate so Face ID can present
             // cleanly, with no overlap.
