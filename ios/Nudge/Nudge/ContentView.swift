@@ -47,6 +47,11 @@ struct ContentView: View {
     @State private var showGroupReview: GroupRunEntry?
     @Namespace private var tabNS
 
+    // Multi-select (Today/Overdue only): bulk-move a group of reminders to a new day/time.
+    @State private var selectMode = false
+    @State private var selectedIds: Set<String> = []
+    @State private var showBulkMove = false
+
     private let tabs: [(name: String, icon: String)] = [
         ("Home", "square.grid.2x2"), ("Today", "tray.full"), ("Overdue", "exclamationmark.triangle"),
         ("Upcoming", "calendar"), ("Lists", "square.stack.3d.up"), ("Search", "magnifyingglass")
@@ -90,8 +95,10 @@ struct ContentView: View {
         }
         .overlay(alignment: .bottom) {
             if let d = store.recentlyDeleted { undoToast(d) }
+            else if selectMode && !selectedIds.isEmpty { selectionBar }
         }
         .animation(Theme.spring, value: store.recentlyDeleted)
+        .animation(Theme.spring, value: selectedIds)
         .overlay { if preparingClaude { preparingOverlay } }
         .sheet(item: $showCarryReview) { e in
             CarryOverReviewView(entry: e).environmentObject(store)
@@ -124,6 +131,15 @@ struct ContentView: View {
         .sheet(isPresented: $showTimetable) { TimetableView().environmentObject(store) }
         .sheet(isPresented: $showCompleted) { CompletedHistoryView().environmentObject(store) }
         .sheet(item: $rescheduleTarget) { r in RescheduleOptionsView(reminder: r).environmentObject(store) }
+        .sheet(isPresented: $showBulkMove, onDismiss: {
+            // A successful move already cleared these inside BulkMoveView; this also
+            // catches a manual swipe-to-dismiss so a stale selection doesn't linger.
+            selectMode = false
+            selectedIds.removeAll()
+        }) {
+            BulkMoveView(reminders: store.reminders.filter { selectedIds.contains($0.id) })
+                .environmentObject(store)
+        }
         .sheet(isPresented: $showRoutineCheckin) {
             RoutineCheckInView(lapsed: routineLapsed, stepUps: routineStepUps).environmentObject(store)
         }
@@ -304,6 +320,16 @@ struct ContentView: View {
                     // Always present so Triage is findable; pulses coral when items are stuck.
                     iconButton(stuckCount > 0 ? "exclamationmark.triangle.fill" : "checklist",
                                pulse: stuckCount > 0) { showTriage = true }
+                    // Multi-select entry point — only meaningful on Today/Overdue, where
+                    // groupedRows() renders the selectable cards.
+                    if tab == 1 || tab == 2 {
+                        iconButton(selectMode ? "checkmark.circle.fill" : "checkmark.circle") {
+                            withAnimation(Theme.spring) {
+                                selectMode.toggle()
+                                if !selectMode { selectedIds.removeAll() }
+                            }
+                        }
+                    }
                     iconButton("calendar.day.timeline.left") { showTimetable = true }
                     iconButton("gearshape") { showSettings = true }
                 }
@@ -326,6 +352,29 @@ struct ContentView: View {
         .padding(.horizontal, 18)
         .padding(.top, 8)
         .padding(.bottom, 10)
+    }
+
+    private var selectionBar: some View {
+        HStack(spacing: 12) {
+            Text("\(selectedIds.count) selected").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+            Spacer(minLength: 12)
+            Button {
+                withAnimation(Theme.spring) { selectMode = false; selectedIds.removeAll() }
+            } label: {
+                Text("Cancel").font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
+            }
+            Button { showBulkMove = true } label: {
+                Text("Move").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .background(Theme.accent, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 13)
+        .background(Theme.textMain.opacity(0.94), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 1))
+        .cardElevation(14, y: 5, opacity: 0.2)
+        .padding(.horizontal, 24).padding(.bottom, 100)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private func undoToast(_ r: Reminder) -> some View {
@@ -471,7 +520,14 @@ struct ContentView: View {
         }
     }
 
-    private func switchTab(_ i: Int) { withAnimation(Theme.spring) { tab = i } }
+    private func switchTab(_ i: Int) {
+        withAnimation(Theme.spring) {
+            tab = i
+            // Selection only makes sense on Today/Overdue — leaving either clears it so a
+            // stale selection can't silently carry into a bulk move on the wrong tab.
+            if i != 1 && i != 2 { selectMode = false; selectedIds.removeAll() }
+        }
+    }
 
     private func openShopping() {
         if let l = store.lists.first(where: { $0.id == "shopping" }) { listFilter = l }
@@ -897,7 +953,7 @@ struct ContentView: View {
         HStack(spacing: 4) {
             ForEach(Array(tabs.enumerated()), id: \.offset) { i, t in
                 let active = tab == i
-                Button { withAnimation(Theme.spring) { tab = i } } label: {
+                Button { switchTab(i) } label: {
                     VStack(spacing: 3) {
                         Image(systemName: t.icon)
                             .font(.system(size: 17, weight: active ? .bold : .regular))
@@ -1013,11 +1069,25 @@ struct ContentView: View {
         ForEach(Array(store.listItems(items).enumerated()), id: \.element.id) { i, item in
             switch item {
             case .single(let r):
-                ReminderCardView(reminder: r) { editingReminder = r }.popIn(base + i)
+                ReminderCardView(reminder: r,
+                                  selectMode: selectMode,
+                                  isSelected: selectedIds.contains(r.id),
+                                  onToggleSelect: { toggleSelection(r.id) },
+                                  onEdit: { editingReminder = r })
+                    .popIn(base + i)
             case .group(let id, let title, let members):
-                GroupCardView(groupId: id, title: title, items: members) { editingReminder = $0 }.popIn(base + i)
+                GroupCardView(groupId: id, title: title, items: members,
+                              selectMode: selectMode, selectedIds: selectedIds,
+                              onToggleSelect: { toggleSelection($0) },
+                              onEdit: { editingReminder = $0 })
+                    .popIn(base + i)
             }
         }
+    }
+
+    private func toggleSelection(_ id: String) {
+        UISelectionFeedbackGenerator().selectionChanged()
+        if selectedIds.contains(id) { selectedIds.remove(id) } else { selectedIds.insert(id) }
     }
 
     private func expiryBanner(_ days: Int) -> some View {

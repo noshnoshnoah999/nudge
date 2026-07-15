@@ -12,6 +12,11 @@ struct ReminderCardView: View {
     @EnvironmentObject var settings: AppSettings
     @Environment(\.openURL) private var openURL
     let reminder: Reminder
+    // Multi-select (Today/Overdue bulk move). Defaulted so every other call site
+    // (Lists, Search, Smart Collections, expanded GroupCardView members) is unaffected.
+    var selectMode: Bool = false
+    var isSelected: Bool = false
+    var onToggleSelect: () -> Void = {}
     var onEdit: () -> Void
     @State private var claudeURL: IdentifiableURL?
     @State private var isPolishing = false
@@ -33,18 +38,23 @@ struct ReminderCardView: View {
             .sheet(item: $claudeURL) { SafariView(url: $0.url, tint: settings.accent) }
         .sheet(isPresented: $showReschedule) { RescheduleOptionsView(reminder: reminder).environmentObject(store) }
         .contextMenu {
-            Button { store.toggleComplete(reminder) } label: { Label("Complete", systemImage: "checkmark.circle") }
-            Button { store.snooze(reminder, minutes: 30) } label: { Label("Snooze 30 min", systemImage: "moon.zzz") }
-            Button { store.snooze(reminder, minutes: 60) } label: { Label("Snooze 1 hour", systemImage: "moon.zzz") }
-            Button { showReschedule = true } label: { Label("Reschedule…", systemImage: "calendar.badge.clock") }
-            Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
-            Button(role: .destructive) {
-                if reminder.recurrence != nil {
-                    showRecurDeleteDialog = true
-                } else {
-                    withAnimation { store.deleteReminder(reminder) }
-                }
-            } label: { Label("Delete", systemImage: "trash") }
+            // Suppressed while selecting — long-press actions (delete, reschedule, etc.)
+            // don't make sense mid-bulk-selection and would be an easy way to fat-finger
+            // a destructive action while trying to build a selection.
+            if !selectMode {
+                Button { store.toggleComplete(reminder) } label: { Label("Complete", systemImage: "checkmark.circle") }
+                Button { store.snooze(reminder, minutes: 30) } label: { Label("Snooze 30 min", systemImage: "moon.zzz") }
+                Button { store.snooze(reminder, minutes: 60) } label: { Label("Snooze 1 hour", systemImage: "moon.zzz") }
+                Button { showReschedule = true } label: { Label("Reschedule…", systemImage: "calendar.badge.clock") }
+                Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
+                Button(role: .destructive) {
+                    if reminder.recurrence != nil {
+                        showRecurDeleteDialog = true
+                    } else {
+                        withAnimation { store.deleteReminder(reminder) }
+                    }
+                } label: { Label("Delete", systemImage: "trash") }
+            }
         }
         .confirmationDialog("Delete recurring reminder?",
                             isPresented: $showRecurDeleteDialog, titleVisibility: .visible) {
@@ -66,16 +76,32 @@ struct ReminderCardView: View {
         let done = r.isCompleted
 
         return HStack(alignment: .top, spacing: compact ? 12 : 14) {
-            Button {
-                completeWithFlair(r)
-            } label: {
-                Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 23, weight: .regular))
-                    .foregroundStyle(done ? Theme.sage : (overdue ? Theme.coral : Theme.textMeta.opacity(0.5)))
-                    .symbolEffect(.bounce, value: done)
+            if selectMode {
+                // Select mode swaps the complete-toggle for a selection indicator — the two
+                // never make sense at once, since bulk actions here are about moving, not
+                // finishing, reminders.
+                Button {
+                    onToggleSelect()
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 23, weight: .regular))
+                        .foregroundStyle(isSelected ? settings.accent : Theme.textMeta.opacity(0.5))
+                        .symbolEffect(.bounce, value: isSelected)
+                }
+                .buttonStyle(PressableStyle(scale: 0.8))
+                .padding(.top, 1)
+            } else {
+                Button {
+                    completeWithFlair(r)
+                } label: {
+                    Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 23, weight: .regular))
+                        .foregroundStyle(done ? Theme.sage : (overdue ? Theme.coral : Theme.textMeta.opacity(0.5)))
+                        .symbolEffect(.bounce, value: done)
+                }
+                .buttonStyle(PressableStyle(scale: 0.8))
+                .padding(.top, 1)
             }
-            .buttonStyle(PressableStyle(scale: 0.8))
-            .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: compact ? 5 : 7) {
                 // Title — the hero of the card.
@@ -156,7 +182,7 @@ struct ReminderCardView: View {
                 if let p = claudeP { askClaudeButton(p).padding(.top, 2) }
             }
             .contentShape(Rectangle())
-            .onTapGesture { onEdit() }
+            .onTapGesture { if selectMode { onToggleSelect() } else { onEdit() } }
 
             Spacer(minLength: 0)
         }
@@ -166,7 +192,8 @@ struct ReminderCardView: View {
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .strokeBorder(overdue ? Theme.coral.opacity(0.85) : Theme.hairline, lineWidth: overdue ? 2.5 : 1))
+            .strokeBorder(isSelected ? settings.accent : (overdue ? Theme.coral.opacity(0.85) : Theme.hairline),
+                          lineWidth: isSelected ? 2.5 : (overdue ? 2.5 : 1)))
         // Gold tracing border that draws around the card on completion.
         .overlay(
             RoundedRectangle(cornerRadius: radius, style: .continuous)

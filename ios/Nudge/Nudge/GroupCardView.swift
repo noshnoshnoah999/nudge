@@ -24,6 +24,11 @@ struct GroupCardView: View {
     let groupId: String
     let title: String
     let items: [Reminder]
+    // Multi-select passthrough — a collapsed group can't be selected as a unit (see
+    // ContentView), but once expanded its members behave like any other card.
+    var selectMode: Bool = false
+    var selectedIds: Set<String> = []
+    var onToggleSelect: (String) -> Void = { _ in }
     var onEdit: (Reminder) -> Void
 
     @State private var expanded = false
@@ -38,7 +43,11 @@ struct GroupCardView: View {
             header
             if expanded {
                 ForEach(items) { r in
-                    ReminderCardView(reminder: r) { onEdit(r) }
+                    ReminderCardView(reminder: r,
+                                      selectMode: selectMode,
+                                      isSelected: selectedIds.contains(r.id),
+                                      onToggleSelect: { onToggleSelect(r.id) },
+                                      onEdit: { onEdit(r) })
                         .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)),
                                                 removal: .opacity))
                 }
