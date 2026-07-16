@@ -481,9 +481,17 @@ final class NudgeStore: ObservableObject {
         return iso(next)
     }
 
-    /// Open reminders in the Shopping list (the "buy" reminders), soonest first.
+    /// Open Shopping-list reminders due on payday itself (not the whole Shopping list),
+    /// soonest first. Used by the Home "PAY DAY · X TO BUY" card.
     func buyReminders() -> [Reminder] {
-        open().filter { $0.listIdOrDefault == "shopping" }
+        let cal = Calendar.current
+        let today = Payday.inMonth(Date())
+        return open()
+            .filter { $0.listIdOrDefault == "shopping" }
+            .filter {
+                guard let due = parseDate($0.dueDate) else { return false }
+                return cal.isDate(due, inSameDayAs: today)
+            }
             .sorted { (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture) }
     }
 
