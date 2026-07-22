@@ -132,6 +132,12 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
     var groupId: String? = nil
     var groupTitle: String? = nil
     var groupSource: String? = nil
+    // Notion push (manual, one-way Nudge -> Notion "To Do List" database under the TIHS page).
+    // In scope for a push if this is true OR the reminder's list is named "Study".
+    // `notionSyncedAt` is stamped only after a CONFIRMED successful write for this reminder,
+    // so a push that fails partway never falsely marks an item as synced.
+    var pushToNotion: Bool? = nil
+    var notionSyncedAt: String? = nil
 
     var isCompleted: Bool { completed ?? false }
     var isGrouped: Bool { (groupId?.isEmpty == false) }

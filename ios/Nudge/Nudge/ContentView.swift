@@ -52,6 +52,11 @@ struct ContentView: View {
     @State private var selectedIds: Set<String> = []
     @State private var showBulkMove = false
 
+    // Manual Notion push (Study list + per-reminder "Push to Notion" toggle only — see
+    // NotionSyncService.swift for exactly what is and isn't in scope).
+    @State private var notionPushing = false
+    @State private var notionToast: String?
+
     private let tabs: [(name: String, icon: String)] = [
         ("Home", "square.grid.2x2"), ("Today", "tray.full"), ("Overdue", "exclamationmark.triangle"),
         ("Upcoming", "calendar"), ("Lists", "square.stack.3d.up"), ("Search", "magnifyingglass")
@@ -95,6 +100,7 @@ struct ContentView: View {
         }
         .overlay(alignment: .bottom) {
             if let d = store.recentlyDeleted { undoToast(d) }
+            else if let msg = notionToast { simpleToast(msg) }
             else if selectMode && !selectedIds.isEmpty { selectionBar }
         }
         .animation(Theme.spring, value: store.recentlyDeleted)
@@ -331,6 +337,26 @@ struct ContentView: View {
                         }
                     }
                     iconButton("calendar.day.timeline.left") { showTimetable = true }
+                    // Only shown once Notion is actually set up (Settings), so the header
+                    // doesn't grow a dead button for people who never configure it.
+                    if NotionKeyStore.isConfigured {
+                        Button { pushToNotion() } label: {
+                            Group {
+                                if notionPushing {
+                                    ProgressView().tint(Theme.textMain)
+                                } else {
+                                    Image(systemName: "n.square")
+                                        .font(.system(size: 17, weight: .semibold))
+                                        .foregroundStyle(Theme.textMain)
+                                }
+                            }
+                            .frame(width: 40, height: 40)
+                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(PressableStyle())
+                        .disabled(notionPushing)
+                    }
                     iconButton("gearshape") { showSettings = true }
                 }
             }
@@ -396,6 +422,47 @@ struct ContentView: View {
             try? await Task.sleep(nanoseconds: 4_000_000_000)
             store.finalizeDelete()
         }
+    }
+
+    /// Kicks off a manual Notion push. Only reminders in NotionSyncService's scope (Study
+    /// list, or individually flagged) and out-of-date go anywhere — see that file's header
+    /// comment for the exact rule. Disabled while a push is already in flight.
+    private func pushToNotion() {
+        guard !notionPushing else { return }
+        notionPushing = true
+        Task {
+            do {
+                let (succeededIds, result) = try await NotionSyncService.push(reminders: store.reminders, lists: store.lists)
+                store.markPushedToNotion(succeededIds)
+                await MainActor.run {
+                    notionPushing = false
+                    if result.pushedCount == 0 && result.failedCount == 0 {
+                        notionToast = "Nothing new to push to Notion"
+                    } else if result.failedCount > 0 {
+                        notionToast = "Pushed \(result.pushedCount), \(result.failedCount) failed — try again"
+                    } else {
+                        notionToast = "Pushed \(result.pushedCount) to Notion"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    notionPushing = false
+                    notionToast = (error as? NotionSyncError)?.errorDescription ?? error.localizedDescription
+                }
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await MainActor.run { notionToast = nil }
+        }
+    }
+
+    private func simpleToast(_ message: String) -> some View {
+        Text(message).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+            .padding(.horizontal, 18).padding(.vertical, 13)
+            .background(Theme.textMain.opacity(0.94), in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 1))
+            .cardElevation(14, y: 5, opacity: 0.2)
+            .padding(.horizontal, 24).padding(.bottom, 100)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private func iconButton(_ name: String, pulse: Bool = false, action: @escaping () -> Void) -> some View {

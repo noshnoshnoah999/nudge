@@ -77,6 +77,10 @@ struct AddReminderView: View {
     @State private var priority = "normal"
     @State private var pinned = false
     @State private var urgent = false
+    // Notion push: a manual override for reminders outside the "Study" list. Study-list
+    // membership alone already puts a reminder in scope (see NotionSyncService.inScope) —
+    // this toggle doesn't need to be on for those; it's for the rare exception.
+    @State private var pushToNotion = false
     @State private var earlyAlerts: [Int] = []   // early-reminder offsets, minutes before due
     @State private var showCustomEarly = false
     @State private var customEarlyVal = 1
@@ -288,6 +292,12 @@ struct AddReminderView: View {
                             Toggle("", isOn: $urgent).labelsHidden().tint(Theme.coral)
                         }
                         #endif
+                        if NotionKeyStore.isConfigured {
+                            divider
+                            menuRow("Push to Notion", "n.square") {
+                                Toggle("", isOn: $pushToNotion).labelsHidden().tint(Theme.accent)
+                            }
+                        }
                     }
 
                     // Details
@@ -620,6 +630,7 @@ struct AddReminderView: View {
         priority = r.priorityOrNormal
         pinned = r.pinned ?? false
         urgent = r.urgent ?? false
+        pushToNotion = r.pushToNotion ?? false
         if let rec = r.recurrence, rec.freq != "none" {
             repeatFreq = rec.freq
             repeatInterval = max(1, rec.interval ?? 1)
@@ -994,7 +1005,7 @@ struct AddReminderView: View {
             geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger,
             pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
             routine: routine, escalation: escalation, reviewFrequency: askToReview,
-            urgent: urgent)
+            urgent: urgent, pushToNotion: pushToNotion)
         dismiss()
     }
 
@@ -1017,7 +1028,7 @@ struct AddReminderView: View {
                            geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger,
                            pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
                            routine: routine, escalation: escalation, reviewFrequency: askToReview,
-                           urgent: urgent,
+                           urgent: urgent, pushToNotion: pushToNotion,
                            idForNew: editing == nil ? draftId : nil)
         if editing == nil, let p = ClaudeLink.prompt(from: title) {
             AppRouter.shared.pendingClaudePrompt = p

@@ -678,6 +678,19 @@ final class NudgeStore: ObservableObject {
         hiddenSource.removeAll { set.contains($0.id) }
     }
 
+    /// Stamps `notionSyncedAt` on exactly the reminders NotionSyncService confirmed it
+    /// successfully wrote. Called after a manual push; never touches reminders that failed
+    /// or were out of scope, so they're correctly retried on the next push.
+    func markPushedToNotion(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        let stamp = syncStamp()
+        let set = Set(ids)
+        for i in reminders.indices where set.contains(reminders[i].id) {
+            reminders[i].notionSyncedAt = stamp
+        }
+        persist()
+    }
+
     func deleteReminder(_ r: Reminder) {
         finalizeDelete()                 // commit any earlier pending deletion first
         tombstoneReminders([r.id])
@@ -1192,7 +1205,7 @@ final class NudgeStore: ObservableObject {
                       pinned: Bool = false, remindBefores: [Int] = [],
                       subtasks: [Subtask] = [], routine: Bool = false,
                       escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
-                      urgent: Bool = false, idForNew: String? = nil) {
+                      urgent: Bool = false, pushToNotion: Bool = false, idForNew: String? = nil) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let targetId = editing?.id ?? idForNew ?? ("r" + String(UUID().uuidString.prefix(12)))
         // With a pinned timezone, the picked wall time is interpreted in that zone.
@@ -1267,6 +1280,11 @@ final class NudgeStore: ObservableObject {
         }
         if let i = reminders.firstIndex(where: { $0.id == targetId }) {
             reminders[i].urgent = urgent ? true : nil
+            // Turning the toggle off just stops future auto-pushes via Study-list/flag
+            // scope — it deliberately does NOT delete the row already in Notion, since
+            // that's a one-way push and Nudge shouldn't reach back and delete things the
+            // user might now be editing directly in Notion.
+            reminders[i].pushToNotion = pushToNotion ? true : nil
         }
         persist()
         #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
@@ -1297,7 +1315,7 @@ final class NudgeStore: ObservableObject {
                                         pinned: Bool = false, remindBefores: [Int] = [],
                                         subtasks: [Subtask] = [], routine: Bool = false,
                                         escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
-                                        urgent: Bool = false) {
+                                        urgent: Bool = false, pushToNotion: Bool = false) {
         // Snapshot the ORIGINAL (unedited) reminder before any mutation.
         guard let original = editing,
               let orig = reminders.first(where: { $0.id == original.id }),
@@ -1308,7 +1326,8 @@ final class NudgeStore: ObservableObject {
                          tz: tz, url: url, location: location, lat: lat, lng: lng,
                          geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger, pinned: pinned,
                          remindBefores: remindBefores, subtasks: subtasks, routine: routine,
-                         escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent)
+                         escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent,
+                         pushToNotion: pushToNotion)
             return
         }
         let nextDue = nextOccurrence(after: orig.dueDate, rec: origRec)
@@ -1320,7 +1339,8 @@ final class NudgeStore: ObservableObject {
                      tz: tz, url: url, location: location, lat: lat, lng: lng,
                      geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger, pinned: pinned,
                      remindBefores: remindBefores, subtasks: subtasks, routine: routine,
-                     escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent)
+                     escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent,
+                     pushToNotion: pushToNotion)
 
         // 2) Continue the ORIGINAL series from the next date, if one exists. Copy the whole
         //    original value so every field (prep links, groups, alerts, tz…) is preserved,

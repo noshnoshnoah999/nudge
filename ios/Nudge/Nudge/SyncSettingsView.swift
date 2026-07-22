@@ -27,6 +27,11 @@ struct SyncSettingsView: View {
     @State private var codeSent = false
     @State private var authBusy = false
     @State private var authError: String?
+    // Notion token/database ID live in the Keychain (NotionKeyStore), same reasoning as
+    // the Anthropic key above: it's a real secret, so UserDefaults/backups are the wrong
+    // place for it. Seed the fields from the Keychain and write back on every change.
+    @State private var notionToken = NotionKeyStore.token
+    @State private var notionDatabaseId = NotionKeyStore.databaseId
 
     var body: some View {
         NavigationStack {
@@ -155,6 +160,21 @@ struct SyncSettingsView: View {
                     Text("AI features")
                 } footer: {
                     Text("Add your Anthropic API key (console.anthropic.com). Smart Reschedule and the end-of-day carry-over both run on Claude Sonnet — a good balance of quality and cost (never the pricier Opus). Stored only on this device; used only to call Anthropic. Without a key, Smart Reschedule uses the built-in planner.")
+                }
+                .listRowBackground(Theme.surface)
+
+                // MARK: Notion push
+                Section {
+                    SecureField("Integration token (secret_…)", text: $notionToken)
+                        .textInputAutocapitalization(.never).disableAutocorrection(true)
+                        .onChange(of: notionToken) { _, newValue in NotionKeyStore.token = newValue }
+                    TextField("To Do List database ID", text: $notionDatabaseId)
+                        .textInputAutocapitalization(.never).disableAutocorrection(true)
+                        .onChange(of: notionDatabaseId) { _, newValue in NotionKeyStore.databaseId = newValue }
+                } header: {
+                    Text("Notion")
+                } footer: {
+                    Text("Manual, one-way push (Nudge → Notion). Only reminders in your Study list, or individually flagged with \"Push to Notion\" when adding/editing, are ever sent — never your whole reminder list. Tap the Notion button at the top of the app to push. Create an integration at notion.so/my-integrations, share your \"To Do List\" database with it, then paste the token and database ID here. Stored only on this device.")
                 }
                 .listRowBackground(Theme.surface)
 
