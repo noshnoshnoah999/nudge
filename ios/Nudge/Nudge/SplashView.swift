@@ -1,53 +1,24 @@
 // SplashView.swift — Nudge (iOS)
-// A short, lightweight branded launch screen that matches the app icon: the
-// concentric-ring "nudge" mark radiates outward from the center (center dot →
-// inner ring → outer ring), followed by the wordmark + tagline. Fades into the
-// app via RootContainer.
+// The branded launch animation (concentric-ring mark + wordmark) was removed on
+// 2026-07-22 at Noah's request: the app now goes straight to ContentView on
+// launch, with no intro screen.
 //
-// Deliberately avoids any `repeatForever` animations: the splash only holds for
-// ~1.3s, so every animation here is a one-shot transition. This keeps the launch
-// smooth (no continuously running layers churning while the app boots).
+// RootContainer is kept as a thin pass-through (rather than deleted outright) so
+// NudgeApp.swift's `RootContainer()` call site, and ContentView's `splashFinished`
+// gate that sequences Face ID, don't need to change. `splashFinished` is always
+// true now — there is nothing to wait for — so ContentView's poll loop around it
+// resolves instantly and Face ID fires as soon as the window is ready.
+//
+// SplashView itself is left below, unused, in case a future launch animation is
+// wanted again — it is not referenced anywhere.
 
 import SwiftUI
 
-/// Wraps the app so a splash plays once per cold launch, then fades into
-/// ContentView. Environment objects applied here propagate down to ContentView.
 struct RootContainer: View {
-    // Shown only the first time the view appears in this process. Returning from
-    // the background reuses the same process (and an already-shown flag), so the
-    // splash does not replay; a true cold start resets the flag and shows it again.
-    @MainActor static var hasShownSplash = false
-
-    // True once the splash has fully dismissed on this cold launch. ContentView
-    // waits on this before presenting the Face ID lock, so the splash and the
-    // lock never render on top of each other (the old cause of the "lock for 1s,
-    // then a leftover animation" jank). When app-lock is OFF this still flips
-    // true, so nothing else waits on it. Starts true when there's no splash to
-    // show (warm relaunch) so the lock isn't held up.
-    @MainActor static var splashFinished = RootContainer.hasShownSplash
-
-    @State private var showSplash = !RootContainer.hasShownSplash
+    @MainActor static var splashFinished = true
 
     var body: some View {
-        ZStack {
-            ContentView()
-            if showSplash {
-                SplashView()
-                    .transition(.opacity)
-                    .zIndex(1)
-            }
-        }
-        .task {
-            guard showSplash else { return }
-            RootContainer.hasShownSplash = true
-            // Hold long enough for the radiate-in to read fully before the Face ID
-            // prompt that follows it.
-            try? await Task.sleep(nanoseconds: 1_800_000_000)   // ~1.8s hold (≈2.1s incl. fade)
-            withAnimation(.easeInOut(duration: 0.3)) { showSplash = false }
-            // Splash is dismissing — release the lock gate so Face ID can present
-            // cleanly, with no overlap.
-            RootContainer.splashFinished = true
-        }
+        ContentView()
     }
 }
 

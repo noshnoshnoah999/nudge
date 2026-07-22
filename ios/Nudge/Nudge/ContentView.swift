@@ -154,17 +154,11 @@ struct ContentView: View {
             guard !didLoad else { return }
             didLoad = true
             LockShield.shared.onUnlock = { attemptUnlock() }
-            // Present the lock AFTER the splash has fully dismissed, so Face ID and
-            // the launch animation never render on top of each other. On a warm
-            // relaunch (no splash) splashFinished is already true, so this returns
-            // immediately. This only delays *when* the initial lock() fires — it
-            // does not change the re-lock / grace-period / cancelled-auth rules in
-            // the scenePhase handlers, so the no-bypass-on-cancelled-auth invariant
-            // is preserved.
+            // The splash screen was removed 2026-07-22 — Face ID now fires immediately
+            // on cold launch with app-lock on, no delay. This does not change the
+            // re-lock / grace-period / cancelled-auth rules in the scenePhase handlers,
+            // so the no-bypass-on-cancelled-auth invariant is preserved.
             if settings.appLock {
-                while !RootContainer.splashFinished {
-                    try? await Task.sleep(nanoseconds: 50_000_000)   // 50ms poll
-                }
                 lock()
             }
             signingDaysLeft = SigningInfo.daysLeft

@@ -1,13 +1,31 @@
-# Handoff — Notion push feature + workspace restructure
+# Handoff — Notion push feature + workspace restructure + splash removal
 **Date:** 2026-07-22
 **From:** Cowork session
 **To:** Claude Code session
 
 ## What this session did
 
-Built a manual, one-way "push to Notion" feature for schoolwork reminders, plus restructured
-part of Noah's Notion workspace to support it. **Nothing has been built, tested, committed,
-or pushed yet** — that's your job.
+1. Built a manual, one-way "push to Notion" feature for schoolwork reminders, plus
+   restructured part of Noah's Notion workspace to support it.
+2. Later in the same session: removed Nudge's opening/splash animation entirely, at Noah's
+   explicit request.
+
+**Nothing has been built, tested, committed, or pushed yet** — that's your job. Both changes
+below should go in the same build/commit pass.
+
+## 0. Splash removal (separate from the Notion feature, same session)
+
+`SplashView.swift` — `RootContainer` no longer shows the concentric-ring launch animation.
+It's now a thin pass-through straight to `ContentView()`, with `splashFinished` hardcoded
+`true` (kept only so `ContentView.swift`'s existing gate/comments referencing it don't need
+restructuring). `ContentView.swift`'s `.task` block had its splash-wait poll loop removed —
+with app-lock on, `lock()` (which triggers Face ID) now fires immediately on cold launch with
+no delay, confirmed with Noah as the desired behavior. The `SplashView` struct itself is left
+in the file, unused, in case a launch animation is wanted again later — safe to delete if you
+prefer a cleaner diff, just confirm with Noah first since he might want it back.
+
+**Test:** cold-launch the app with app-lock on — Face ID should prompt immediately, no splash,
+no delay. Cold-launch with app-lock off — should go straight to the main view instantly.
 
 ## 1. Notion workspace changes (already live — no action needed here)
 
