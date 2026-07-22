@@ -165,10 +165,21 @@ enum NotionSyncService {
     /// Maps a Reminder onto the "To Do List" database's schema. Everything about the
     /// reminder that has a home in the schema is sent — this is a full field sync per
     /// in-scope reminder, not a partial one.
+    ///
+    /// NOTE (2026-07-22): "List" and "Location" were removed from the Notion schema by
+    /// Noah directly, so they're no longer sent here — Notion would just silently drop
+    /// them otherwise. "Status" (select: "To Do" / "Done") was added alongside the
+    /// existing "Completed" checkbox so the database view can group rows with real,
+    /// renameable group names — Notion's checkbox-grouping shows the property name
+    /// ("Completed") as the label for BOTH groups, which reads as if every row is
+    /// complete. A select property doesn't have that problem. `listName` is unused now
+    /// but kept as a parameter for call-site stability; harmless to remove later if
+    /// nothing else needs it.
     private static func properties(for r: Reminder, listName: String?) -> [String: Any] {
         var props: [String: Any] = [
             "Title": ["title": [["text": ["content": r.title]]]],
             "Completed": ["checkbox": r.isCompleted],
+            "Status": ["select": ["name": r.isCompleted ? "Done" : "To Do"]],
             "Nudge ID": ["rich_text": [["text": ["content": r.id]]]]
         ]
 
@@ -179,17 +190,6 @@ enum NotionSyncService {
         }
 
         props["Notes"] = ["rich_text": [["text": ["content": r.notes ?? ""]]]]
-        props["List"] = ["rich_text": [["text": ["content": listName ?? ""]]]]
-
-        let locationText: String
-        if let loc = r.location, !loc.isEmpty {
-            locationText = loc
-        } else if let lat = r.lat, let lng = r.lng {
-            locationText = "\(lat), \(lng)"
-        } else {
-            locationText = ""
-        }
-        props["Location"] = ["rich_text": [["text": ["content": locationText]]]]
 
         return props
     }
