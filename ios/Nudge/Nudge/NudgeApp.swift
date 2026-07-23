@@ -95,6 +95,15 @@ struct NudgeApp: App {
                     if url.scheme == "nudge", url.host == "quickadd" {
                         AppRouter.shared.requestQuickCatch()
                     }
+                    // External deep link for other apps (e.g. StudyTrack) to jump into Nudge.
+                    if url.scheme == "nudgeapp" {
+                        switch url.host {
+                        case "add":
+                            AppRouter.shared.requestQuickAdd()
+                        default:
+                            break // "open" (or anything else) just brings the app to the front
+                        }
+                    }
                 }
         }
         // Mac: ⌘N (and File ▸ New Reminder) opens quick-add — the closest Mac-native
