@@ -39,6 +39,10 @@ enum NotionSyncError: LocalizedError {
 struct NotionPushResult {
     var pushedCount: Int
     var failedCount: Int
+    /// The error message from the FIRST reminder that failed this push, if any. Surfaced in
+    /// the UI toast so a failure is actually diagnosable without attaching a debugger —
+    /// added 2026-07-23 after "Pushed 0, N failed" gave no way to tell why.
+    var firstError: String?
 }
 
 enum NotionSyncService {
@@ -74,6 +78,9 @@ enum NotionSyncService {
         let toPush = reminders.filter { inScope($0, lists: lists) && needsPush($0) }
         var succeeded: [String] = []
         var failed = 0
+        var firstError: String?
+
+        print("[Notion] push starting: \(toPush.count) reminder(s) in scope and out of date")
 
         for reminder in toPush {
             do {
@@ -84,19 +91,28 @@ enum NotionSyncService {
                     try await createPage(databaseId: databaseId, reminder: reminder, listName: listName, token: token)
                 }
                 succeeded.append(reminder.id)
+                print("[Notion] pushed OK: \(reminder.title)")
                 // Notion's documented limit is an average of ~3 requests/sec. A tiny pause
                 // between reminders (each of which is 1-2 requests) keeps us comfortably
                 // under that without meaningfully slowing the button down.
                 try? await Task.sleep(nanoseconds: 350_000_000)
             } catch {
                 failed += 1
+                // Prefer NotionSyncError's readable description; fall back to the raw error
+                // otherwise. Logged to console AND kept for the UI toast — added 2026-07-23,
+                // a bare failure count gave no way to diagnose what actually went wrong.
+                let message = (error as? NotionSyncError)?.errorDescription ?? error.localizedDescription
+                print("[Notion] push FAILED for \"\(reminder.title)\": \(message)")
+                if firstError == nil { firstError = message }
                 // Keep going — one bad reminder (e.g. a title Notion rejects) shouldn't
                 // block the rest of the push.
                 continue
             }
         }
 
-        return (succeeded, NotionPushResult(pushedCount: succeeded.count, failedCount: failed))
+        print("[Notion] push finished: \(succeeded.count) succeeded, \(failed) failed")
+
+        return (succeeded, NotionPushResult(pushedCount: succeeded.count, failedCount: failed, firstError: firstError))
     }
 
     // MARK: - Notion API calls
@@ -168,18 +184,28 @@ enum NotionSyncService {
     ///
     /// NOTE (2026-07-22): "List" and "Location" were removed from the Notion schema by
     /// Noah directly, so they're no longer sent here — Notion would just silently drop
-    /// them otherwise. "Status" (select: "To Do" / "Done") was added alongside the
-    /// existing "Completed" checkbox so the database view can group rows with real,
-    /// renameable group names — Notion's checkbox-grouping shows the property name
-    /// ("Completed") as the label for BOTH groups, which reads as if every row is
-    /// complete. A select property doesn't have that problem. `listName` is unused now
-    /// but kept as a parameter for call-site stability; harmless to remove later if
-    /// nothing else needs it.
+    /// them otherwise.
+    ///
+    /// NOTE (2026-07-23): completion state is tracked with a single checkbox property named
+    /// literally "·" (a middle dot) in Notion — not "Completed", not "Status". History: the
+    /// field was originally a checkbox named "Completed", which Notion's checkbox-grouping
+    /// showed as the label on BOTH the done and not-done groups (reads as if everything is
+    /// complete). Noah first tried adding a separate "Status" select field to fix the
+    /// labeling, then instead renamed the checkbox itself to "·" — Notion's group header for
+    /// a checkbox property shows a ticked/unticked icon rather than repeating the property
+    /// name, which solves the same problem with one field instead of two. The code briefly
+    /// sent "Completed" (broke with a 400, property didn't exist) and then briefly sent only
+    /// "Status" (redundant once "·" was confirmed as the real fix) before landing here.
+    /// There is deliberately only ONE completion field now — do not reintroduce a second one
+    /// without checking with Noah first. If this checkbox is ever renamed again in Notion,
+    /// this string must be updated to match — Notion does not resolve properties by prior
+    /// name or type, only by exact current name.
+    /// `listName` is unused now but kept as a parameter for call-site stability; harmless to
+    /// remove later if nothing else needs it.
     private static func properties(for r: Reminder, listName: String?) -> [String: Any] {
         var props: [String: Any] = [
             "Title": ["title": [["text": ["content": r.title]]]],
-            "Completed": ["checkbox": r.isCompleted],
-            "Status": ["select": ["name": r.isCompleted ? "Done" : "To Do"]],
+            "·": ["checkbox": r.isCompleted],
             "Nudge ID": ["rich_text": [["text": ["content": r.id]]]]
         ]
 

@@ -425,6 +425,10 @@ struct ContentView: View {
         guard !notionPushing else { return }
         notionPushing = true
         Task {
+            // Longer toast hold when there's a real error message to read (added 2026-07-23
+            // alongside surfacing the actual Notion error — 3s wasn't enough time to read a
+            // full API error message before it disappeared).
+            var toastHoldNanos: UInt64 = 3_000_000_000
             do {
                 let (succeededIds, result) = try await NotionSyncService.push(reminders: store.reminders, lists: store.lists)
                 store.markPushedToNotion(succeededIds)
@@ -433,7 +437,12 @@ struct ContentView: View {
                     if result.pushedCount == 0 && result.failedCount == 0 {
                         notionToast = "Nothing new to push to Notion"
                     } else if result.failedCount > 0 {
-                        notionToast = "Pushed \(result.pushedCount), \(result.failedCount) failed — try again"
+                        if let firstError = result.firstError {
+                            notionToast = "Pushed \(result.pushedCount), \(result.failedCount) failed: \(firstError)"
+                            toastHoldNanos = 7_000_000_000
+                        } else {
+                            notionToast = "Pushed \(result.pushedCount), \(result.failedCount) failed — try again"
+                        }
                     } else {
                         notionToast = "Pushed \(result.pushedCount) to Notion"
                     }
@@ -443,8 +452,9 @@ struct ContentView: View {
                     notionPushing = false
                     notionToast = (error as? NotionSyncError)?.errorDescription ?? error.localizedDescription
                 }
+                toastHoldNanos = 7_000_000_000
             }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: toastHoldNanos)
             await MainActor.run { notionToast = nil }
         }
     }
