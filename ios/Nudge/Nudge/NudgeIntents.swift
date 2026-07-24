@@ -115,10 +115,16 @@ struct NudgeShortcuts: AppShortcutsProvider {
         AppShortcut(intent: AddReminderIntent(),
                     phrases: ["Add a reminder to \(.applicationName)",
                               "Add a \(.applicationName) reminder",
-                              "New \(.applicationName) reminder"],
+                              "New \(.applicationName) reminder",
+                              "Add to \(.applicationName)"],
                     shortTitle: "Add Reminder", systemImageName: "plus.circle.fill")
+        // "What's due" collides with Siri's built-in Calendar/Reminders domain and can lose
+        // to it even on an exact-text match (confirmed by Noah 2026-07-24: typing "What's due
+        // in Nudge" opened Calendar, not this intent). "Nudge status" is app-name-first and
+        // avoids that phrase pattern; kept as the lead phrase with the old ones as aliases.
         AppShortcut(intent: WhatsDueTodayIntent(),
-                    phrases: ["What's due in \(.applicationName)",
+                    phrases: ["\(.applicationName) status",
+                              "What's due in \(.applicationName)",
                               "What's due today in \(.applicationName)"],
                     shortTitle: "What's Due Today", systemImageName: "checklist")
         AppShortcut(intent: CompleteReminderIntent(),
@@ -128,5 +134,13 @@ struct NudgeShortcuts: AppShortcutsProvider {
         AppShortcut(intent: QuickAddReminderIntent(),
                     phrases: ["Quick add to \(.applicationName)"],
                     shortTitle: "Quick Add", systemImageName: "bell.badge.fill")
+        // Previously unreachable by Siri — defined in this file but never registered.
+        AppShortcut(intent: SnoozeReminderIntent(),
+                    phrases: ["Snooze a \(.applicationName) reminder"],
+                    shortTitle: "Snooze Reminder", systemImageName: "zzz")
+        // Previously only reachable via the Control Center button — now also a Siri phrase.
+        AppShortcut(intent: QuickCatchIntent(),
+                    phrases: ["\(.applicationName) it"],
+                    shortTitle: "Catch a Thought", systemImageName: "bubble.left.and.text.bubble.right.fill")
     }
 }
