@@ -17,12 +17,22 @@ struct WItem: Identifiable {
     let color: String
 }
 
+/// Whether the timeline entry reflects real fetched data or a failed sync.
+/// This is what lets the widget tell "genuinely nothing due" apart from
+/// "couldn't reach your reminders" — the two used to look identical ("All clear").
+enum WLoadState {
+    case loaded   // fetch succeeded; items/counts are real (may legitimately be empty)
+    case failed   // fetch returned nil (signed out, expired token, or network) — data unknown
+}
+
 struct NudgeEntry: TimelineEntry {
     let date: Date
     let overdue: Int
     let todayDone: Int
     let todayTotal: Int
     let items: [WItem]
+    // Defaults to .loaded so existing initialisers (samples/placeholders) stay valid.
+    var state: WLoadState = .loaded
 
     static let sample = NudgeEntry(
         date: .now, overdue: 3, todayDone: 2, todayTotal: 5,
@@ -31,7 +41,10 @@ struct NudgeEntry: TimelineEntry {
             WItem(id: "2", title: "Call mum", due: .now.addingTimeInterval(7200), hasTime: true, overdue: false, color: "5B4FCF"),
             WItem(id: "3", title: "Go for a run", due: .now.addingTimeInterval(20000), hasTime: true, overdue: false, color: "7CA982")
         ])
-    static let empty = NudgeEntry(date: .now, overdue: 0, todayDone: 0, todayTotal: 0, items: [])
+    // A genuine empty result: fetch worked, nothing due. Shows "All clear".
+    static let empty = NudgeEntry(date: .now, overdue: 0, todayDone: 0, todayTotal: 0, items: [], state: .loaded)
+    // A failed fetch: data unknown. Shows "Can't sync — open Nudge", never "All clear".
+    static let failed = NudgeEntry(date: .now, overdue: 0, todayDone: 0, todayTotal: 0, items: [], state: .failed)
 }
 
 struct NudgeProvider: TimelineProvider {
@@ -48,7 +61,11 @@ struct NudgeProvider: TimelineProvider {
     }
 
     static func build() async -> NudgeEntry {
-        guard let data = await NudgeFeed.fetch() else { return .empty }
+        // A nil fetch means the widget couldn't reach the user's data (signed out,
+        // expired token, or network) — NOT that there's nothing due. Return .failed
+        // so the view shows "Can't sync — open Nudge" instead of a false "All clear".
+        // Only a successful fetch that genuinely yields zero items shows "All clear".
+        guard let data = await NudgeFeed.fetch() else { return .failed }
         let now = Date(); let cal = Calendar.current
         func color(_ id: String?) -> String { data.lists.first { $0.id == (id ?? "reminders") }?.color ?? "5B4FCF" }
         func open(_ r: WReminder) -> Bool { !(r.completed ?? false) && !(r.dismissed ?? false) }
@@ -75,7 +92,8 @@ struct NudgeProvider: TimelineProvider {
         }
         items.sort { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
         return NudgeEntry(date: now, overdue: overdue, todayDone: todayDone,
-                          todayTotal: todayDone + todayOpen, items: Array(items.prefix(8)))
+                          todayTotal: todayDone + todayOpen, items: Array(items.prefix(8)),
+                          state: .loaded)
     }
 }
 
@@ -85,15 +103,28 @@ struct OverdueWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "NudgeOverdue", provider: NudgeProvider()) { e in
             VStack(alignment: .leading, spacing: 2) {
-                Image(systemName: e.overdue > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                    .font(.title3).foregroundStyle(e.overdue > 0 ? WTheme.coral : WTheme.sage)
-                Spacer()
-                Text("\(e.overdue)")
-                    .font(.system(size: 46, weight: .heavy, design: .rounded))
-                    .foregroundStyle(e.overdue > 0 ? WTheme.coral : WTheme.sage)
-                    .contentTransition(.numericText())
-                Text(e.overdue == 0 ? "all clear" : e.overdue == 1 ? "overdue" : "overdue")
-                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                if e.state == .failed {
+                    // Failed fetch — don't claim "all clear" with a big 0. Show a neutral
+                    // can't-sync state so a stale/expired token never reads as "0 overdue".
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.title3).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("—")
+                        .font(.system(size: 46, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Text("can't sync")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: e.overdue > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .font(.title3).foregroundStyle(e.overdue > 0 ? WTheme.coral : WTheme.sage)
+                    Spacer()
+                    Text("\(e.overdue)")
+                        .font(.system(size: 46, weight: .heavy, design: .rounded))
+                        .foregroundStyle(e.overdue > 0 ? WTheme.coral : WTheme.sage)
+                        .contentTransition(.numericText())
+                    Text(e.overdue == 0 ? "all clear" : e.overdue == 1 ? "overdue" : "overdue")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .containerBackground(.background, for: .widget)
@@ -113,16 +144,24 @@ struct ProgressWidget: Widget {
             VStack(spacing: 8) {
                 ZStack {
                     Circle().stroke(Color.secondary.opacity(0.18), lineWidth: 9)
-                    Circle().trim(from: 0, to: max(0.001, frac))
-                        .stroke(WTheme.grad, style: StrokeStyle(lineWidth: 9, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    if e.todayTotal == 0 {
-                        Image(systemName: "checkmark").font(.headline.bold()).foregroundStyle(WTheme.sage)
+                    if e.state == .failed {
+                        // Failed fetch — show a neutral sync glyph, not a full "done" ring,
+                        // so an empty result from a bad token doesn't look like 0/0 complete.
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.headline.bold()).foregroundStyle(.secondary)
                     } else {
-                        Text("\(e.todayDone)/\(e.todayTotal)").font(.system(.title3, design: .rounded).weight(.bold))
+                        Circle().trim(from: 0, to: max(0.001, frac))
+                            .stroke(WTheme.grad, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        if e.todayTotal == 0 {
+                            Image(systemName: "checkmark").font(.headline.bold()).foregroundStyle(WTheme.sage)
+                        } else {
+                            Text("\(e.todayDone)/\(e.todayTotal)").font(.system(.title3, design: .rounded).weight(.bold))
+                        }
                     }
                 }
-                Text("today").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(e.state == .failed ? "can't sync" : "today")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
             .padding(4)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -234,7 +273,28 @@ struct TodayWidgetView: View {
                         .background(WTheme.coralGrad, in: Capsule())
                 }
             }
-            if entry.items.isEmpty {
+            if entry.state == .failed {
+                // Couldn't reach the user's data (signed out / expired token / network).
+                // Show an honest, actionable state — NEVER a misleading "All clear".
+                // Tapping opens Nudge, which refreshes the token so the next widget
+                // timeline can fetch successfully.
+                Spacer()
+                // "nudgeapp://open" is handled in NudgeApp.onOpenURL: any host other than
+                // "add" just brings the app to the front, which refreshes the auth token.
+                Link(destination: URL(string: "nudgeapp://open")!) {
+                    HStack { Spacer()
+                        VStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.title).foregroundStyle(.secondary)
+                            Text("Can't sync").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                            Text("Open Nudge").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer() }
+                }
+                Spacer()
+            } else if entry.items.isEmpty {
+                // Genuine empty result: fetch succeeded, nothing due today. This is the
+                // only case that should ever read "All clear".
                 Spacer()
                 HStack { Spacer()
                     VStack(spacing: 6) {
