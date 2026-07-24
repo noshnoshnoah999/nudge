@@ -42,34 +42,13 @@ enum WidgetFont: String, AppEnum {
 }
 
 // MARK: - Text size
+//
+// Numeric point size chosen in Edit mode. Widget configuration can't render a true drag
+// slider, so this is an Int parameter with a valid range — iOS shows a tap-to-enter / stepper
+// field so the user picks the exact number. Clamped to a sane widget range.
 
-enum WidgetTextSize: String, AppEnum {
-    case small, medium, large
-
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Text size")
-    static var caseDisplayRepresentations: [WidgetTextSize: DisplayRepresentation] = [
-        .small:  "Small",
-        .medium: "Medium",
-        .large:  "Large"
-    ]
-
-    /// Point size for a reminder row's title.
-    var titleSize: CGFloat {
-        switch self {
-        case .small:  return 13
-        case .medium: return 15   // ~ current .subheadline
-        case .large:  return 18
-        }
-    }
-    /// Point size for the due-date label.
-    var dueSize: CGFloat {
-        switch self {
-        case .small:  return 10
-        case .medium: return 12
-        case .large:  return 14
-        }
-    }
-}
+let widgetFontSizeRange: ClosedRange<Int> = 12...40
+let widgetFontSizeDefault = 22   // big, Dumb-Phone-style default
 
 // MARK: - Row spacing / density
 
@@ -101,8 +80,11 @@ struct TodayWidgetConfigIntent: WidgetConfigurationIntent {
     @Parameter(title: "Font", default: .system)
     var font: WidgetFont
 
-    @Parameter(title: "Text size", default: .medium)
-    var textSize: WidgetTextSize
+    // Numeric font size (points). Range gives a stepper-style control in Edit mode.
+    @Parameter(title: "Font size", default: 22,
+               controlStyle: .stepper,
+               inclusiveRange: (12, 40))
+    var fontSize: Int
 
     @Parameter(title: "Spacing", default: .comfortable)
     var spacing: WidgetSpacing
@@ -117,22 +99,21 @@ struct TodayWidgetConfigIntent: WidgetConfigurationIntent {
 struct TodayStyle {
     var design: Font.Design
     var titleSize: CGFloat
-    var dueSize: CGFloat
     var rowSpacing: CGFloat
     var grayscale: Bool
 
-    static let `default` = TodayStyle(design: .default, titleSize: 15, dueSize: 12,
+    static let `default` = TodayStyle(design: .default, titleSize: CGFloat(widgetFontSizeDefault),
                                       rowSpacing: 9, grayscale: false)
 
-    init(design: Font.Design, titleSize: CGFloat, dueSize: CGFloat, rowSpacing: CGFloat, grayscale: Bool) {
-        self.design = design; self.titleSize = titleSize; self.dueSize = dueSize
+    init(design: Font.Design, titleSize: CGFloat, rowSpacing: CGFloat, grayscale: Bool) {
+        self.design = design; self.titleSize = titleSize
         self.rowSpacing = rowSpacing; self.grayscale = grayscale
     }
 
     init(_ c: TodayWidgetConfigIntent) {
         design = c.font.design
-        titleSize = c.textSize.titleSize
-        dueSize = c.textSize.dueSize
+        // Clamp defensively in case an old config stored an out-of-range value.
+        titleSize = CGFloat(min(max(c.fontSize, widgetFontSizeRange.lowerBound), widgetFontSizeRange.upperBound))
         rowSpacing = c.spacing.rowSpacing
         grayscale = c.grayscale
     }

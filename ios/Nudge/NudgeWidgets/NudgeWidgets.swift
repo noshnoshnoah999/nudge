@@ -285,7 +285,15 @@ struct TodayWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: NudgeEntry
     var style: TodayStyle = .default
-    private var maxRows: Int { family == .systemLarge ? 7 : 3 }
+    // Rows that fit depend on the chosen font size + spacing — big Dumb-Phone text means
+    // fewer rows before overflow. Estimate from the widget's usable height so large text
+    // doesn't spill out of the widget.
+    private var maxRows: Int {
+        let usableHeight: CGFloat = (family == .systemLarge ? 320 : 130)
+        let rowHeight = style.titleSize + style.rowSpacing
+        let fit = Int(usableHeight / max(rowHeight, 1))
+        return max(1, min(fit, family == .systemLarge ? 8 : 3))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: style.rowSpacing) {
@@ -330,33 +338,26 @@ struct TodayWidgetView: View {
                     Spacer() }
                 Spacer()
             } else {
+                // Dumb-Phone style list: each row is just the reminder title — lowercase, bold,
+                // left-aligned, big — like an app-launcher. No ring, no due label. Tapping the
+                // text completes the reminder (writes straight to Supabase; no app launch).
+                // Recurring reminders complete here too, but their next occurrence is spawned
+                // when the app next opens (see CompleteReminderWidgetIntent).
                 ForEach(entry.items.prefix(maxRows)) { it in
-                    // Whole row is a tap-to-complete button: tapping marks the reminder done
-                    // in place (writes straight to Supabase; no app launch). The coloured dot
-                    // doubles as the tap affordance. Recurring reminders complete here too, but
-                    // their next occurrence is spawned when the app next opens (see the intent).
                     Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
-                        HStack(spacing: 9) {
-                            // A ring so it reads as "tap to tick" rather than just a colour dot.
-                            Circle()
-                                .strokeBorder(it.overdue ? WTheme.coral : Color(wHex: it.color), lineWidth: 2)
-                                .frame(width: 12, height: 12)
-                            Text(it.title)
-                                .font(.system(size: style.titleSize, design: style.design))
-                                .lineLimit(1)
-                            Spacer(minLength: 6)
-                            if let d = it.due {
-                                Text(wDueLabel(d, hasTime: it.hasTime))
-                                    .font(.system(size: style.dueSize, design: style.design).weight(.semibold))
-                                    .foregroundStyle(it.overdue ? WTheme.coral : .secondary)
-                            }
-                        }
+                        Text(it.title.lowercased())
+                            .font(.system(size: style.titleSize, weight: .bold, design: style.design))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            // Clean cut-off with no "…": clip the row to one line's height and
+                            // let long titles run off the trailing edge rather than truncating
+                            // with an ellipsis.
+                            .truncationMode(.tail)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .clipped()
                     }
                     .buttonStyle(.plain)
-                }
-                if entry.items.count > maxRows {
-                    Text("+\(entry.items.count - maxRows) more")
-                        .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
