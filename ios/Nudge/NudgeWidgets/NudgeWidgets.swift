@@ -297,16 +297,9 @@ struct TodayWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: style.rowSpacing) {
-            HStack {
-                Text("Today").font(.headline.weight(.bold))
-                Spacer()
-                if entry.overdue > 0 {
-                    Text("\(entry.overdue) overdue")
-                        .font(.caption2.weight(.bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(WTheme.coralGrad, in: Capsule())
-                }
-            }
+            // Header ("Today" title + overdue pill) removed — pure Dumb-Phone list, no chrome.
+            // The pill also rendered as a grey blob in Apple's tinted home-screen mode, which
+            // is another reason to drop it. Failed/empty states below are unaffected.
             if entry.state == .failed {
                 // Couldn't reach the user's data (signed out / expired token / network).
                 // Show an honest, actionable state — NEVER a misleading "All clear".
