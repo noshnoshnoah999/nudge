@@ -23,6 +23,10 @@ final class NudgeStore: ObservableObject {
     private var settings: [String: JSONValue]? = nil
     private var settingsStamp: String = epochStamp
     private var settingsPushedStamp: String? = nil
+    /// Invoked after pullAll adopts a NEWER cloud settings row, so AppSettings can apply the
+    /// synced appearance (theme/boldText/compact) to the live UI. Registered by
+    /// AppSettings.attach; nil until then. Runs on the @MainActor.
+    var onCloudAppearance: ((_ theme: String?, _ boldText: Bool?, _ compact: Bool?) -> Void)?
     private var pushTask: Task<Void, Never>? = nil
 
     /// Per-table sync bookkeeping: row stamps, tombstones, and the pushed/current
@@ -209,6 +213,10 @@ final class NudgeStore: ObservableObject {
             settings = setRow.data
             settingsStamp = setRow.updated_at
             settingsPushedStamp = setRow.updated_at
+            // Push the synced appearance (theme/boldText/compact) into AppSettings so the UI
+            // updates live. AppSettings guards this against re-uploading (the ping-pong guard).
+            let a = cloudAppearance()
+            onCloudAppearance?(a.theme, a.boldText, a.compact)
         }
 
         if outcome.changed {
@@ -395,6 +403,57 @@ final class NudgeStore: ObservableObject {
         refreshSignatures(smartLists, meta: &smartListsMeta)
         writeCache()
         await push()
+    }
+
+    // MARK: - Appearance sync bridge (theme / boldText / compact)
+    //
+    // AppSettings owns these prefs locally (UserDefaults) but has no cloud access. These
+    // methods let it read/write the three synced appearance keys inside the per-user
+    // `settings` row, reusing the existing whole-value, most-recent-wins settings sync
+    // (pullAll adopts a newer row; pushAll uploads a dirty one). No new table, no new
+    // conflict logic. Keys must match AppSettings.SyncKey.
+
+    private static let kTheme = "theme", kBold = "boldText", kCompact = "compact"
+
+    /// Write the current appearance triple into the synced settings dict and mark it dirty,
+    /// then kick the normal debounced push. Called from AppSettings when the user changes a
+    /// synced pref locally. Only bumps the stamp if a value actually changed, so re-applying
+    /// the same value (e.g. redundant didSet) doesn't create needless cloud churn.
+    func applyLocalAppearance(theme: String, boldText: Bool, compact: Bool) {
+        var dict = settings ?? [:]
+        let changed = dict[Self.kTheme] != .string(theme)
+            || dict[Self.kBold] != .bool(boldText)
+            || dict[Self.kCompact] != .bool(compact)
+        guard changed else { return }
+        dict[Self.kTheme] = .string(theme)
+        dict[Self.kBold] = .bool(boldText)
+        dict[Self.kCompact] = .bool(compact)
+        settings = dict
+        settingsStamp = syncStamp()           // most-recent-wins: this device's change is newest
+        persist(notify: false)                // debounced push; pushAll uploads the dirty settings row
+    }
+
+    /// Seed the cloud row with local appearance if it has NEVER carried these keys (first run
+    /// of the sync-enabled build). Bumps the stamp only when it actually adds something, so a
+    /// device that already has cloud appearance doesn't overwrite it on launch.
+    func seedAppearanceIfMissing(theme: String, boldText: Bool, compact: Bool) {
+        var dict = settings ?? [:]
+        guard dict[Self.kTheme] == nil, dict[Self.kBold] == nil, dict[Self.kCompact] == nil else { return }
+        dict[Self.kTheme] = .string(theme)
+        dict[Self.kBold] = .bool(boldText)
+        dict[Self.kCompact] = .bool(compact)
+        settings = dict
+        settingsStamp = syncStamp()
+        persist(notify: false)
+    }
+
+    /// Read the synced appearance triple out of the settings dict, for the cloud→AppSettings
+    /// apply path. Returns nil for any key the cloud doesn't carry.
+    func cloudAppearance() -> (theme: String?, boldText: Bool?, compact: Bool?) {
+        let t: String? = { if case .string(let s)? = settings?[Self.kTheme] { return s }; return nil }()
+        let b: Bool? = { if case .bool(let v)? = settings?[Self.kBold] { return v }; return nil }()
+        let c: Bool? = { if case .bool(let v)? = settings?[Self.kCompact] { return v }; return nil }()
+        return (t, b, c)
     }
 
     private func push() async {

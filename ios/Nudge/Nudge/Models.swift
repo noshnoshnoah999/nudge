@@ -5,7 +5,7 @@
 import Foundation
 
 // A flexible JSON value so we can round-trip `settings` (mixed bool/string) without losing it.
-enum JSONValue: Codable {
+enum JSONValue: Codable, Equatable {
     case string(String)
     case number(Double)
     case bool(Bool)

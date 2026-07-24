@@ -85,7 +85,7 @@ struct NudgeApp: App {
                 // Touching `shared` here builds the CLLocationManager at launch, which is what
                 // lets the OS relaunch us straight into a region event. Its delegate must exist
                 // before any geofence can fire.
-                .task { sync.attach(store); notifier.attach(store); LocationMonitor.shared.sync(reminders: store.reminders) }
+                .task { sync.attach(store); notifier.attach(store); settings.attach(store); LocationMonitor.shared.sync(reminders: store.reminders) }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { LocationMonitor.shared.sync(reminders: store.reminders) }
                 }
