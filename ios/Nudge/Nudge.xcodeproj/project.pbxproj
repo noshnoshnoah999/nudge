@@ -12,8 +12,11 @@
 		417525C72B41B04AE2D53C20 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A20B59A404C0FC23DD6457 /* AppRouter.swift */; };
 		43491E524FB40093A8720477 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D02E2E7153E871D406772A2 /* WidgetData.swift */; };
 		45A2C38370ACB59B2FAABE4F /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91A00F12B634C5A8E616A158 /* AuthStore.swift */; };
+		549746A42C67463727648113 /* CompleteReminderWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B813D8885716C975385AF34 /* CompleteReminderWidgetIntent.swift */; };
 		70040F35F3038EED4F3C80CC /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF39B9EDA82FC57432ACE7E /* Secrets.swift */; };
 		70361BCD0371121195C0B400 /* NudgeWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6B9C5DE0B02C50CE957E2B65 /* NudgeWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8CA3E02CA54716152B0692A7 /* TodayWidgetStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D467E835585DC2104FBAF8 /* TodayWidgetStyle.swift */; };
+		AE7979FF8C0EE4D29814B0D2 /* CompleteReminderWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B813D8885716C975385AF34 /* CompleteReminderWidgetIntent.swift */; };
 		B85FBEA063A111978C486974 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B4DE77BF970E57C76202DBE /* QuickAddIntent.swift */; };
 		DA51A91ACB67313724FED46B /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF39B9EDA82FC57432ACE7E /* Secrets.swift */; };
 		DAFEFBCA2BC3486E29AC0381 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B4DE77BF970E57C76202DBE /* QuickAddIntent.swift */; };
@@ -57,8 +60,10 @@
 		6B9C5DE0B02C50CE957E2B65 /* NudgeWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NudgeWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7DF3C757367D3B53CF1889A5 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		91A00F12B634C5A8E616A158 /* AuthStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
+		9B813D8885716C975385AF34 /* CompleteReminderWidgetIntent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompleteReminderWidgetIntent.swift; sourceTree = "<group>"; };
 		9D02E2E7153E871D406772A2 /* WidgetData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WidgetData.swift; sourceTree = "<group>"; };
 		C53CD5B060D93168A9A1D1D1 /* NudgeWidgets.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NudgeWidgets.swift; sourceTree = "<group>"; };
+		F9D467E835585DC2104FBAF8 /* TodayWidgetStyle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TodayWidgetStyle.swift; sourceTree = "<group>"; };
 		FAD34E5E8C4DDC49F18C420A /* NudgeControl.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NudgeControl.swift; sourceTree = "<group>"; };
 		FE01000000000000000000A1 /* NudgeAlarm.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NudgeAlarm.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -111,6 +116,7 @@
 				FE01000000000000000000A1 /* NudgeAlarm.swift */,
 				4BF39B9EDA82FC57432ACE7E /* Secrets.swift */,
 				91A00F12B634C5A8E616A158 /* AuthStore.swift */,
+				9B813D8885716C975385AF34 /* CompleteReminderWidgetIntent.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -150,6 +156,7 @@
 				7DF3C757367D3B53CF1889A5 /* Info.plist */,
 				9D02E2E7153E871D406772A2 /* WidgetData.swift */,
 				C53CD5B060D93168A9A1D1D1 /* NudgeWidgets.swift */,
+				F9D467E835585DC2104FBAF8 /* TodayWidgetStyle.swift */,
 			);
 			path = NudgeWidgets;
 			sourceTree = "<group>";
@@ -267,6 +274,7 @@
 				FE01000000000000000000A2 /* NudgeAlarm.swift in Sources */,
 				DA51A91ACB67313724FED46B /* Secrets.swift in Sources */,
 				45A2C38370ACB59B2FAABE4F /* AuthStore.swift in Sources */,
+				AE7979FF8C0EE4D29814B0D2 /* CompleteReminderWidgetIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -282,6 +290,8 @@
 				FD69A38D8D9BB778DC05DC93 /* NudgeWidgets.swift in Sources */,
 				70040F35F3038EED4F3C80CC /* Secrets.swift in Sources */,
 				E0372FDAD8435D1EC7835997 /* AuthStore.swift in Sources */,
+				549746A42C67463727648113 /* CompleteReminderWidgetIntent.swift in Sources */,
+				8CA3E02CA54716152B0692A7 /* TodayWidgetStyle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

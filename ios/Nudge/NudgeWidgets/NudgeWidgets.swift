@@ -244,10 +244,35 @@ private struct QuickAddLockView: View {
 
 // MARK: - Today list (medium + large)
 
+/// Timeline entry that also carries the user's chosen style. The Today widget uses an
+/// AppIntentConfiguration so the style is picked in Edit mode (no App Group needed).
+struct TodayConfigEntry: TimelineEntry {
+    let base: NudgeEntry
+    let style: TodayStyle
+    var date: Date { base.date }
+}
+
+/// AppIntent-configured provider: same data as NudgeProvider, plus the config's style.
+struct TodayConfigProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> TodayConfigEntry {
+        TodayConfigEntry(base: .sample, style: .default)
+    }
+    func snapshot(for configuration: TodayWidgetConfigIntent, in context: Context) async -> TodayConfigEntry {
+        TodayConfigEntry(base: await NudgeProvider.build(), style: TodayStyle(configuration))
+    }
+    func timeline(for configuration: TodayWidgetConfigIntent, in context: Context) async -> Timeline<TodayConfigEntry> {
+        let entry = TodayConfigEntry(base: await NudgeProvider.build(), style: TodayStyle(configuration))
+        let next = Calendar.current.date(byAdding: .minute, value: 30, to: .now) ?? .now.addingTimeInterval(1800)
+        return Timeline(entries: [entry], policy: .after(next))
+    }
+}
+
 struct TodayWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "NudgeToday", provider: NudgeProvider()) { e in
-            TodayWidgetView(entry: e)
+        AppIntentConfiguration(kind: "NudgeToday",
+                               intent: TodayWidgetConfigIntent.self,
+                               provider: TodayConfigProvider()) { e in
+            TodayWidgetView(entry: e.base, style: e.style)
                 .containerBackground(.background, for: .widget)
         }
         .configurationDisplayName("Today & Overdue")
@@ -259,10 +284,11 @@ struct TodayWidget: Widget {
 struct TodayWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: NudgeEntry
+    var style: TodayStyle = .default
     private var maxRows: Int { family == .systemLarge ? 7 : 3 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: style.rowSpacing) {
             HStack {
                 Text("Today").font(.headline.weight(.bold))
                 Spacer()
@@ -305,16 +331,28 @@ struct TodayWidgetView: View {
                 Spacer()
             } else {
                 ForEach(entry.items.prefix(maxRows)) { it in
-                    HStack(spacing: 9) {
-                        Circle().fill(it.overdue ? WTheme.coral : Color(wHex: it.color)).frame(width: 8, height: 8)
-                        Text(it.title).font(.subheadline).lineLimit(1)
-                        Spacer(minLength: 6)
-                        if let d = it.due {
-                            Text(wDueLabel(d, hasTime: it.hasTime))
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(it.overdue ? WTheme.coral : .secondary)
+                    // Whole row is a tap-to-complete button: tapping marks the reminder done
+                    // in place (writes straight to Supabase; no app launch). The coloured dot
+                    // doubles as the tap affordance. Recurring reminders complete here too, but
+                    // their next occurrence is spawned when the app next opens (see the intent).
+                    Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
+                        HStack(spacing: 9) {
+                            // A ring so it reads as "tap to tick" rather than just a colour dot.
+                            Circle()
+                                .strokeBorder(it.overdue ? WTheme.coral : Color(wHex: it.color), lineWidth: 2)
+                                .frame(width: 12, height: 12)
+                            Text(it.title)
+                                .font(.system(size: style.titleSize, design: style.design))
+                                .lineLimit(1)
+                            Spacer(minLength: 6)
+                            if let d = it.due {
+                                Text(wDueLabel(d, hasTime: it.hasTime))
+                                    .font(.system(size: style.dueSize, design: style.design).weight(.semibold))
+                                    .foregroundStyle(it.overdue ? WTheme.coral : .secondary)
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
                 }
                 if entry.items.count > maxRows {
                     Text("+\(entry.items.count - maxRows) more")
@@ -324,6 +362,9 @@ struct TodayWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Grayscale toggle (dumb-phone look). Note: Apple "tinted" home-screen mode already
+        // strips colour, so this only visibly changes things in full-colour mode.
+        .grayscale(style.grayscale ? 1 : 0)
     }
 }
 
