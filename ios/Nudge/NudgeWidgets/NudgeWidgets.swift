@@ -345,25 +345,8 @@ struct TodayWidgetView: View {
                 // when the app next opens (see CompleteReminderWidgetIntent).
                 ForEach(entry.items.prefix(maxRows)) { it in
                     Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
-                        // Clean cut-off with NO "…". The title renders at its natural width on one
-                        // line (.fixedSize), then is anchored to the LEADING edge of a full-width
-                        // frame BEFORE clipping. That ordering is the whole fix: the previous
-                        // version wrapped the text in an HStack + Spacer, which let the oversized
-                        // fixedSize text sit CENTRED, so .clipped() sliced BOTH edges (the
-                        // "...mp focus modes..." bug). Anchoring leading before .clipped() pins the
-                        // text to the left, so only the right overflow is sliced off — no ellipsis.
-                        Text(it.title.lowercased())
-                            .font(.system(size: style.titleSize, weight: .bold, design: style.design))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)     // natural width, no "…"
-                            .frame(maxWidth: .infinity, alignment: .leading)  // pin left BEFORE clip
-                            .clipped()                                        // slice overflow on the right
-                            // .clipped() only affects drawing, not hit-testing — a long, fixedSize
-                            // title can still report a tap target wider than the visible row (and
-                            // wide enough to overlap the next row). Pin the tap target to the same
-                            // bounds the row is actually drawn in.
-                            .contentShape(Rectangle())
+                        WidgetRowTitle(title: it.title.lowercased(),
+                                       size: style.titleSize, design: style.design)
                     }
                     .buttonStyle(.plain)
                 }
@@ -374,6 +357,49 @@ struct TodayWidgetView: View {
         // Grayscale toggle (dumb-phone look). Note: Apple "tinted" home-screen mode already
         // strips colour, so this only visibly changes things in full-colour mode.
         .grayscale(style.grayscale ? 1 : 0)
+    }
+}
+
+/// One reminder title, hard-cut on the right with NO ellipsis and NO chance of
+/// left/centre spill.
+///
+/// History: two earlier fixes used `.fixedSize(horizontal: true)` + `.clipped()`.
+/// Both failed on-device — `.fixedSize` lets the text ignore the frame width, and
+/// inside WidgetKit the clip landed symmetrically, slicing BOTH edges
+/// ("...mp focus modes..."). No amount of reordering fixed it reliably.
+///
+/// This version is deterministic. `GeometryReader` gives the exact row width `w`.
+/// The title is laid out at its natural width (single line, no truncation, so no
+/// "…"), pinned to the leading edge, then MASKED by a solid rectangle exactly `w`
+/// wide and leading-anchored. The mask is a concrete pixel rect — WidgetKit can't
+/// reinterpret it the way it did the clip. Anything past the right edge is masked
+/// away; nothing can appear left of x=0. Result: clean right-side cut, no ellipsis.
+private struct WidgetRowTitle: View {
+    let title: String
+    let size: CGFloat
+    let design: Font.Design
+
+    var body: some View {
+        // GeometryReader gives the exact row width as a concrete number. The title is
+        // laid out at natural width (single line, no truncation → no "…"), pinned to the
+        // leading edge, then masked by a Rectangle of that exact pixel width. A mask
+        // clips to its own geometry, so overflow past the right edge is hidden and
+        // nothing can appear left of x=0. Using an explicit width (not a Rectangle in an
+        // HStack, which can collapse) is what makes this deterministic.
+        GeometryReader { geo in
+            Text(title)
+                .font(.system(size: size, weight: .bold, design: design))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)        // natural width, no "…"
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
+                .mask(
+                    Rectangle()
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
+                )
+        }
+        .frame(height: size * 1.15)   // GeometryReader has no intrinsic height
+        .contentShape(Rectangle())
     }
 }
 
