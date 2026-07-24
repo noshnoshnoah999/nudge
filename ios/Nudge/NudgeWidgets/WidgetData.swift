@@ -1,6 +1,18 @@
 // WidgetData.swift — Nudge widget extension
-// Self-contained data layer for widgets: fetches the same Supabase blob the app
-// uses (no App Group needed) and computes the stats each widget renders.
+// Self-contained data layer for widgets: fetches the user's live reminders from the
+// per-item Supabase tables (the same tables the app writes to since commit 5de79fb,
+// "D1: per-item sync") and computes the stats each widget renders.
+//
+// HISTORY / WHY THIS CHANGED:
+//   The widget used to read a single `nudge_data` blob. The app abandoned that table
+//   when it moved to per-item sync, so `nudge_data` became a FROZEN snapshot — which is
+//   why the widget kept showing old, already-completed reminders that were fine in the
+//   app. The widget now reads the per-item `reminders` and `lists` tables directly, so
+//   it always reflects the same live, RLS-protected data the app does.
+//
+// SECURITY: reads only the per-item tables, which have RLS live (each user sees only
+//   their own rows). Uses the anon key + the user's bearer token from the shared
+//   Keychain — exactly as before. No service-role key, no elevated access.
 
 import Foundation
 import SwiftUI
@@ -20,23 +32,56 @@ struct WReminder: Codable {
 }
 struct WList: Codable { var id: String; var name: String; var color: String }
 struct WData: Codable { var reminders: [WReminder]; var lists: [WList] }
-private struct WRow: Codable { var data: WData }
+
+/// One PostgREST row from a per-item table: `{ id, data, updated_at, deleted_at }`.
+/// `data` holds the actual reminder/list JSON; a non-nil `deleted_at` is a tombstone
+/// (the row exists only to propagate a delete) and MUST be skipped.
+private struct WCloudRow<T: Codable>: Codable {
+    var id: String
+    var data: T?
+    var deleted_at: String?
+}
 
 enum NudgeFeed {
-    /// Reads the session the app wrote to the shared Keychain group. Returns nil
-    /// whenever it can't authenticate — signed out, or an expired token — so the
-    /// widget keeps its last rendered state rather than blanking. The extension
-    /// never refreshes tokens; the app does that the next time it opens.
+    /// Reads the user's live reminders + lists from the per-item Supabase tables.
+    /// Returns nil whenever it can't authenticate — signed out or an expired token —
+    /// so the widget shows its "Can't sync" state rather than a false "All clear".
+    /// The extension never refreshes tokens; the app does that the next time it opens.
+    ///
+    /// Note: reminders are the source of truth for the widget. If lists fail to load
+    /// we still return the reminders (list colours just fall back to a default), so a
+    /// hiccup on the lists table never blanks the whole widget.
     static func fetch() async -> WData? {
-        guard let session = AuthStore.load(),
-              let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/nudge_data?select=data") else { return nil }
+        guard let session = AuthStore.load() else { return nil }
+
+        // Reminders are required. A nil here means a real auth/network failure → .failed.
+        guard let reminders = await rows(table: "reminders", as: WReminder.self,
+                                         token: session.accessToken) else { return nil }
+
+        // Lists are best-effort: nil (fetch failed) becomes an empty list rather than
+        // failing the whole widget. Colours fall back to the default in the view.
+        let lists = await rows(table: "lists", as: WList.self,
+                               token: session.accessToken) ?? []
+
+        return WData(reminders: reminders, lists: lists)
+    }
+
+    /// Pull every LIVE row from a per-item table (tombstones filtered out), returning the
+    /// decoded `data` payloads. Returns nil only on a genuine request/auth failure so the
+    /// caller can distinguish "couldn't sync" from "synced, nothing there".
+    private static func rows<T: Codable>(table: String, as: T.Type, token: String) async -> [T]? {
+        // Select only live rows (deleted_at IS NULL) and just the columns we decode.
+        guard let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/\(table)?select=id,data,deleted_at&deleted_at=is.null") else { return nil }
         var req = URLRequest(url: u)
         req.setValue(Secrets.supabaseAnon, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.cachePolicy = .reloadIgnoringLocalCacheData
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
               (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else { return nil }
-        return (try? JSONDecoder().decode([WRow].self, from: data))?.first?.data
+        guard let decoded = try? JSONDecoder().decode([WCloudRow<T>].self, from: data) else { return nil }
+        // Belt-and-braces: also drop any tombstone the query didn't filter, and any row
+        // whose `data` failed to decode.
+        return decoded.filter { $0.deleted_at == nil }.compactMap { $0.data }
     }
 }
 
