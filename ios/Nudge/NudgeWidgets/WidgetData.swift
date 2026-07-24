@@ -29,6 +29,7 @@ struct WReminder: Codable {
     var completedAt: String?
     var snoozedUntil: String?
     var dismissed: Bool?
+    var source: String?
 }
 struct WList: Codable { var id: String; var name: String; var color: String }
 struct WData: Codable { var reminders: [WReminder]; var lists: [WList] }
@@ -55,8 +56,11 @@ enum NudgeFeed {
         guard let session = AuthStore.load() else { return nil }
 
         // Reminders are required. A nil here means a real auth/network failure → .failed.
-        guard let reminders = await rows(table: "reminders", as: WReminder.self,
-                                         token: session.accessToken) else { return nil }
+        // Same hidden-source rule as NudgeStore: StudyTrack/Finance rows round-trip through
+        // sync but are never shown in the app's own UI, so the widget must hide them too.
+        guard let reminders = (await rows(table: "reminders", as: WReminder.self,
+                                          token: session.accessToken))?
+            .filter({ $0.source != "studytrack" && $0.source != "finance" }) else { return nil }
 
         // Lists are best-effort: nil (fetch failed) becomes an empty list rather than
         // failing the whole widget. Colours fall back to the default in the view.
