@@ -345,17 +345,25 @@ struct TodayWidgetView: View {
                 // when the app next opens (see CompleteReminderWidgetIntent).
                 ForEach(entry.items.prefix(maxRows)) { it in
                     Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
-                        Text(it.title.lowercased())
-                            .font(.system(size: style.titleSize, weight: .bold, design: style.design))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            // Clean cut-off with no "…": clip the row to one line's height and
-                            // let long titles run off the trailing edge rather than truncating
-                            // with an ellipsis.
-                            .truncationMode(.tail)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .clipped()
+                        // Clean cut-off with NO "…": render the title at its natural width on one
+                        // line, pin it to the LEFT with a trailing Spacer, and clip the HStack to
+                        // the widget's width. Long titles get sliced off cleanly on the right edge;
+                        // they never overflow the left or centre (the earlier .fixedSize bug).
+                        HStack(spacing: 0) {
+                            Text(it.title.lowercased())
+                                .font(.system(size: style.titleSize, weight: .bold, design: style.design))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)  // natural width, no "…"
+                            Spacer(minLength: 0)                               // push text hard left
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .clipped()                                            // slice overflow on the right
+                        // .clipped() only affects drawing, not hit-testing — a long, fixedSize
+                        // title can still report a tap target wider than the visible row (and
+                        // wide enough to overlap the next row). Pin the tap target to the same
+                        // bounds the row is actually drawn in.
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
