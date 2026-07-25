@@ -252,6 +252,20 @@ struct SyncSettingsView: View {
                 }
                 .listRowBackground(Theme.surface)
 
+                // MARK: Widget
+                Section {
+                    NavigationLink {
+                        WidgetBackgroundView()
+                    } label: {
+                        Label("Widget Background", systemImage: "square.on.square.dashed")
+                    }
+                } header: {
+                    Text("Widget")
+                } footer: {
+                    Text("Use a screenshot of an empty Home Screen page as the Today widget's background so it blends into your wallpaper. Stored on this iPhone only — never uploaded.")
+                }
+                .listRowBackground(Theme.surface)
+
                 // MARK: Overdue
                 Section {
                     NavigationLink {
