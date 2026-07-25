@@ -273,40 +273,35 @@ struct TodayWidget: Widget {
                                intent: TodayWidgetConfigIntent.self,
                                provider: TodayConfigProvider()) { e in
             TodayWidgetView(entry: e.base, style: e.style)
-                .containerBackground(
-                    e.style.backgroundColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.background),
-                    for: .widget
-                )
+                // Background is a VIEW, not a ShapeStyle, because the near-black presets render
+                // as a solid-colour Image tagged .widgetAccentedRenderingMode(.fullColor). A flat
+                // Color does not survive Apple's tinted Home Screen mode — measured on-device it
+                // came out #181818 against a #000000 wallpaper. See TodayWidgetBackground.
+                .containerBackground(for: .widget) {
+                    TodayWidgetBackground(background: e.style.background)
+                }
         }
         .configurationDisplayName("Today & Overdue")
         .description("Your next reminders at a glance.")
         .supportedFamilies([.systemMedium, .systemLarge])
-        // Keep OUR background in Apple's "tinted" Home Screen mode.
+        // Keep the background LAYER in Apple's "tinted" Home Screen mode.
         //
-        // In tinted mode the widget renders in `.accented` mode, and by default the
-        // system DISCARDS `containerBackground` and substitutes its own translucent
-        // grey material. That's why the Soft/True Black choice appeared to do nothing
-        // in tinted mode while working fine in full-colour mode — the colour was being
-        // thrown away before it ever rendered.
+        // In tinted mode the widget renders in `.accented`, and by default the system
+        // discards `containerBackground` entirely. `containerBackgroundRemovable(false)`
+        // is the documented opt-out — it tells the system the background is essential
+        // (Apple added it for widgets like Photos and Maps).
         //
-        // `containerBackgroundRemovable(false)` is the documented opt-out: it tells the
-        // system the background is essential (Apple added it for widgets like Photos
-        // and Maps). With it, our chosen near-black survives into tinted mode, so the
-        // widget can actually disappear into a black wallpaper while app icons stay
-        // monochrome.
+        // NOTE — this modifier alone was NOT enough, verified on-device. With it applied
+        // and True Black selected, the card still measured #181818 against a #000000
+        // wallpaper. So the layer WAS being preserved, but the flat `Color` inside it was
+        // still being remapped to the system's material. The colour fix lives in
+        // `TodayWidgetBackground`: render an Image with `.widgetAccentedRenderingMode(.fullColor)`
+        // instead of a Color. Both pieces are needed — this one keeps the layer, that one
+        // keeps the colour.
         //
-        // Caveat: this modifier sits on the WidgetConfiguration, so it CANNOT be made
-        // conditional on the user's picked option. Consequence: when "System Default"
-        // is selected, tinted mode now keeps the `.background` material instead of the
-        // system's tinted material. Acceptable — the near-black presets are the point.
-        //
-        // Known Apple quirk (FB / forums thread 768862): with this modifier, content can
-        // get pulled into the tint treatment even when marked non-accentable. Today's
-        // rows are plain `.secondary` text so this is expected to be benign, but it MUST
-        // be checked on-device with a near-black tint colour — if titles take the tint
-        // they could go black-on-black and vanish. Fallback if that happens is in the
-        // handoff doc: draw the background as content inside a ZStack with
-        // `.contentMarginsDisabled()` instead of as a containerBackground.
+        // Caveat: sits on the WidgetConfiguration, so it CANNOT be conditional on the
+        // user's picked preset. Consequence: with "System Default" selected, tinted mode
+        // keeps the system material instead of stripping the background. Acceptable.
         .containerBackgroundRemovable(false)
     }
 }
