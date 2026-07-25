@@ -83,13 +83,16 @@ enum WidgetSpacing: String, AppEnum {
 // grey system card. "System default" keeps the old `.background` material for
 // anyone who wants the standard widget look.
 enum WidgetBackground: String, AppEnum {
-    case systemDefault, softBlack, trueBlack
+    case systemDefault, softBlack, trueBlack, customPhoto
 
     static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Background")
     static var caseDisplayRepresentations: [WidgetBackground: DisplayRepresentation] = [
         .systemDefault: "System Default",
         .softBlack:     "Soft Black (#0B0B0B)",
-        .trueBlack:     "True Black (#000000)"
+        .trueBlack:     "True Black (#000000)",
+        // The image itself is chosen in the Nudge app (Settings → Widget Background), not
+        // here — widget Edit mode can't present a photo picker.
+        .customPhoto:   "My Wallpaper Screenshot"
     ]
 
     /// nil means "use the system's default widget background material".
@@ -98,6 +101,8 @@ enum WidgetBackground: String, AppEnum {
         case .systemDefault: return nil
         case .softBlack:     return Color(wHex: "0B0B0B")
         case .trueBlack:     return Color(wHex: "000000")
+        // No flat-colour equivalent — this option is an image by definition.
+        case .customPhoto:   return nil
         }
     }
 
@@ -131,6 +136,10 @@ enum WidgetBackground: String, AppEnum {
         case .systemDefault: return nil
         case .softBlack:     return Self.softBlackImage
         case .trueBlack:     return Self.trueBlackImage
+        // The user's own screenshot, read from the shared Keychain (no App Group on a free
+        // Apple team). Returns nil if they picked this option but haven't set an image yet,
+        // in which case the widget falls back to its normal background.
+        case .customPhoto:   return WidgetBackgroundImageStore.loadImage()
         }
     }
 
@@ -219,23 +228,52 @@ struct TodayStyle {
 
 /// Renders the chosen widget background.
 ///
-/// Uses an `Image` (not a `Color`) for the near-black presets, tagged
-/// `.widgetAccentedRenderingMode(.fullColor)`, because that is the only way to stop Apple's
-/// tinted Home Screen mode from remapping the colour to its own material. Measured on-device:
-/// a `Color` came out #181818 against a #000000 wallpaper; the goal is an exact match so the
-/// widget disappears. Falls back to the system material when "System Default" is chosen.
+/// Everything is drawn as an `Image` tagged `.widgetAccentedRenderingMode(.fullColor)`, which
+/// exempts it from the tint treatment in Apple's tinted Home Screen mode. `Color` has no such
+/// exemption, so even the flat presets are generated as 1-colour images.
+///
+/// IMPORTANT — that alone is not what fixes tinted mode. Measured on-device across three
+/// commits (7073500, 88c1a88, 87c16d4), an image in `containerBackground` was overridden to
+/// #181818 anyway. The actual fix is *placement*: this view is rendered in the widget's
+/// CONTENT layer (bottom of a ZStack, with `.contentMarginsDisabled()`), which the system does
+/// not substitute. See the comments on `TodayWidget` in NudgeWidgets.swift.
+///
+/// Returns `Color.clear` for "System Default" — and also when "My Wallpaper Screenshot" is
+/// selected but no image has been picked yet — so the widget's own container background shows
+/// through and the default look is untouched.
 struct TodayWidgetBackground: View {
     let background: WidgetBackground
 
     var body: some View {
         #if canImport(UIKit)
         if let image = background.solidImage {
-            Image(uiImage: image)
-                .resizable()
-                .widgetAccentedRenderingMode(.fullColor)
+            // `.fullColor` keeps the image out of the tint treatment in Apple's tinted mode.
+            //
+            // Fill mode differs by source: the flat presets are a single colour, so stretching
+            // them is lossless. A real screenshot has a real aspect ratio, so it's scaled to
+            // fill and centre-cropped instead of being distorted.
+            //
+            // Known limitation for the screenshot option: the crop is centred, not aligned to
+            // where the widget actually sits on the Home Screen. That's invisible on a flat
+            // wallpaper (Noah's case) but would misalign on a gradient or patterned one.
+            // NOTE: `.widgetAccentedRenderingMode` is an `Image` modifier, not a `View`
+            // modifier, so it has to be applied before any modifier that erases the Image
+            // type (`.aspectRatio`, `.clipped`, a `Group`, …). Hence the duplication.
+            if background == .customPhoto {
+                Image(uiImage: image)
+                    .resizable()
+                    .widgetAccentedRenderingMode(.fullColor)
+                    .aspectRatio(contentMode: .fill)
+                    .clipped()
+            } else {
+                Image(uiImage: image)
+                    .resizable()
+                    .widgetAccentedRenderingMode(.fullColor)
+            }
         } else {
-            // "System Default" — draw nothing and let the widget's own container background
-            // show through unchanged, so the default look is completely untouched.
+            // "System Default", or "My Wallpaper Screenshot" chosen before an image was set —
+            // draw nothing and let the widget's own container background show through
+            // unchanged, so the default look is completely untouched.
             Color.clear
         }
         #else
