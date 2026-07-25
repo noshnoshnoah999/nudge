@@ -234,9 +234,11 @@ struct TodayStyle {
 ///
 /// IMPORTANT — that alone is not what fixes tinted mode. Measured on-device across three
 /// commits (7073500, 88c1a88, 87c16d4), an image in `containerBackground` was overridden to
-/// #181818 anyway. The actual fix is *placement*: this view is rendered in the widget's
-/// CONTENT layer (bottom of a ZStack, with `.contentMarginsDisabled()`), which the system does
-/// not substitute. See the comments on `TodayWidget` in NudgeWidgets.swift.
+/// #181818 anyway. The actual fix is *placement*: this view is rendered in the widget's CONTENT
+/// layer via `.background { }` on the content (plus `.contentMarginsDisabled()`), which the
+/// system does not substitute. Note `.background { }` specifically and NOT a `ZStack` — a
+/// ZStack version of this shifted the reminder list off the top edge of the widget. See the
+/// comments on `TodayWidget` in NudgeWidgets.swift.
 ///
 /// Returns `Color.clear` for "System Default" — and also when "My Wallpaper Screenshot" is
 /// selected but no image has been picked yet — so the widget's own container background shows

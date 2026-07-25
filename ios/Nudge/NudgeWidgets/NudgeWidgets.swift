@@ -291,14 +291,26 @@ struct TodayWidget: Widget {
             // `.contentMarginsDisabled()` (below) is required — without it WidgetKit insets the
             // content and the system's grey would still show as a border around our background.
             // That also means the padding WidgetKit used to supply must now be applied by hand.
-            ZStack {
-                TodayWidgetBackground(background: e.style.background)
-                    .ignoresSafeArea()
-
-                TodayWidgetView(entry: e.base, style: e.style)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-            }
+            //
+            // USE `.background { }`, NOT A `ZStack`.
+            // The first version of this used `ZStack { background; content }` with
+            // `.ignoresSafeArea()` on the background. That broke layout on-device: the list
+            // rendered ABOVE the widget's top edge with its first rows clipped off-screen.
+            // Cause — `ignoresSafeArea()` expands that child beyond the widget's bounds, which
+            // enlarges the ZStack's layout region, and the ZStack's default `.center` alignment
+            // then positioned the content relative to the enlarged region instead of the visible
+            // one. The overflow at the bottom was the list's invisible trailing `Spacer`, so it
+            // looked like "only one reminder is showing" rather than like a shifted layout.
+            //
+            // `.background { }` cannot cause that: it draws behind the content, sized to the
+            // content's own frame, and takes no part in layout. The explicit
+            // `.frame(maxWidth:maxHeight:alignment:.topLeading)` is what makes the content fill
+            // the widget and stay pinned to the top, so the background fills it too.
+            TodayWidgetView(entry: e.base, style: e.style)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background { TodayWidgetBackground(background: e.style.background) }
             // Keep the ordinary system background for the "System Default" preset. When a
             // near-black preset is chosen, TodayWidgetBackground paints over this anyway.
             .containerBackground(.background, for: .widget)
@@ -323,68 +335,83 @@ struct TodayWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: NudgeEntry
     var style: TodayStyle = .default
-    // Rows that fit depend on the chosen font size + spacing — big Dumb-Phone text means
-    // fewer rows before overflow. Estimate from the widget's usable height so large text
-    // doesn't spill out of the widget.
-    private var maxRows: Int {
-        let usableHeight: CGFloat = (family == .systemLarge ? 320 : 130)
-        let rowHeight = style.titleSize + style.rowSpacing
-        let fit = Int(usableHeight / max(rowHeight, 1))
+    /// How many rows actually fit in `height` points.
+    ///
+    /// Measured from real geometry rather than guessed. The previous version hardcoded the
+    /// usable height (320pt large / 130pt medium) AND computed a row as
+    /// `titleSize + rowSpacing` — but a row is really `titleSize * 1.15` tall (see
+    /// `WidgetRowTitle`'s `.frame(height:)`) plus the spacing. Both errors pushed the same
+    /// way, so it consistently thought more rows fit than actually did, and with a large font
+    /// the list overflowed the widget.
+    private func rowLimit(for height: CGFloat) -> Int {
+        let rowHeight = style.titleSize * 1.15 + style.rowSpacing
+        guard rowHeight > 0, height > 0 else { return 1 }
+        // + rowSpacing because N rows have only N-1 gaps between them, so the last row
+        // doesn't need trailing spacing to fit.
+        let fit = Int((height + style.rowSpacing) / rowHeight)
         return max(1, min(fit, family == .systemLarge ? 8 : 3))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: style.rowSpacing) {
-            // Header ("Today" title + overdue pill) removed — pure Dumb-Phone list, no chrome.
-            // The pill also rendered as a grey blob in Apple's tinted home-screen mode, which
-            // is another reason to drop it. Failed/empty states below are unaffected.
-            if entry.state == .failed {
-                // Couldn't reach the user's data (signed out / expired token / network).
-                // Show an honest, actionable state — NEVER a misleading "All clear".
-                // Tapping opens Nudge, which refreshes the token so the next widget
-                // timeline can fetch successfully.
-                Spacer()
-                // "nudgeapp://open" is handled in NudgeApp.onOpenURL: any host other than
-                // "add" just brings the app to the front, which refreshes the auth token.
-                Link(destination: URL(string: "nudgeapp://open")!) {
+        // GeometryReader supplies the real content height, so the row count is derived from
+        // actual available space instead of hardcoded per-family guesses. It fills whatever
+        // it's offered and aligns its child top-leading, which is exactly what's wanted here.
+        GeometryReader { geo in
+            VStack(alignment: .leading, spacing: style.rowSpacing) {
+                // Header ("Today" title + overdue pill) removed — pure Dumb-Phone list, no chrome.
+                // The pill also rendered as a grey blob in Apple's tinted home-screen mode, which
+                // is another reason to drop it. Failed/empty states below are unaffected.
+                if entry.state == .failed {
+                    // Couldn't reach the user's data (signed out / expired token / network).
+                    // Show an honest, actionable state — NEVER a misleading "All clear".
+                    // Tapping opens Nudge, which refreshes the token so the next widget
+                    // timeline can fetch successfully.
+                    Spacer()
+                    // "nudgeapp://open" is handled in NudgeApp.onOpenURL: any host other than
+                    // "add" just brings the app to the front, which refreshes the auth token.
+                    Link(destination: URL(string: "nudgeapp://open")!) {
+                        HStack { Spacer()
+                            VStack(spacing: 6) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.title).foregroundStyle(.secondary)
+                                Text("Can't sync").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                                Text("Open Nudge").font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer() }
+                    }
+                    Spacer()
+                } else if entry.items.isEmpty {
+                    // Genuine empty result: fetch succeeded, nothing due today. This is the
+                    // only case that should ever read "All clear".
+                    Spacer()
                     HStack { Spacer()
                         VStack(spacing: 6) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.title).foregroundStyle(.secondary)
-                            Text("Can't sync").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                            Text("Open Nudge").font(.caption2).foregroundStyle(.secondary)
+                            Image(systemName: "checkmark.circle.fill").font(.title).foregroundStyle(WTheme.sage)
+                            Text("All clear").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                         }
                         Spacer() }
-                }
-                Spacer()
-            } else if entry.items.isEmpty {
-                // Genuine empty result: fetch succeeded, nothing due today. This is the
-                // only case that should ever read "All clear".
-                Spacer()
-                HStack { Spacer()
-                    VStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill").font(.title).foregroundStyle(WTheme.sage)
-                        Text("All clear").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    Spacer()
+                } else {
+                    // Dumb-Phone style list: each row is just the reminder title — lowercase, bold,
+                    // left-aligned, big — like an app-launcher. No ring, no due label. Tapping the
+                    // text completes the reminder (writes straight to Supabase; no app launch).
+                    // Recurring reminders complete here too, but their next occurrence is spawned
+                    // when the app next opens (see CompleteReminderWidgetIntent).
+                    ForEach(entry.items.prefix(rowLimit(for: geo.size.height))) { it in
+                        Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
+                            WidgetRowTitle(title: it.title.lowercased(),
+                                           size: style.titleSize, design: style.design)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    Spacer() }
-                Spacer()
-            } else {
-                // Dumb-Phone style list: each row is just the reminder title — lowercase, bold,
-                // left-aligned, big — like an app-launcher. No ring, no due label. Tapping the
-                // text completes the reminder (writes straight to Supabase; no app launch).
-                // Recurring reminders complete here too, but their next occurrence is spawned
-                // when the app next opens (see CompleteReminderWidgetIntent).
-                ForEach(entry.items.prefix(maxRows)) { it in
-                    Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
-                        WidgetRowTitle(title: it.title.lowercased(),
-                                       size: style.titleSize, design: style.design)
-                    }
-                    .buttonStyle(.plain)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // Never let the list paint outside the widget, whatever the font size. Belt-and-braces
+            // after the overflow bug where rows rendered above the widget's top edge.
+            .clipped()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         // Grayscale toggle (dumb-phone look). Note: Apple "tinted" home-screen mode already
         // strips colour, so this only visibly changes things in full-colour mode.
         .grayscale(style.grayscale ? 1 : 0)
