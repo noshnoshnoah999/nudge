@@ -273,7 +273,10 @@ struct TodayWidget: Widget {
                                intent: TodayWidgetConfigIntent.self,
                                provider: TodayConfigProvider()) { e in
             TodayWidgetView(entry: e.base, style: e.style)
-                .containerBackground(.background, for: .widget)
+                .containerBackground(
+                    e.style.backgroundColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.background),
+                    for: .widget
+                )
         }
         .configurationDisplayName("Today & Overdue")
         .description("Your next reminders at a glance.")
