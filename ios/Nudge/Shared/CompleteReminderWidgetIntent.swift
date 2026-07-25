@@ -89,12 +89,16 @@ enum WidgetCompletion {
     /// the widget will simply refresh from the server and still show the item, rather than
     /// pretending it completed.
     static func complete(id: String) async {
-        guard let session = AuthStore.load() else { return }
+        // Refresh the token first if it's stale. Previously this read the Keychain directly, so a
+        // tap made with an expired access token silently no-op'd: the row fetch 401'd, the guard
+        // below returned, and the reminder just stayed put with no explanation. Same root cause as
+        // the widget's "Can't sync" — see SessionRefresh.
+        guard case .token(let token) = await SessionRefresh.accessToken() else { return }
         let now = Date()
 
         // 1) Read the row's FULL data payload (all keys, not just the widget subset), plus its
         //    id, so we can write everything back and only change the completion fields.
-        guard var row = await fetchRow(id: id, token: session.accessToken) else { return }
+        guard var row = await fetchRow(id: id, token: token) else { return }
 
         // 2) Flip completion fields in the raw JSON object.
         row["completed"] = .bool(true)
@@ -106,7 +110,7 @@ enum WidgetCompletion {
 
         // 3) Upsert the whole row back with a fresh updated_at so the app's last-write-wins
         //    sync treats this completion as the newest state and doesn't clobber it.
-        await upsert(id: id, data: row, updatedAt: stamp.string(from: now), token: session.accessToken)
+        await upsert(id: id, data: row, updatedAt: stamp.string(from: now), token: token)
 
         // 4) Nudge WidgetKit to rebuild so the item drops off immediately.
         WidgetReload.today()

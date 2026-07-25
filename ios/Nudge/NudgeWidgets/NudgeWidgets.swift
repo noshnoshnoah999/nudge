@@ -21,8 +21,9 @@ struct WItem: Identifiable {
 /// This is what lets the widget tell "genuinely nothing due" apart from
 /// "couldn't reach your reminders" — the two used to look identical ("All clear").
 enum WLoadState {
-    case loaded   // fetch succeeded; items/counts are real (may legitimately be empty)
-    case failed   // fetch returned nil (signed out, expired token, or network) — data unknown
+    case loaded     // fetch succeeded; items/counts are real (may legitimately be empty)
+    case failed     // couldn't reach the server, or the token couldn't be refreshed
+    case signedOut  // no session at all — needs a sign-in, which "Can't sync" doesn't convey
 }
 
 struct NudgeEntry: TimelineEntry {
@@ -45,6 +46,8 @@ struct NudgeEntry: TimelineEntry {
     static let empty = NudgeEntry(date: .now, overdue: 0, todayDone: 0, todayTotal: 0, items: [], state: .loaded)
     // A failed fetch: data unknown. Shows "Can't sync — open Nudge", never "All clear".
     static let failed = NudgeEntry(date: .now, overdue: 0, todayDone: 0, todayTotal: 0, items: [], state: .failed)
+    // No session stored — the user has to sign in, which "Can't sync" doesn't tell them.
+    static let signedOut = NudgeEntry(date: .now, overdue: 0, todayDone: 0, todayTotal: 0, items: [], state: .signedOut)
 }
 
 struct NudgeProvider: TimelineProvider {
@@ -61,11 +64,16 @@ struct NudgeProvider: TimelineProvider {
     }
 
     static func build() async -> NudgeEntry {
-        // A nil fetch means the widget couldn't reach the user's data (signed out,
-        // expired token, or network) — NOT that there's nothing due. Return .failed
-        // so the view shows "Can't sync — open Nudge" instead of a false "All clear".
-        // Only a successful fetch that genuinely yields zero items shows "All clear".
-        guard let data = await NudgeFeed.fetch() else { return .failed }
+        // A failed fetch means the widget couldn't reach the user's data — NOT that there's
+        // nothing due. Never show "All clear" for it; only a successful fetch that genuinely
+        // yields zero items gets that. Signed-out is reported separately because it needs a
+        // different action from the user (sign in) than a transient failure (wait).
+        let data: WData
+        switch await NudgeFeed.load() {
+        case .ok(let d):     data = d
+        case .signedOut:     return .signedOut
+        case .unavailable:   return .failed
+        }
         let now = Date(); let cal = Calendar.current
         func color(_ id: String?) -> String { data.lists.first { $0.id == (id ?? "reminders") }?.color ?? "5B4FCF" }
         func open(_ r: WReminder) -> Bool { !(r.completed ?? false) && !(r.dismissed ?? false) }
@@ -103,7 +111,7 @@ struct OverdueWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "NudgeOverdue", provider: NudgeProvider()) { e in
             VStack(alignment: .leading, spacing: 2) {
-                if e.state == .failed {
+                if e.state != .loaded {
                     // Failed fetch — don't claim "all clear" with a big 0. Show a neutral
                     // can't-sync state so a stale/expired token never reads as "0 overdue".
                     Image(systemName: "arrow.triangle.2.circlepath")
@@ -112,7 +120,7 @@ struct OverdueWidget: Widget {
                     Text("—")
                         .font(.system(size: 46, weight: .heavy, design: .rounded))
                         .foregroundStyle(.secondary)
-                    Text("can't sync")
+                    Text(e.state == .signedOut ? "sign in" : "can't sync")
                         .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 } else {
                     Image(systemName: e.overdue > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
@@ -144,7 +152,7 @@ struct ProgressWidget: Widget {
             VStack(spacing: 8) {
                 ZStack {
                     Circle().stroke(Color.secondary.opacity(0.18), lineWidth: 9)
-                    if e.state == .failed {
+                    if e.state != .loaded {   // .failed or .signedOut
                         // Failed fetch — show a neutral sync glyph, not a full "done" ring,
                         // so an empty result from a bad token doesn't look like 0/0 complete.
                         Image(systemName: "arrow.triangle.2.circlepath")
@@ -160,7 +168,8 @@ struct ProgressWidget: Widget {
                         }
                     }
                 }
-                Text(e.state == .failed ? "can't sync" : "today")
+                Text(e.state == .signedOut ? "sign in"
+                     : e.state == .failed ? "can't sync" : "today")
                     .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
             .padding(4)
@@ -388,21 +397,30 @@ struct TodayWidgetView: View {
                 // Header ("Today" title + overdue pill) removed — pure Dumb-Phone list, no chrome.
                 // The pill also rendered as a grey blob in Apple's tinted home-screen mode, which
                 // is another reason to drop it. Failed/empty states below are unaffected.
-                if entry.state == .failed {
-                    // Couldn't reach the user's data (signed out / expired token / network).
-                    // Show an honest, actionable state — NEVER a misleading "All clear".
-                    // Tapping opens Nudge, which refreshes the token so the next widget
-                    // timeline can fetch successfully.
+                if entry.state != .loaded {
+                    // Couldn't show real data. Honest, actionable state — NEVER a misleading
+                    // "All clear".
+                    //
+                    // Signed-out and server-unreachable are worded differently on purpose. Both
+                    // used to read "Can't sync", which sent Noah to reopen the app in a case
+                    // where reopening the app couldn't help. Now that the widget refreshes its
+                    // own token (SessionRefresh), "Can't sync" genuinely means the server was
+                    // unreachable and will be retried, while a real sign-out says so plainly.
                     Spacer()
                     // "nudgeapp://open" is handled in NudgeApp.onOpenURL: any host other than
-                    // "add" just brings the app to the front, which refreshes the auth token.
+                    // "add" just brings the app to the front.
                     Link(destination: URL(string: "nudgeapp://open")!) {
                         HStack { Spacer()
                             VStack(spacing: 6) {
-                                Image(systemName: "arrow.triangle.2.circlepath")
+                                Image(systemName: entry.state == .signedOut
+                                      ? "person.crop.circle.badge.exclamationmark"
+                                      : "arrow.triangle.2.circlepath")
                                     .font(.title).foregroundStyle(.secondary)
-                                Text("Can't sync").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                                Text("Open Nudge").font(.caption2).foregroundStyle(.secondary)
+                                Text(entry.state == .signedOut ? "Signed out" : "Can't sync")
+                                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                                Text(entry.state == .signedOut ? "Open Nudge to sign in"
+                                                              : "Will retry automatically")
+                                    .font(.caption2).foregroundStyle(.secondary)
                             }
                             Spacer() }
                     }

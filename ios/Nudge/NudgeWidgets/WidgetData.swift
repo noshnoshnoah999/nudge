@@ -45,29 +45,57 @@ private struct WCloudRow<T: Codable>: Codable {
 
 enum NudgeFeed {
     /// Reads the user's live reminders + lists from the per-item Supabase tables.
-    /// Returns nil whenever it can't authenticate — signed out or an expired token —
-    /// so the widget shows its "Can't sync" state rather than a false "All clear".
-    /// The extension never refreshes tokens; the app does that the next time it opens.
+    /// Returns nil whenever it can't authenticate, so the widget shows its "Can't sync"
+    /// state rather than a false "All clear".
+    ///
+    /// The extension DOES now refresh an expired access token itself (see SessionRefresh) —
+    /// it no longer has to wait for the app to be opened. Use `load()` instead of `fetch()`
+    /// when you need to distinguish signed-out from server-unreachable.
     ///
     /// Note: reminders are the source of truth for the widget. If lists fail to load
     /// we still return the reminders (list colours just fall back to a default), so a
     /// hiccup on the lists table never blanks the whole widget.
     static func fetch() async -> WData? {
-        guard let session = AuthStore.load() else { return nil }
+        await load().data
+    }
+
+    /// The full outcome of a fetch, so the view can tell "you're signed out" apart from
+    /// "couldn't reach the server". Those look identical today ("Can't sync") but need
+    /// different actions from the user — one needs a sign-in, the other just needs waiting.
+    enum Outcome {
+        case ok(WData)
+        case signedOut
+        case unavailable
+
+        var data: WData? { if case .ok(let d) = self { return d }; return nil }
+    }
+
+    static func load() async -> Outcome {
+        // The widget now refreshes an expired token itself instead of waiting for the app to be
+        // opened. Previously this read the Keychain directly, so once the access token lapsed
+        // (~1 hour) the widget stayed stuck on "Can't sync" until Nudge was launched — the exact
+        // opposite of what a widget is for. SessionRefresh never clears the session on failure,
+        // so a failed refresh degrades to "can't sync for now", never to a surprise sign-out.
+        let token: String
+        switch await SessionRefresh.accessToken() {
+        case .token(let t):   token = t
+        case .signedOut:      return .signedOut
+        case .unavailable:    return .unavailable
+        }
 
         // Reminders are required. A nil here means a real auth/network failure → .failed.
         // Same hidden-source rule as NudgeStore: StudyTrack/Finance rows round-trip through
         // sync but are never shown in the app's own UI, so the widget must hide them too.
         guard let reminders = (await rows(table: "reminders", as: WReminder.self,
-                                          token: session.accessToken))?
-            .filter({ $0.source != "studytrack" && $0.source != "finance" }) else { return nil }
+                                          token: token))?
+            .filter({ $0.source != "studytrack" && $0.source != "finance" })
+        else { return .unavailable }
 
         // Lists are best-effort: nil (fetch failed) becomes an empty list rather than
         // failing the whole widget. Colours fall back to the default in the view.
-        let lists = await rows(table: "lists", as: WList.self,
-                               token: session.accessToken) ?? []
+        let lists = await rows(table: "lists", as: WList.self, token: token) ?? []
 
-        return WData(reminders: reminders, lists: lists)
+        return .ok(WData(reminders: reminders, lists: lists))
     }
 
     /// Pull every LIVE row from a per-item table (tombstones filtered out), returning the
