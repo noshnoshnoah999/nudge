@@ -234,7 +234,9 @@ struct TodayWidgetBackground: View {
                 .resizable()
                 .widgetAccentedRenderingMode(.fullColor)
         } else {
-            Rectangle().fill(.background)
+            // "System Default" — draw nothing and let the widget's own container background
+            // show through unchanged, so the default look is completely untouched.
+            Color.clear
         }
         #else
         // No UIKit (so no image generation) — fall back to the flat colour. This path is not
@@ -242,7 +244,7 @@ struct TodayWidgetBackground: View {
         if let color = background.color {
             Rectangle().fill(color)
         } else {
-            Rectangle().fill(.background)
+            Color.clear
         }
         #endif
     }

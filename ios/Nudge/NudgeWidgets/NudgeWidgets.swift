@@ -272,37 +272,50 @@ struct TodayWidget: Widget {
         AppIntentConfiguration(kind: "NudgeToday",
                                intent: TodayWidgetConfigIntent.self,
                                provider: TodayConfigProvider()) { e in
-            TodayWidgetView(entry: e.base, style: e.style)
-                // Background is a VIEW, not a ShapeStyle, because the near-black presets render
-                // as a solid-colour Image tagged .widgetAccentedRenderingMode(.fullColor). A flat
-                // Color does not survive Apple's tinted Home Screen mode — measured on-device it
-                // came out #181818 against a #000000 wallpaper. See TodayWidgetBackground.
-                .containerBackground(for: .widget) {
-                    TodayWidgetBackground(background: e.style.background)
-                }
+            // BACKGROUND IS DRAWN AS CONTENT, NOT AS `containerBackground`.
+            //
+            // Three attempts, all verified on Noah's device, established why:
+            //   1. `containerBackground(Color)`                    → card rendered #181818
+            //   2. + `containerBackgroundRemovable(false)`         → still #181818
+            //   3. + Image with `.widgetAccentedRenderingMode(.fullColor)` → still #181818
+            //
+            // Attempt 3 rules out the "Color can't hold its colour, Image can" theory: an
+            // image in the container background got overridden too. The conclusion is that in
+            // Apple's tinted Home Screen mode (`.accented`) the system overrides the container
+            // background layer regardless of what's inside it.
+            //
+            // Content, however, is drawn ON TOP of the container background and is not
+            // substituted. So the background moves into the content layer as the bottom of a
+            // ZStack. Whatever grey the system puts behind us, an opaque content layer covers it.
+            //
+            // `.contentMarginsDisabled()` (below) is required — without it WidgetKit insets the
+            // content and the system's grey would still show as a border around our background.
+            // That also means the padding WidgetKit used to supply must now be applied by hand.
+            ZStack {
+                TodayWidgetBackground(background: e.style.background)
+                    .ignoresSafeArea()
+
+                TodayWidgetView(entry: e.base, style: e.style)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+            }
+            // Keep the ordinary system background for the "System Default" preset. When a
+            // near-black preset is chosen, TodayWidgetBackground paints over this anyway.
+            .containerBackground(.background, for: .widget)
         }
         .configurationDisplayName("Today & Overdue")
         .description("Your next reminders at a glance.")
         .supportedFamilies([.systemMedium, .systemLarge])
-        // Keep the background LAYER in Apple's "tinted" Home Screen mode.
+        // Required so our content background reaches the widget's edges. See the ZStack note.
+        .contentMarginsDisabled()
         //
-        // In tinted mode the widget renders in `.accented`, and by default the system
-        // discards `containerBackground` entirely. `containerBackgroundRemovable(false)`
-        // is the documented opt-out — it tells the system the background is essential
-        // (Apple added it for widgets like Photos and Maps).
-        //
-        // NOTE — this modifier alone was NOT enough, verified on-device. With it applied
-        // and True Black selected, the card still measured #181818 against a #000000
-        // wallpaper. So the layer WAS being preserved, but the flat `Color` inside it was
-        // still being remapped to the system's material. The colour fix lives in
-        // `TodayWidgetBackground`: render an Image with `.widgetAccentedRenderingMode(.fullColor)`
-        // instead of a Color. Both pieces are needed — this one keeps the layer, that one
-        // keeps the colour.
-        //
-        // Caveat: sits on the WidgetConfiguration, so it CANNOT be conditional on the
-        // user's picked preset. Consequence: with "System Default" selected, tinted mode
-        // keeps the system material instead of stripping the background. Acceptable.
-        .containerBackgroundRemovable(false)
+        // NOTE: `containerBackgroundRemovable(false)` was deliberately REMOVED here.
+        // It was added in 88c1a88 to stop the container background being stripped, but it
+        // never fixed the colour, and it carries a documented side effect (Apple Developer
+        // Forums 768862) where content gets pulled into the tint treatment even when marked
+        // non-accentable — a real risk of black-on-black titles given Noah's near-black tint.
+        // Now that the background is content rather than container background, nothing depends
+        // on that modifier, so the risk isn't worth carrying.
     }
 }
 
