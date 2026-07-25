@@ -281,6 +281,33 @@ struct TodayWidget: Widget {
         .configurationDisplayName("Today & Overdue")
         .description("Your next reminders at a glance.")
         .supportedFamilies([.systemMedium, .systemLarge])
+        // Keep OUR background in Apple's "tinted" Home Screen mode.
+        //
+        // In tinted mode the widget renders in `.accented` mode, and by default the
+        // system DISCARDS `containerBackground` and substitutes its own translucent
+        // grey material. That's why the Soft/True Black choice appeared to do nothing
+        // in tinted mode while working fine in full-colour mode — the colour was being
+        // thrown away before it ever rendered.
+        //
+        // `containerBackgroundRemovable(false)` is the documented opt-out: it tells the
+        // system the background is essential (Apple added it for widgets like Photos
+        // and Maps). With it, our chosen near-black survives into tinted mode, so the
+        // widget can actually disappear into a black wallpaper while app icons stay
+        // monochrome.
+        //
+        // Caveat: this modifier sits on the WidgetConfiguration, so it CANNOT be made
+        // conditional on the user's picked option. Consequence: when "System Default"
+        // is selected, tinted mode now keeps the `.background` material instead of the
+        // system's tinted material. Acceptable — the near-black presets are the point.
+        //
+        // Known Apple quirk (FB / forums thread 768862): with this modifier, content can
+        // get pulled into the tint treatment even when marked non-accentable. Today's
+        // rows are plain `.secondary` text so this is expected to be benign, but it MUST
+        // be checked on-device with a near-black tint colour — if titles take the tint
+        // they could go black-on-black and vanish. Fallback if that happens is in the
+        // handoff doc: draw the background as content inside a ZStack with
+        // `.contentMarginsDisabled()` instead of as a containerBackground.
+        .containerBackgroundRemovable(false)
     }
 }
 
