@@ -249,7 +249,19 @@ private struct QuickAddLockView: View {
 struct TodayConfigEntry: TimelineEntry {
     let base: NudgeEntry
     let style: TodayStyle
-    var date: Date { base.date }
+    /// The reminder currently awaiting a confirming second tap, if any. Drives the struck-through
+    /// "tap again" row. See WidgetPendingCompletionStore.
+    var pendingId: String?
+    /// Explicit rather than derived from `base.date`, because the timeline needs a second entry
+    /// at the arm-expiry moment that shows the same data with `pendingId` cleared.
+    var date: Date
+
+    init(base: NudgeEntry, style: TodayStyle, pendingId: String? = nil, date: Date? = nil) {
+        self.base = base
+        self.style = style
+        self.pendingId = pendingId
+        self.date = date ?? base.date
+    }
 }
 
 /// AppIntent-configured provider: same data as NudgeProvider, plus the config's style.
@@ -258,12 +270,24 @@ struct TodayConfigProvider: AppIntentTimelineProvider {
         TodayConfigEntry(base: .sample, style: .default)
     }
     func snapshot(for configuration: TodayWidgetConfigIntent, in context: Context) async -> TodayConfigEntry {
+        // Snapshots are for the widget gallery — never show a half-finished confirmation there.
         TodayConfigEntry(base: await NudgeProvider.build(), style: TodayStyle(configuration))
     }
     func timeline(for configuration: TodayWidgetConfigIntent, in context: Context) async -> Timeline<TodayConfigEntry> {
-        let entry = TodayConfigEntry(base: await NudgeProvider.build(), style: TodayStyle(configuration))
+        let base = await NudgeProvider.build()
+        let style = TodayStyle(configuration)
         let next = Calendar.current.date(byAdding: .minute, value: 30, to: .now) ?? .now.addingTimeInterval(1800)
-        return Timeline(entries: [entry], policy: .after(next))
+
+        // Tap-to-complete asks for a confirming second tap. If a row is currently armed, render
+        // it armed now AND schedule a second entry at the arm's expiry that renders it normally
+        // again. Without that second entry the row would keep looking armed until the next
+        // 30-minute refresh, long after the tap would actually still confirm anything.
+        let pending = WidgetPendingCompletionStore.current()
+        var entries = [TodayConfigEntry(base: base, style: style, pendingId: pending?.id)]
+        if let expiry = WidgetPendingCompletionStore.expiry(), expiry > .now {
+            entries.append(TodayConfigEntry(base: base, style: style, pendingId: nil, date: expiry))
+        }
+        return Timeline(entries: entries, policy: .after(next))
     }
 }
 
@@ -306,7 +330,7 @@ struct TodayWidget: Widget {
             // content's own frame, and takes no part in layout. The explicit
             // `.frame(maxWidth:maxHeight:alignment:.topLeading)` is what makes the content fill
             // the widget and stay pinned to the top, so the background fills it too.
-            TodayWidgetView(entry: e.base, style: e.style)
+            TodayWidgetView(entry: e.base, style: e.style, pendingId: e.pendingId)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -335,6 +359,9 @@ struct TodayWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: NudgeEntry
     var style: TodayStyle = .default
+    /// The reminder awaiting a confirming second tap, if any — that row renders struck through
+    /// with "tap again" instead of completing on the first tap.
+    var pendingId: String? = nil
     /// How many rows actually fit in `height` points.
     ///
     /// Measured from real geometry rather than guessed. The previous version hardcoded the
@@ -398,9 +425,13 @@ struct TodayWidgetView: View {
                     // Recurring reminders complete here too, but their next occurrence is spawned
                     // when the app next opens (see CompleteReminderWidgetIntent).
                     ForEach(entry.items.prefix(rowLimit(for: geo.size.height))) { it in
+                        // First tap arms, second tap on the SAME row completes — a widget can't
+                        // show a confirmation dialog, so the second tap IS the confirmation.
+                        // See CompleteReminderWidgetIntent.perform().
                         Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
                             WidgetRowTitle(title: it.title.lowercased(),
-                                           size: style.titleSize, design: style.design)
+                                           size: style.titleSize, design: style.design,
+                                           armed: it.id == pendingId)
                         }
                         .buttonStyle(.plain)
                     }
@@ -436,6 +467,24 @@ private struct WidgetRowTitle: View {
     let title: String
     let size: CGFloat
     let design: Font.Design
+    /// Awaiting a confirming second tap. Renders struck through with a "tap again" hint so it's
+    /// obvious nothing has been completed yet.
+    var armed: Bool = false
+
+    /// Title + optional hint as ONE `Text`, concatenated with `+`.
+    ///
+    /// Deliberately a single Text rather than an HStack: the row's height must not change when it
+    /// arms, or `TodayWidgetView.rowLimit(for:)` would disagree with reality and the list could
+    /// overflow the widget again — the exact bug fixed in 16d8f6f. Concatenated Text stays on one
+    /// line and keeps the natural-width + mask trick below working unchanged.
+    private var content: Text {
+        let base = Text(title)
+            .font(.system(size: size, weight: .bold, design: design))
+        guard armed else { return base }
+        return base.strikethrough()
+            + Text("  tap again")
+                .font(.system(size: max(size * 0.55, 10), weight: .semibold, design: design))
+    }
 
     var body: some View {
         // GeometryReader gives the exact row width as a concrete number. The title is
@@ -445,9 +494,10 @@ private struct WidgetRowTitle: View {
         // nothing can appear left of x=0. Using an explicit width (not a Rectangle in an
         // HStack, which can collapse) is what makes this deterministic.
         GeometryReader { geo in
-            Text(title)
-                .font(.system(size: size, weight: .bold, design: design))
-                .foregroundStyle(.secondary)
+            content
+                // Armed rows brighten to `.primary` so the pending state reads clearly even in
+                // Apple's tinted mode, where colour is stripped and only luminance survives.
+                .foregroundStyle(armed ? .primary : .secondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)        // natural width, no "…"
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)

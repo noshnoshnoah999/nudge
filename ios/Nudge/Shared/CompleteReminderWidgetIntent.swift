@@ -47,8 +47,28 @@ struct CompleteReminderWidgetIntent: AppIntent {
     init() {}
     init(reminderId: String) { self.reminderId = reminderId }
 
+    /// TWO-TAP CONFIRMATION — first tap arms the row, second tap completes it.
+    ///
+    /// A widget cannot show a confirmation dialog: `requestConfirmation()` is ignored when an
+    /// AppIntent is run from a widget `Button(intent:)` (Apple Developer Forums 732037, 732904).
+    /// So the confirmation is the second tap. See WidgetPendingCompletionStore for the state and
+    /// the expiry behaviour.
+    ///
+    /// Deliberately fails safe: anything unexpected (expired arm, a different row armed, no
+    /// stored state) falls through to ARMING rather than completing. A stray tap can therefore
+    /// never complete a reminder on its own.
     func perform() async throws -> some IntentResult {
-        await WidgetCompletion.complete(id: reminderId)
+        if let pending = WidgetPendingCompletionStore.current(), pending.id == reminderId {
+            // Confirmed — this exact row was armed and the window hasn't lapsed.
+            WidgetPendingCompletionStore.clear()
+            await WidgetCompletion.complete(id: reminderId)
+        } else {
+            // First tap on this row (or the armed row was a different one / had expired).
+            // Arm it and re-render so the row visibly asks for a second tap. Nothing is written
+            // to Supabase in this branch.
+            WidgetPendingCompletionStore.arm(id: reminderId)
+            WidgetReload.today()
+        }
         return .result()
     }
 }
