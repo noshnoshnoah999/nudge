@@ -163,28 +163,37 @@ struct AddReminderView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    // Title — plain (single-line) TextField: a vertical-axis TextField
-                    // inside a ScrollView won't become first responder on iOS (no keyboard
-                    // on tap), though it works on Mac Catalyst. This focuses reliably.
+                    // Title — vertical-axis TextField: inside a ScrollView it won't reliably
+                    // become first responder on iOS (no keyboard on tap) from .focused()
+                    // alone, though it works on Mac Catalyst. The background layer below
+                    // supplies the missing focus.
                     TextField("What do you need to remember?", text: $title, axis: .vertical)
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                         .foregroundStyle(Theme.textMain)
                         .lineLimit(1...8)        // grows down as the title gets longer
                         .focused($titleFocused)
                         .padding(16)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
-                        // Tap-to-focus assist: a vertical-axis TextField inside a ScrollView
-                        // won't reliably become first responder from .focused() alone on iOS.
-                        // The `including:` mask is the crux of the fix: while the field is already
-                        // focused we drop this recognizer out of gesture arbitration (.subviews),
-                        // so it stops competing with the TextField's own double-tap-to-select
-                        // recognizer (which was broken on wrapped 2+ line titles). When not focused
-                        // it's active (.all) so the first tap still opens the keyboard.
-                        .simultaneousGesture(
-                            TapGesture().onEnded { titleFocused = true },
-                            including: titleFocused ? .subviews : .all
+                        // Tap-to-focus assist, deliberately placed BEHIND the field rather than
+                        // on top of it. Previously this was a `.simultaneousGesture` on the field
+                        // itself, which put it in the same hit region as UIKit's built-in
+                        // double-tap-to-select recognizer. The two raced: the `including:` mask
+                        // that was supposed to drop this recognizer out of arbitration once the
+                        // field was focused only re-evaluates on a SwiftUI render pass, not
+                        // synchronously with the touch, so whether it had taken effect by the time
+                        // the second tap landed came down to keyboard-animation and main-thread
+                        // timing. That made double-tap-to-select fail intermittently and
+                        // uncorrelated with title length (confirmed on-device 2026-07-28).
+                        // As a background layer this only sees touches the text view declined, so
+                        // it can no longer compete with the field's own gesture recognizers.
+                        // NOTE: .padding must stay above .background so the surface fill still
+                        // covers the padded area.
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Theme.surface)
+                                .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                .onTapGesture { titleFocused = true }
                         )
+                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     // Second door into scanning (the FAB long-press is the first). Only when
                     // creating a new reminder — irrelevant when editing an existing one.
@@ -370,7 +379,15 @@ struct AddReminderView: View {
                         TextField("Add notes…", text: $notes, axis: .vertical)
                             .lineLimit(2...6).foregroundStyle(Theme.textMain).padding(.vertical, 10)
                             .focused($notesFocused)
-                            .simultaneousGesture(TapGesture().onEnded { notesFocused = true })
+                            // Same fix as the title field above: tap-to-focus lives behind the
+                            // field, not on it, so it can't race UIKit's double-tap-to-select
+                            // recognizer. Color.clear inside .background (not a ZStack) — a ZStack
+                            // would expand to fill available space and blow up the row height.
+                            .background(
+                                Color.clear
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { notesFocused = true }
+                            )
                     }
 
                     if let e = editing {

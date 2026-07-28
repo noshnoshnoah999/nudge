@@ -1,3 +1,27 @@
+> ## ⚠ CORRECTION — 2026-07-28: the diagnosis below is WRONG. Do not build on it.
+>
+> This document repeatedly claims the failure correlates with **line count** (short titles work,
+> wrapped 2+ line titles fail) and with **new vs. existing** reminders. On 2026-07-28 the user
+> retested and reported the failure is **intermittent and uncorrelated** — short titles sometimes
+> work and sometimes don't, and the same is true for long multi-line titles.
+>
+> That means every "result when user retested" conclusion recorded below was a coin flip misread as
+> a deterministic rule, and each iteration was then built on a false premise. That is why three
+> attempts failed.
+>
+> **Actual cause:** a gesture-recognizer race. The app's `simultaneousGesture(TapGesture())` and
+> UIKit's built-in double-tap-to-select recognizer share the same hit region on the title field. The
+> `including:` mask added in iteration 3 only re-evaluates on a SwiftUI render pass, not
+> synchronously with the touch, so arbitration is decided by timing (keyboard animation, scroll
+> settling, main-thread load) and the outcome is non-deterministic.
+>
+> **Current plan:** move the tap-to-focus recognizer behind the field via `.background(...)` so it
+> only receives touches the text view declined. See
+> `CLAUDE_CODE_PROMPT_2026-07-28_title-doubletap-race.md`.
+>
+> Everything below is retained as a record of what has been tried, so it isn't repeated. Read it for
+> the list of dead ends, not for the reasoning.
+
 # Handoff: Title field keyboard focus / double-tap-select bug (AddReminderView.swift)
 
 **Status:** UNRESOLVED after two Cowork iterations. Second iteration introduced a regression.

@@ -16,6 +16,12 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.30", title: "Double-tap to select a word again", date: "28 Jul 2026",
+            added: [],
+            changed: [
+                "Double-tapping a word in a reminder's title or notes now selects that word properly. It used to work only some of the time — two invisible tap handlers were competing for the same taps, and which one won came down to timing, so the same reminder could behave differently one moment to the next"
+            ]),
+        ChangelogEntry(
             version: "2.29", title: "Grouped reminders stand out", date: "4 Jul 2026",
             added: [],
             changed: [
