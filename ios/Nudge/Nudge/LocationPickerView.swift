@@ -71,7 +71,7 @@ struct LocationPickerView: View {
                 if let coord = pickedCoord {
                     Map(position: $camera) {
                         Marker(pickedName ?? "Location", coordinate: coord)
-                            .tint(Theme.violet)
+                            .tint(Theme.controlTint ?? Theme.accent)
                     }
                     .frame(height: 240)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
@@ -134,7 +134,7 @@ struct LocationPickerView: View {
                 }
             }
         }
-        .tint(Theme.violet)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 

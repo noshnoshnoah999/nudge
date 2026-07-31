@@ -153,7 +153,7 @@ struct ContentView: View {
         .sheet(isPresented: $showRoutineCheckin) {
             RoutineCheckInView(lapsed: routineLapsed, stepUps: routineStepUps).environmentObject(store)
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .task {
             guard !didLoad else { return }
             didLoad = true
@@ -343,19 +343,30 @@ struct ContentView: View {
                     // Only shown once Notion is actually set up (Settings), so the header
                     // doesn't grow a dead button for people who never configure it.
                     if NotionKeyStore.isConfigured {
+                        // Hand-rolled rather than `iconButton` because of the in-flight spinner,
+                        // which is why it kept its box when the others lost theirs — it was the
+                        // one header button the minimal branch never reached.
                         Button { pushToNotion() } label: {
                             Group {
                                 if notionPushing {
-                                    ProgressView().tint(Theme.textMain)
+                                    ProgressView().tint(Theme.minimal ? Theme.accent : Theme.textMain)
                                 } else {
                                     Image(systemName: "n.square")
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundStyle(Theme.textMain)
+                                        .font(.system(size: Theme.minimal ? 19 : 17,
+                                                      weight: Theme.minimal ? .regular : .semibold))
+                                        .foregroundStyle(Theme.minimal ? Theme.accent : Theme.textMain)
                                 }
                             }
-                            .frame(width: 40, height: 40)
-                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                            .frame(width: Theme.minimal ? 34 : 40, height: Theme.minimal ? 34 : 40)
+                            .background {
+                                if !Theme.minimal {
+                                    RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
+                                        .fill(Theme.surface)
+                                        .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
+                                            .stroke(Theme.cardStroke, lineWidth: 1))
+                                }
+                            }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(PressableStyle())
                         .disabled(notionPushing)
@@ -496,7 +507,7 @@ struct ContentView: View {
                         RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
                             .fill(Theme.surface)
                             .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
-                                .stroke(Theme.hairline, lineWidth: 1))
+                                .stroke(Theme.cardStroke, lineWidth: 1))
                     }
                 }
                 .contentShape(Rectangle())
@@ -717,7 +728,7 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
         }
         .buttonStyle(PressableStyle(scale: 0.97))
     }
@@ -815,7 +826,7 @@ struct ContentView: View {
             }
             Spacer()
             ZStack {
-                Circle().stroke(Theme.hairline, lineWidth: 7)
+                Circle().stroke(Theme.cardStroke, lineWidth: 7)
                 Circle().trim(from: 0, to: max(0.001, frac))
                     .stroke(Theme.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(-90))
@@ -917,7 +928,7 @@ struct ContentView: View {
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
     }
 
     private func listCard(_ l: ReminderList) -> some View {
@@ -934,7 +945,7 @@ struct ContentView: View {
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
     }
 
     // MARK: - Search tab
@@ -1099,7 +1110,7 @@ struct ContentView: View {
         ZStack {
             Color.black.opacity(0.25).ignoresSafeArea()
             VStack(spacing: 12) {
-                ProgressView().controlSize(.large).tint(Theme.accent)
+                ProgressView().controlSize(.large).tint(Theme.controlTint)
                 Text("Preparing Claude…").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMain)
             }
             .padding(24).background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
@@ -1395,7 +1406,7 @@ struct SmartCollectionView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(item: $editingReminder) { r in AddReminderView(editing: r).environmentObject(store) }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 }
@@ -1456,7 +1467,7 @@ struct FilteredListView: View {
                 Button("Cancel", role: .cancel) {}
             } message: { Text("Drag reminders into it once it's created.") }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 
@@ -1488,7 +1499,7 @@ struct FilteredListView: View {
                     Text("Drag reminders here").font(.caption).foregroundStyle(Theme.textMeta)
                         .frame(maxWidth: .infinity).padding(.vertical, 18)
                         .background(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
-                            .strokeBorder(Theme.hairline, style: StrokeStyle(lineWidth: 1.5, dash: [6])))
+                            .strokeBorder(Theme.cardStroke, style: StrokeStyle(lineWidth: 1.5, dash: [6])))
                 } else {
                     ForEach(list_) { r in
                         ReminderCardView(reminder: r) { editingReminder = r }

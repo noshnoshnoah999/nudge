@@ -118,7 +118,7 @@ struct TimetableView: View {
                 Task { await CalendarService.shared.requestAccessIfNeeded() }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 

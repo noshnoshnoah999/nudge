@@ -52,7 +52,7 @@ struct DedupPreviewView: View {
                 }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
     }
 
     /// e.g. "completed · from Apple" / "open · added in Nudge" so the user can tell the copies apart.

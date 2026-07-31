@@ -210,6 +210,15 @@ final class AppSettings: ObservableObject {
     /// minimal too, so this and the UI agree.
     var effectiveBoldText: Bool { boldText && !minimalDesign }
 
+    /// The app-wide `.tint(...)`, which drives every SwiftUI control — Toggle tracks, Picker
+    /// carets, Stepper glyphs, DatePicker values.
+    ///
+    /// **nil in minimal**, i.e. no override, so controls fall back to iOS defaults: a green
+    /// switch and a blue caret, exactly like Reminders. Setting the tint to `Theme.accent`
+    /// here was what made the Minimal design toggle "look strange" — the accent was
+    /// `Color(.label)`, so an ON switch in dark mode was a white track under a white knob.
+    var controlTint: Color? { minimalDesign ? nil : Theme.accent }
+
     var accent: Color { Theme.accent }
     var accentSoft: Color { Theme.accentSoft }
     var accentGrad: LinearGradient { Theme.violetGrad }

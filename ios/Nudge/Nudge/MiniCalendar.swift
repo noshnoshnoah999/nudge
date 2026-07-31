@@ -41,7 +41,7 @@ struct MiniCalendar: View {
                 Button { step(-1) } label: { Image(systemName: "chevron.left").font(.headline.weight(.bold)) }
                 Button { step(1) } label: { Image(systemName: "chevron.right").font(.headline.weight(.bold)) }
             }
-            .tint(Theme.accent)
+            .tint(Theme.controlTint)
             HStack(spacing: 0) {
                 ForEach(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"], id: \.self) { d in
                     Text(d).font(.caption2.weight(.bold)).foregroundStyle(Theme.textMeta)

@@ -153,7 +153,7 @@ struct ScanReminderView: View {
     private var workingPhase: some View {
         VStack(spacing: 16) {
             Spacer()
-            ProgressView().controlSize(.large).tint(Theme.accent)
+            ProgressView().controlSize(.large).tint(Theme.controlTint)
             Text(statusText).font(.subheadline).foregroundStyle(Theme.textMeta)
             Spacer()
         }

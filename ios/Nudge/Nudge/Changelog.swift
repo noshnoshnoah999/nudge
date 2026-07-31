@@ -406,7 +406,7 @@ struct ChangelogView: View {
                     .padding(16)
                     .background(Theme.surface)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
                     .cardElevation(10, y: 4, opacity: 0.06)
                 }
             }

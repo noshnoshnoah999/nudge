@@ -469,7 +469,7 @@ struct SyncSettingsView: View {
                 Button("OK") { dedupResult = nil }
             } message: { Text(dedupResult ?? "") }
         }
-        .tint(Theme.violet)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 

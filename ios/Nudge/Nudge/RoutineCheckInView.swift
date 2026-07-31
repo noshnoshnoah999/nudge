@@ -84,7 +84,7 @@ struct RoutineCheckInView: View {
                     pill("Tomorrow") { reschedule(r, store.dayFromNow(1)) }
                 }
                 DatePicker("Another day", selection: $pickDate, in: store.dayFromNow(0)..., displayedComponents: .date)
-                    .tint(Theme.accent).font(.subheadline)
+                    .tint(Theme.controlTint).font(.subheadline)
                 Button { reschedule(r, pickDate) } label: {
                     Text("Move to this day").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
                 }
@@ -106,7 +106,7 @@ struct RoutineCheckInView: View {
         }
         .padding(16)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
     }
 
     private func stepUpCard(_ r: Reminder) -> some View {
@@ -131,7 +131,7 @@ struct RoutineCheckInView: View {
         }
         .padding(16)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
     }
 
     private func pill(_ label: String, _ action: @escaping () -> Void) -> some View {

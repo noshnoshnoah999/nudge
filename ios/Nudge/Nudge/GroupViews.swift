@@ -60,7 +60,7 @@ struct GroupReviewView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
     }
 }
 

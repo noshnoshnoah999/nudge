@@ -25,7 +25,7 @@ struct CleanUpView: View {
             List(selection: $selection) {
                 Section {
                     Toggle("Include completed", isOn: $includeCompleted.animation())
-                        .tint(Theme.accent)
+                        .tint(Theme.controlTint)
                 }
                 Section {
                     ForEach(rows) { r in row(r).tag(r.id) }
@@ -57,7 +57,7 @@ struct CleanUpView: View {
                 }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
     }
 
     private func row(_ r: Reminder) -> some View {

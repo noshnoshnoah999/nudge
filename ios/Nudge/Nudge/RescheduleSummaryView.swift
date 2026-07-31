@@ -72,6 +72,6 @@ struct RescheduleSummaryView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
     }
 }

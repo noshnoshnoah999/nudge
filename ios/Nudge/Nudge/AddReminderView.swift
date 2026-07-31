@@ -138,14 +138,14 @@ struct AddReminderView: View {
                 Text("Weekly").tag("weekly")
                 Text("Monthly").tag("monthly")
                 Text("Yearly").tag("yearly")
-            }.labelsHidden().tint(Theme.accent)
+            }.labelsHidden().tint(Theme.controlTint)
         }
         if repeatFreq != "none" {
             divider
             Stepper(value: $repeatInterval, in: stepRange) {
                 rowLabel("Every \(repeatInterval) \(unitLabel)", "number")
             }
-            .tint(Theme.accent).padding(.vertical, 6)
+            .tint(Theme.controlTint).padding(.vertical, 6)
             divider
             toggleRow("End repeat", systemImage: "calendar.badge.exclamationmark",
                       isOn: $hasUntil.animation(Theme.spring))
@@ -154,7 +154,7 @@ struct AddReminderView: View {
                 DatePicker(selection: $until, displayedComponents: [.date]) {
                     rowLabel("Ends", "flag.checkered")
                 }
-                .tint(Theme.accent).padding(.vertical, 6)
+                .tint(Theme.controlTint).padding(.vertical, 6)
             }
         }
     }
@@ -171,23 +171,13 @@ struct AddReminderView: View {
                         .foregroundStyle(Theme.textMain)
                         .lineLimit(1...8)        // grows down as the title gets longer
                         .focused($titleFocused)
-                        // Minimal: the title field is just text on the page with a rule under
-                        // it, not a boxed input — same reasoning as `section(_:_:)` below.
-                        .padding(Theme.minimal ? 0 : 16)
-                        .padding(.vertical, Theme.minimal ? 10 : 0)
-                        .background {
-                            if Theme.minimal {
-                                Rectangle().fill(Color.clear)
-                                    .overlay(alignment: .bottom) {
-                                        Rectangle().fill(Theme.hairline).frame(height: 0.5)
-                                    }
-                            } else {
-                                RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous)
-                                    .fill(Theme.surface)
-                                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous)
-                                        .stroke(Theme.hairline, lineWidth: 1))
-                            }
-                        }
+                        // Same card in both modes — Reminders' edit sheet puts the title in a
+                        // filled rounded card too. Minimal just supplies a system fill and a
+                        // transparent stroke; see `section(_:_:)`.
+                        .padding(16)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous)
+                            .stroke(Theme.cardStroke, lineWidth: 1))
                         // Tap-to-focus assist: a vertical-axis TextField inside a ScrollView
                         // won't reliably become first responder from .focused() alone on iOS.
                         // The `including:` mask is the crux of the fix: while the field is already
@@ -256,7 +246,7 @@ struct AddReminderView: View {
                                 timePresetRow
                                 DatePicker("", selection: $due, displayedComponents: [.hourAndMinute])
                                     .datePickerStyle(.wheel)
-                                    .tint(Theme.accent).labelsHidden()
+                                    .tint(Theme.controlTint).labelsHidden()
                                     .frame(maxWidth: .infinity)
                                 divider
                                 daySchedule(highlightConflict: true)
@@ -277,7 +267,7 @@ struct AddReminderView: View {
                                 menuRow("Time zone", "globe") {
                                     Picker("Time zone", selection: $tz) {
                                         ForEach(zones, id: \.1) { Text($0.0).tag($0.1) }
-                                    }.labelsHidden().tint(Theme.accent)
+                                    }.labelsHidden().tint(Theme.controlTint)
                                 }
                             }
                         }
@@ -288,17 +278,17 @@ struct AddReminderView: View {
                         menuRow("List", "tray") {
                             Picker("List", selection: $listId) {
                                 ForEach(store.lists) { l in Text(l.name).tag(l.id) }
-                            }.labelsHidden().tint(Theme.accent)
+                            }.labelsHidden().tint(Theme.controlTint)
                         }
                         divider
                         menuRow("Priority", "flag") {
                             Picker("Priority", selection: $priority) {
                                 Text("Low").tag("low"); Text("Normal").tag("normal"); Text("High").tag("high")
-                            }.labelsHidden().tint(Theme.accent)
+                            }.labelsHidden().tint(Theme.controlTint)
                         }
                         divider
                         menuRow("Pin to Home", "pin") {
-                            Toggle("", isOn: $pinned).labelsHidden().tint(Theme.accent)
+                            Toggle("", isOn: $pinned).labelsHidden().tint(Theme.controlTint)
                         }
                         #if !targetEnvironment(macCatalyst)
                         divider
@@ -309,7 +299,7 @@ struct AddReminderView: View {
                         if NotionKeyStore.isConfigured {
                             divider
                             menuRow("Push to Notion", "n.square") {
-                                Toggle("", isOn: $pushToNotion).labelsHidden().tint(Theme.accent)
+                                Toggle("", isOn: $pushToNotion).labelsHidden().tint(Theme.controlTint)
                             }
                         }
                     }
@@ -490,35 +480,31 @@ struct AddReminderView: View {
                 ScanReminderView(onSaved: { didSaveScan = true }).environmentObject(store)
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 
     // MARK: - Themed building blocks
 
-    /// A titled group of rows.
+    /// A titled group of rows — a filled, rounded card in BOTH modes.
     ///
-    /// Tinted: a filled, bordered, rounded box. Minimal: no box at all — a grey caps label with
-    /// the rows underneath, separated by the hairlines the rows already draw. Squaring the box
-    /// off (which is all `Theme.radius` did) left a hard rectangle outline around every group,
-    /// which read as MORE decoration than the rounded version, not less.
+    /// The previous build stripped the card away in minimal and ran the rows full-bleed between
+    /// two hairlines. That was a misreading of the reference: Reminders' LIST is flat and
+    /// full-bleed, but its **edit sheet uses inset grouped cards** — exactly this shape. So
+    /// minimal keeps the card and changes only what it's made of: a `secondarySystemBackground`
+    /// fill, 10pt corners, and `Theme.cardStroke` (transparent in minimal) instead of a border.
+    /// Apple separates a card from the page with fill, never with an outline.
     @ViewBuilder private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: Theme.minimal ? 8 : 6) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title.uppercased())
-                .font(.caption.weight(Theme.minimal ? .semibold : .bold))
-                .tracking(Theme.minimal ? 1 : 0.8)
+                .font(.caption.weight(.bold))
+                .tracking(0.8)
                 .foregroundStyle(Theme.minimal ? Theme.textMeta : Theme.accent)
-                .padding(.leading, Theme.minimal ? 0 : 6)
-            if Theme.minimal {
-                VStack(spacing: 0) { content() }
-                    .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
-                    .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
-            } else {
-                VStack(spacing: 0) { content() }
-                    .padding(.horizontal, 16)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
-            }
+                .padding(.leading, Theme.minimal ? 4 : 6)
+            VStack(spacing: 0) { content() }
+                .padding(.horizontal, 16)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
         }
     }
 
@@ -612,7 +598,7 @@ struct AddReminderView: View {
 
     private func toggleRow(_ title: String, systemImage: String, isOn: Binding<Bool>) -> some View {
         Toggle(isOn: isOn) { rowLabel(title, systemImage) }
-            .tint(Theme.accent).padding(.vertical, 10)
+            .tint(Theme.controlTint).padding(.vertical, 10)
     }
 
     @ViewBuilder private func menuRow<C: View>(_ title: String, _ icon: String, @ViewBuilder _ control: () -> C) -> some View {
@@ -711,7 +697,7 @@ struct AddReminderView: View {
                         Stepper(value: $step.everyDays, in: 1...30) {
                             Text("Every \(step.everyDays) night\(step.everyDays == 1 ? "" : "s")")
                                 .font(.subheadline).foregroundStyle(Theme.textMain)
-                        }.tint(Theme.accent)
+                        }.tint(Theme.controlTint)
                         if isLast {
                             Text("…then stays at this frequency").font(.caption2).foregroundStyle(Theme.textMeta)
                         } else {
@@ -720,7 +706,7 @@ struct AddReminderView: View {
                                 DatePicker("", selection: Binding(
                                     get: { parseDate(step.until) ?? (Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()) },
                                     set: { step.until = iso(Calendar.current.startOfDay(for: $0)) }
-                                ), displayedComponents: .date).labelsHidden().tint(Theme.accent)
+                                ), displayedComponents: .date).labelsHidden().tint(Theme.controlTint)
                             }
                         }
                     }
@@ -744,7 +730,7 @@ struct AddReminderView: View {
                     Text("Don't know when to change it? Nudge checks in (~every 2 weeks) to step it up or down based on how your skin's reacting.")
                         .font(.caption2).foregroundStyle(Theme.textMeta)
                 }
-            }.tint(Theme.accent)
+            }.tint(Theme.controlTint)
         }
         .padding(.vertical, 8)
     }
@@ -789,11 +775,11 @@ struct AddReminderView: View {
                 HStack(spacing: 8) {
                     Stepper(value: $customEarlyVal, in: 1...99) {
                         Text("\(customEarlyVal)").foregroundStyle(Theme.textMain)
-                    }.tint(Theme.accent).fixedSize()
+                    }.tint(Theme.controlTint).fixedSize()
                     Picker("", selection: $customEarlyUnit) {
                         Text("min").tag(1); Text("hours").tag(60); Text("days").tag(1440)
                         Text("weeks").tag(10080); Text("months").tag(43200)
-                    }.pickerStyle(.menu).tint(Theme.accent)
+                    }.pickerStyle(.menu).tint(Theme.controlTint)
                     Spacer()
                     Button("Add") {
                         addEarly(customEarlyVal * customEarlyUnit)
@@ -825,7 +811,7 @@ struct AddReminderView: View {
             }
             .buttonStyle(.plain)
             .disabled(onTap == nil)
-            Toggle("", isOn: isOn).labelsHidden().tint(Theme.accent)
+            Toggle("", isOn: isOn).labelsHidden().tint(Theme.controlTint)
         }
         .padding(.vertical, 8)
     }
@@ -849,7 +835,7 @@ struct AddReminderView: View {
                 Image(systemName: "location.circle").foregroundStyle(Theme.accent).frame(width: 22)
                 Text("Notify at this place").foregroundStyle(Theme.textMain)
                 Spacer()
-                Toggle("", isOn: $geofenceEnabled).labelsHidden().tint(Theme.accent)
+                Toggle("", isOn: $geofenceEnabled).labelsHidden().tint(Theme.controlTint)
             }
 
             if geofenceEnabled {

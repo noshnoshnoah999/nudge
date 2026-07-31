@@ -37,7 +37,7 @@ struct BulkMoveView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("MOVE ALL TO").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.accent)
                         DatePicker("", selection: $sharedDate, displayedComponents: [.date])
-                            .datePickerStyle(.graphical).tint(Theme.accent).labelsHidden()
+                            .datePickerStyle(.graphical).tint(Theme.controlTint).labelsHidden()
                             .onChange(of: sharedDate) { _, newDate in
                                 applySharedDateToAll(newDate)
                             }
@@ -45,7 +45,7 @@ struct BulkMoveView: View {
                         Toggle(isOn: $useOneTimeForAll.animation(Theme.spring)) {
                             Text("Set one time for all").font(.subheadline.weight(.medium)).foregroundStyle(Theme.textMain)
                         }
-                        .tint(Theme.accent)
+                        .tint(Theme.controlTint)
 
                         if useOneTimeForAll {
                             DatePicker("", selection: $sharedTime, displayedComponents: [.hourAndMinute])
@@ -59,7 +59,7 @@ struct BulkMoveView: View {
                     }
                     .padding(16)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
 
                     // Per-reminder overrides — each defaults to the shared date above, but can
                     // be pulled to a different day without affecting the others.
@@ -97,7 +97,7 @@ struct BulkMoveView: View {
                 Text("One or more of the new times overlaps an existing calendar event.")
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 
@@ -119,7 +119,7 @@ struct BulkMoveView: View {
             }
             DatePicker("", selection: binding, displayedComponents: [.date])
                 .datePickerStyle(.compact).labelsHidden()
-                .tint(Theme.accent)
+                .tint(Theme.controlTint)
         }
         .padding(12)
         .background(Theme.surfaceAlt.opacity(0.5), in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))

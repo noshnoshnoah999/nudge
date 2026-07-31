@@ -44,7 +44,7 @@ struct QuickCatchView: View {
                 }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .presentationDetents((phase == .chooser || phase == .input) ? [.height(300)] : [.medium])
         .presentationDragIndicator(.visible)
     }
@@ -138,7 +138,7 @@ struct QuickCatchView: View {
     private var thinkingScreen: some View {
         VStack(spacing: 18) {
             Spacer()
-            ProgressView().controlSize(.large).tint(Theme.accent)
+            ProgressView().controlSize(.large).tint(Theme.controlTint)
             Text("Finding a good time…")
                 .font(.headline).foregroundStyle(Theme.textMain)
             Text("\u{201C}\(thought.trimmingCharacters(in: .whitespacesAndNewlines))\u{201D}")
@@ -170,7 +170,7 @@ struct QuickCatchView: View {
 
                 VStack(spacing: 0) {
                     Toggle("Specific time", isOn: $hasTime)
-                        .padding(.horizontal, 14).padding(.vertical, 10).tint(Theme.accent)
+                        .padding(.horizontal, 14).padding(.vertical, 10).tint(Theme.controlTint)
                     Divider().background(Theme.hairline)
                     DatePicker("When", selection: $when,
                                displayedComponents: hasTime ? [.date, .hourAndMinute] : [.date])

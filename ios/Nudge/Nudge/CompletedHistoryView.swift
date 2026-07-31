@@ -63,7 +63,7 @@ struct CompletedHistoryView: View {
                         prompt: "Search completed")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 
@@ -90,7 +90,7 @@ struct CompletedHistoryView: View {
         }
         .padding(13)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
         .transition(.opacity)
     }
 

@@ -55,13 +55,13 @@ struct RescheduleOptionsView: View {
                     }
                     .padding(16)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
 
                     // Manual pick
                     VStack(alignment: .leading, spacing: 12) {
                         Text("OR PICK A TIME").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.textMeta)
                         DatePicker("", selection: $manualDate, displayedComponents: [.date, .hourAndMinute])
-                            .datePickerStyle(.graphical).tint(Theme.accent).labelsHidden()
+                            .datePickerStyle(.graphical).tint(Theme.controlTint).labelsHidden()
                         if let clash = CalendarService.shared.conflictDescription(at: manualDate) {
                             Label("Clashes with \(clash)", systemImage: "calendar.badge.exclamationmark")
                                 .font(.caption).foregroundStyle(Theme.coral)
@@ -77,7 +77,7 @@ struct RescheduleOptionsView: View {
                     }
                     .padding(16)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
                 }
                 .padding(18)
             }
@@ -94,7 +94,7 @@ struct RescheduleOptionsView: View {
                 Text("Your calendar has \(conflictMsg ?? "an event") at that time.")
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
 

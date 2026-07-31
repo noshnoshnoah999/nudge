@@ -79,19 +79,48 @@ enum Theme {
     static var minimal: Bool { minimalDesign }
 
     static var bg: Color         { minimal ? Color(.systemBackground)          : Color(hex: palette.bg) }
-    /// In minimal there are no cards, so a "surface" is just the page — rows are separated by
-    /// hairlines, not by a fill. Anything that genuinely needs to sit proud uses `surfaceAlt`.
-    static var surface: Color    { minimal ? Color(.systemBackground)          : Color(hex: palette.card) }
-    static var surfaceAlt: Color { minimal ? Color(.secondarySystemBackground) : Color(hex: palette.cardStrong) }
+    /// A card fill. In minimal this is `secondarySystemBackground` — a visible dark grey on a
+    /// black page, exactly like a grouped cell in Settings or the Reminders edit sheet.
+    ///
+    /// It was `systemBackground` (i.e. the same as the page) in the previous build, on the
+    /// theory that minimal has no cards at all. That's true of the reminder LIST, which draws
+    /// no fill — but it made every other card (the Home stat tiles, the Lists grid, Settings
+    /// rows) invisible, leaving only their borders showing. That's why the app was covered in
+    /// hollow outlined rectangles. Cards get a fill and lose their border, not the reverse.
+    static var surface: Color    { minimal ? Color(.secondarySystemBackground) : Color(hex: palette.card) }
+    static var surfaceAlt: Color { minimal ? Color(.tertiarySystemBackground)  : Color(hex: palette.cardStrong) }
     static var hairline: Color   { minimal ? Color(.separator)                 : Color(hex: palette.hairline) }
     static var textMain: Color   { minimal ? Color(.label)                     : Color(hex: palette.text) }
     static var textMeta: Color   { minimal ? Color(.secondaryLabel)            : Color(hex: palette.textSoft) }
 
-    /// Minimal's accent is monochrome — `label`, i.e. black on white and white on black. The
-    /// design has no brand colour: the only colour left anywhere is red for overdue. If you
-    /// ever want the indigo the original preview used, this single line is the place.
-    static var accent: Color     { minimal ? Color(.label) : Color(hex: palette.accent) }
-    static var accentSoft: Color { accent.opacity(minimal ? 0.08 : 0.14) }
+    /// Outline colour for a card-shaped container.
+    ///
+    /// **Transparent in minimal.** Apple's grouped UI separates a card from the page with a
+    /// FILL, never a stroke — there is not a single 1pt outlined box in Reminders or Settings.
+    /// Every "there are still outlines" report traced back to a
+    /// `.stroke(Theme.hairline)` on a rounded rect, so they all read this instead.
+    ///
+    /// `Theme.hairline` is still the right colour for a DIVIDER between rows; this is only for
+    /// borders around a shape.
+    static var cardStroke: Color { minimal ? .clear : hairline }
+
+    /// Minimal's accent is **system blue** — Apple's own control colour, and what Reminders
+    /// uses for its title, its values ("Today", "7:50"), its ＋ button and its confirm button.
+    ///
+    /// This was `Color(.label)` (pure monochrome) in the first minimal build. That broke real
+    /// controls: SwiftUI tints `Toggle` with the app accent, so in dark mode an ON switch was a
+    /// white track under a white knob — the "strange looking" Minimal design toggle. Monochrome
+    /// also isn't actually what Reminders does; it's a minimal app WITH one accent colour.
+    static var accent: Color     { minimal ? Color(.systemBlue) : Color(hex: palette.accent) }
+    static var accentSoft: Color { accent.opacity(minimal ? 0.16 : 0.14) }
+
+    /// Tint for SwiftUI controls (Toggle, Picker, Stepper, ProgressView, DatePicker).
+    ///
+    /// **nil in minimal** = no override, so iOS supplies its own: a GREEN switch and a BLUE
+    /// caret, which is what Reminders shows. Forcing `accent` onto a Toggle is what produced
+    /// the white-track/white-knob switches Noah reported. Mirrors `AppSettings.controlTint`,
+    /// for views that don't hold an AppSettings.
+    static var controlTint: Color? { minimal ? nil : accent }
     static var violet: Color     { accent }          // alias used across views
     static var violetSoft: Color { accentSoft }
 
@@ -142,8 +171,14 @@ enum Theme {
     // Card geometry is read from here rather than hardcoded per view, so minimal can flatten
     // the whole app from one place instead of editing ~90 views.
 
-    /// Corner radius for cards. 0 in minimal → straight edges, no rounded boxes anywhere.
-    static func radius(_ normal: CGFloat) -> CGFloat { minimal ? 0 : normal }
+    /// Corner radius for cards.
+    ///
+    /// Minimal clamps to 10 rather than flattening to 0. Zero was wrong: Apple's grouped cards
+    /// (Reminders' edit sheet, Settings, the Health tiles) are all softly rounded — squaring
+    /// them off made every container read as a hard-edged box, which is *louder* than the
+    /// rounded original, not quieter. The minimal reminder ROWS are still perfectly square,
+    /// because they pass 0 explicitly through `cardSurface` and draw no shape at all.
+    static func radius(_ normal: CGFloat) -> CGFloat { minimal ? min(normal, 10) : normal }
     /// Horizontal page inset for the scrolling content. 24pt in minimal, matching the design
     /// this was copied from — the generous margin is a big part of why it reads as calm.
     static var rowInset: CGFloat { minimal ? 24 : 18 }

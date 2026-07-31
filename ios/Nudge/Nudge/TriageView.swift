@@ -34,7 +34,7 @@ struct TriageView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .onAppear { items = store.stuckReminders() }
         }
-        .tint(Theme.accent)
+        .tint(Theme.controlTint)
     }
 
     private func card(_ item: (r: Reminder, count: Int)) -> some View {
@@ -62,7 +62,7 @@ struct TriageView: View {
         }
         .padding(16)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
         .transition(.scale(scale: 0.92).combined(with: .opacity))
     }
 

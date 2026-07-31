@@ -83,7 +83,9 @@ struct NudgeApp: App {
                 // preference entirely (see AppSettings), because bolding every glyph destroys
                 // the light-body / heavy-title contrast the minimal design depends on.
                 .fontWeight(settings.effectiveBoldText ? .bold : nil)
-                .tint(settings.accent)
+                // nil in minimal → system control colours (green switches, blue carets), which
+                // is what Reminders shows. See AppSettings.controlTint.
+                .tint(settings.controlTint)
                 .preferredColorScheme(settings.colorScheme)
                 // Touching `shared` here builds the CLLocationManager at launch, which is what
                 // lets the OS relaunch us straight into a region event. Its delegate must exist

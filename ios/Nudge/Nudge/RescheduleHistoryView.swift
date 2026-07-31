@@ -97,7 +97,7 @@ struct RescheduleHistoryView: View {
         }
         .padding(14)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
         .opacity(isUndone ? 0.6 : 1)
     }
 
