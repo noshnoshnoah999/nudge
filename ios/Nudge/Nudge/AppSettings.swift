@@ -54,7 +54,7 @@ final class AppSettings: ObservableObject {
     }
     /// Minimal design — the flat, Apple-Reminders-style layout. While this is on, the eight
     /// colour palettes are ignored entirely and the app renders in UIKit semantic colours,
-    /// which is what lets it follow iOS's own Light/Dark setting (see `colorScheme`).
+    /// which resolve themselves against whichever appearance `minimalDark` selects.
     /// Synced across devices like the other appearance prefs.
     @Published var minimalDesign: Bool {
         didSet {
@@ -81,6 +81,18 @@ final class AppSettings: ObservableObject {
     @Published var upcomingSections: [String] {
         didSet { UserDefaults.standard.set(upcomingSections, forKey: K.upcomingSections) }
     }
+    /// Light or dark, while Minimal is on. DEVICE-LOCAL on purpose — the MacBook lives in a
+    /// bright room and the iPhone gets used at night, so this is genuinely a per-device call,
+    /// and it keeps the appearance-sync signatures from growing a fifth parameter.
+    ///
+    /// This replaced "follow iOS automatically", which is what Noah originally picked and what
+    /// then broke: see `colorScheme` for why an explicit value is the reliable design.
+    @Published var minimalDark: Bool {
+        didSet {
+            UserDefaults.standard.set(minimalDark, forKey: K.minimalDark)
+            applyWindowAppearance()
+        }
+    }
     /// Play the haptic + chime with the completion celebration animation. The visual always
     /// plays; this just mutes the feedback. Key shared with CelebrationOverlay via @AppStorage.
     /// DEVICE-LOCAL — intentionally not synced.
@@ -96,6 +108,7 @@ final class AppSettings: ObservableObject {
         static let upcomingSections = "pref.upcomingSections"
         static let celebrationFeedback = "pref.celebrationFeedback"
         static let minimalDesign = "pref.minimalDesign"
+        static let minimalDark = "pref.minimalDark"
     }
 
     init() {
@@ -111,6 +124,9 @@ final class AppSettings: ObservableObject {
         appLock = UserDefaults.standard.bool(forKey: K.appLock)
         boldText = UserDefaults.standard.bool(forKey: K.boldText)
         minimalDesign = startMinimal
+        // Defaults to dark: minimal was built and reviewed in dark mode, and that's what the
+        // Apple Reminders reference looks like.
+        minimalDark = (UserDefaults.standard.object(forKey: K.minimalDark) as? Bool) ?? true
         upcomingSections = (UserDefaults.standard.array(forKey: K.upcomingSections) as? [String]) ?? []
         celebrationFeedback = (UserDefaults.standard.object(forKey: K.celebrationFeedback) as? Bool) ?? true
         // didSet doesn't fire on init's first assignment, so seed Theme's globals by hand.
@@ -174,30 +190,41 @@ final class AppSettings: ObservableObject {
 
     /// System chrome (keyboard, sheets, date wheels, context menus, scroll indicators).
     ///
-    /// The eight tinted themes are all light-backed, so they pin `.light` exactly as before —
-    /// otherwise a phone in dark mode would render dark chrome on top of a pale tint.
+    /// **Never nil.** This is the important part.
     ///
-    /// Minimal returns **nil**, which hands the decision back to iOS. That is the whole of
-    /// "minimal dark mode": the app has no light/dark picker of its own, and every Theme colour
-    /// in minimal is a semantic UIColor that resolves itself per appearance.
+    /// Minimal originally returned nil so iOS would decide light/dark automatically. That is
+    /// the design Noah first picked, and it was unreliable in exactly one direction: nil means
+    /// "no preference", which does not reliably CLEAR an override that a previous state already
+    /// set. The eight tinted themes pin `.light`, so the sequence *tinted → minimal* left a
+    /// stale light override behind — first on sheets only (Settings rendered white while the
+    /// app was dark), and after that was patched, on the whole app (toggling Minimal off and
+    /// back on left it stuck in light mode).
     ///
-    /// `preferredColorScheme` alone was NOT enough — see `applyWindowAppearance()`.
-    var colorScheme: ColorScheme? { minimalDesign ? nil : .light }
+    /// Writing `.unspecified` to the window was an attempt to clear it and wasn't enough,
+    /// which suggests SwiftUI applies `preferredColorScheme` at the hosting-controller level
+    /// where a window-level write is shadowed.
+    ///
+    /// So minimal now carries its own explicit `minimalDark` preference and this always returns
+    /// a concrete value. There is no "clear" operation left to fail. The cost is that minimal
+    /// no longer follows iOS automatically — it will not flip itself at sunset — which is a
+    /// deliberate trade of a feature for a class of bug.
+    var colorScheme: ColorScheme? { effectiveStyle == .dark ? .dark : .light }
 
-    /// Force the window's interface style to match the current mode.
+    /// One source of truth for both `colorScheme` and the UIKit window override, so they can't
+    /// disagree. Non-minimal is always light: the eight palettes are all light-backed tints.
+    private var effectiveStyle: UIUserInterfaceStyle {
+        guard minimalDesign else { return .light }
+        return minimalDark ? .dark : .light
+    }
+
+    /// Belt-and-braces: also write the style onto every window directly.
     ///
-    /// WHY THIS EXISTS: with only `.preferredColorScheme(nil)` at the root, the Settings sheet
-    /// rendered LIGHT while the rest of the app was correctly dark. Every tinted theme pins
-    /// `.light`, which SwiftUI implements by setting `overrideUserInterfaceStyle = .light` on
-    /// the window. Switching to minimal changes the preference to nil — "no preference" — which
-    /// does not reliably CLEAR that existing override, and a sheet gets its style from the
-    /// window it's presented in. So the root re-rendered dark while sheets kept the stale light
-    /// override.
-    ///
-    /// Writing `.unspecified` explicitly clears it, which `nil` does not. Called from the
-    /// `minimalDesign` didSet and again on every foreground (a scene can be rebuilt).
+    /// `preferredColorScheme` should be sufficient now that it's never nil, but this costs
+    /// nothing and covers windows SwiftUI doesn't own (alerts, and the separate Mac windows on
+    /// Catalyst). Called from the `minimalDesign` / `minimalDark` didSets, at launch, and on
+    /// every foreground, since a scene can be rebuilt.
     func applyWindowAppearance() {
-        let style: UIUserInterfaceStyle = minimalDesign ? .unspecified : .light
+        let style = effectiveStyle
         for scene in UIApplication.shared.connectedScenes {
             guard let windowScene = scene as? UIWindowScene else { continue }
             for window in windowScene.windows { window.overrideUserInterfaceStyle = style }

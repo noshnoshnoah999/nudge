@@ -45,6 +45,18 @@ struct SyncSettingsView: View {
                         get: { settings.minimalDesign },
                         set: { v in withAnimation(Theme.spring) { settings.minimalDesign = v } }))
 
+                    // Only meaningful in minimal: the eight colour palettes are all light-backed
+                    // tints, so outside minimal the app is always light.
+                    if settings.minimalDesign {
+                        Picker("Appearance", selection: Binding(
+                            get: { settings.minimalDark },
+                            set: { v in withAnimation(Theme.spring) { settings.minimalDark = v } })) {
+                                Text("Light").tag(false)
+                                Text("Dark").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                    }
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Theme").font(.subheadline)
                         // All 8 palettes wrap into a 4-column grid (2 even rows, no gaps)
@@ -97,8 +109,8 @@ struct SyncSettingsView: View {
                     Text("Appearance")
                 } footer: {
                     Text(settings.minimalDesign
-                         ? "Minimal design is on: flat rows with hairline separators, no cards, no animations, and completing a reminder just ticks it. Colour themes, Bold text and the completion sound are switched off while it's on. The app follows your phone's Light/Dark setting — turn on Dark Mode in iOS Settings for minimal dark. Compact fits more reminders on screen."
-                         : "Minimal design swaps Nudge's cards for a flat list like the built-in Reminders app, and follows your phone's Light/Dark setting. Otherwise, pick a colour theme. Compact fits more reminders on screen. Bold text renders the app in a heavier weight. Turn off Sound & haptics to keep the completion animation silent.")
+                         ? "Minimal design is on: flat rows with hairline separators, no cards, no animations, and completing a reminder just ticks it. Colour themes, Bold text and the completion sound are switched off while it's on. Light/Dark is set here and applies to this device only, so your iPhone and MacBook can differ. Compact fits more reminders on screen."
+                         : "Minimal design swaps Nudge's cards for a flat list like the built-in Reminders app, with its own Light/Dark switch. Otherwise, pick a colour theme. Compact fits more reminders on screen. Bold text renders the app in a heavier weight. Turn off Sound & haptics to keep the completion animation silent.")
                 }
                 .listRowBackground(Theme.surface)
 

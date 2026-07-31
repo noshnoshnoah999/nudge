@@ -19,7 +19,7 @@ enum Changelog {
             version: "2.30", title: "Minimal design & dark mode", date: "31 Jul 2026",
             added: [
                 "New \"Minimal design\" switch in Settings → Appearance. It swaps Nudge's rounded cards for a flat list — a circle, the title, and the time on the right, separated by thin lines, like the built-in Reminders app",
-                "Minimal follows your phone's Light/Dark setting, so turning on Dark Mode in iOS Settings gives you a proper black Nudge. There's no separate dark switch to remember"
+                "Minimal has its own Light/Dark switch right under the Minimal toggle — Nudge's first proper dark mode. It's set per device, so your iPhone can be dark while the MacBook stays light"
             ],
             changed: [
                 "Minimal also switches off the flourishes: no pop-in when a screen loads, no card shadows, no progress ring on Home, and completing a reminder just ticks it — no gold border, no slide-off, no sound or haptic",
