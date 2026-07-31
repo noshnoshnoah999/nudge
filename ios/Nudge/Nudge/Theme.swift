@@ -40,14 +40,6 @@ struct Palette: Identifiable {
     let text: String        // primary text (dark shade of the hue)
     let textSoft: String    // labels / secondary
     let accent: String      // saturated hue (numbers, active tab)
-    /// True for palettes whose background is dark. Drives the app's `colorScheme`, so system
-    /// chrome (keyboard, sheets, date wheels, context menus) matches instead of staying light.
-    var isDark: Bool = false
-    /// "Plain" mode — the deliberately boring, low-stimulation look modelled on Apple
-    /// Reminders. Colour is neutral, and on top of that the app suppresses its entrance
-    /// animations, card shadows, spring transitions and completion flair, and squares the
-    /// cards off into flat rows. See `Theme.minimal` for the switches this feeds.
-    var minimal: Bool = false
 }
 
 enum Palettes {
@@ -59,15 +51,7 @@ enum Palettes {
         Palette(id: "graphite", name: "Graphite", bg: "DBDCDF", card: "EBECEE", cardStrong: "C9CBCF", hairline: "C8CACE", text: "23252A", textSoft: "676C74", accent: "3A3E46"),
         Palette(id: "ocean",    name: "Ocean",    bg: "C3DBEC", card: "D8E9F5", cardStrong: "AFCFE6", hairline: "AECDE3", text: "122D42", textSoft: "4A7290", accent: "1B5C8C"),
         Palette(id: "orange",   name: "Orange",   bg: "D8885A", card: "DF9D77", cardStrong: "DD672C", hairline: "A8441C", text: "3D1A0B", textSoft: "633520", accent: "7A2A0E"),
-        Palette(id: "red",      name: "Red",      bg: "E8ADA4", card: "EEC1B9", cardStrong: "D68D82", hairline: "A34B3F", text: "350F0D", textSoft: "843A34", accent: "6E1108"),
-
-        // MARK: Plain (minimal / "dumb phone") — deliberately boring, Apple Reminders-ish.
-        // Neutral greys only, no hue. Values are Apple's own system greys so the app sits
-        // flush with native chrome instead of fighting it.
-        Palette(id: "plain",     name: "Plain",      bg: "F2F2F7", card: "FFFFFF", cardStrong: "E5E5EA", hairline: "D1D1D6", text: "000000", textSoft: "8E8E93", accent: "3A3A3C",
-                isDark: false, minimal: true),
-        Palette(id: "plainDark", name: "Plain Dark", bg: "000000", card: "1C1C1E", cardStrong: "2C2C2E", hairline: "38383A", text: "FFFFFF", textSoft: "8E8E93", accent: "AEAEB2",
-                isDark: true,  minimal: true)
+        Palette(id: "red",      name: "Red",      bg: "E8ADA4", card: "EEC1B9", cardStrong: "D68D82", hairline: "A34B3F", text: "350F0D", textSoft: "843A34", accent: "6E1108")
     ]
     static func by(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
 }
@@ -77,21 +61,37 @@ enum Palettes {
 enum Theme {
     static var palette: Palette = Palettes.all[0]
 
-    /// Plain / low-stimulation mode is a property of the selected palette, not a separate
-    /// setting — picking "Plain" or "Plain Dark" IS the switch. That keeps it on the existing
-    /// cross-device `theme` sync path with no new key to store or migrate.
-    static var minimal: Bool { palette.minimal }
-    static var isDark: Bool  { palette.isDark }
+    /// MINIMAL DESIGN — the flat, Apple-Reminders-style layout (the old "1 · Minimal" preview).
+    ///
+    /// This is a LAYOUT mode, not a colour theme. An earlier attempt shipped it as two extra
+    /// palettes ("Plain" / "Plain Dark") which kept Nudge's tinted card structure and merely
+    /// squared it off — the result looked like a washed-out Nudge, not the minimal design, and
+    /// was rejected. So minimal is now its own switch, and while it's on the eight colour
+    /// palettes are IGNORED ENTIRELY in favour of UIKit's semantic colours.
+    ///
+    /// Using semantic colours (rather than fixed light/dark hexes) is what makes minimal follow
+    /// iOS's own Light/Dark setting for free: `AppSettings.colorScheme` returns nil in minimal,
+    /// so the system decides, and every colour below resolves itself per trait collection.
+    /// There is deliberately no in-app light/dark picker.
+    ///
+    /// Set from `AppSettings.minimalDesign` (init + didSet), same as `palette`.
+    static var minimalDesign: Bool = false
+    static var minimal: Bool { minimalDesign }
 
-    static var bg: Color         { Color(hex: palette.bg) }
-    static var surface: Color    { Color(hex: palette.card) }
-    static var surfaceAlt: Color { Color(hex: palette.cardStrong) }
-    static var hairline: Color   { Color(hex: palette.hairline) }
-    static var textMain: Color   { Color(hex: palette.text) }
-    static var textMeta: Color   { Color(hex: palette.textSoft) }
+    static var bg: Color         { minimal ? Color(.systemBackground)          : Color(hex: palette.bg) }
+    /// In minimal there are no cards, so a "surface" is just the page — rows are separated by
+    /// hairlines, not by a fill. Anything that genuinely needs to sit proud uses `surfaceAlt`.
+    static var surface: Color    { minimal ? Color(.systemBackground)          : Color(hex: palette.card) }
+    static var surfaceAlt: Color { minimal ? Color(.secondarySystemBackground) : Color(hex: palette.cardStrong) }
+    static var hairline: Color   { minimal ? Color(.separator)                 : Color(hex: palette.hairline) }
+    static var textMain: Color   { minimal ? Color(.label)                     : Color(hex: palette.text) }
+    static var textMeta: Color   { minimal ? Color(.secondaryLabel)            : Color(hex: palette.textSoft) }
 
-    static var accent: Color     { Color(hex: palette.accent) }
-    static var accentSoft: Color { Color(hex: palette.accent).opacity(0.14) }
+    /// Minimal's accent is monochrome — `label`, i.e. black on white and white on black. The
+    /// design has no brand colour: the only colour left anywhere is red for overdue. If you
+    /// ever want the indigo the original preview used, this single line is the place.
+    static var accent: Color     { minimal ? Color(.label) : Color(hex: palette.accent) }
+    static var accentSoft: Color { accent.opacity(minimal ? 0.08 : 0.14) }
     static var violet: Color     { accent }          // alias used across views
     static var violetSoft: Color { accentSoft }
 
@@ -99,18 +99,19 @@ enum Theme {
     /// selected day pill, the toast bars).
     ///
     /// Every tinted palette has a DARK accent, so white sat on it fine and the app hardcoded
-    /// `.white` in ~30 places. "Plain Dark" breaks that assumption: its accent is a LIGHT grey
-    /// (#AEAEB2) because the accent also has to read as text on a black page. White-on-#AEAEB2
-    /// is unreadable, so those call sites now ask for this instead of assuming white.
-    static var onAccent: Color { isDark ? Color(hex: palette.bg) : .white }
+    /// `.white` in ~30 places. Minimal breaks that assumption: in iOS dark mode its accent is
+    /// WHITE, and white-on-white is invisible. `systemBackground` is the exact inverse of
+    /// `label` in both appearances, so it's always readable.
+    static var onAccent: Color { minimal ? Color(.systemBackground) : .white }
 
-    /// Same idea for the `coral` (overdue / destructive) fill.
-    static var onCoral: Color { isDark ? Color(hex: palette.bg) : .white }
+    /// Same idea for the `coral` (overdue / destructive) fill. System red stays dark enough in
+    /// both appearances that white reads on it, so minimal keeps white here.
+    static var onCoral: Color { .white }
 
     /// Text colour on the toast/selection bars, which fill with `textMain` to invert against
-    /// the page. On a dark palette `textMain` is WHITE, so hardcoded white text there would be
-    /// invisible — this flips to the page background instead.
-    static var onTextMain: Color { isDark ? Color(hex: palette.bg) : .white }
+    /// the page. In minimal dark mode `textMain` is WHITE, so hardcoded white text there would
+    /// be invisible — this flips to the page background instead.
+    static var onTextMain: Color { minimal ? Color(.systemBackground) : .white }
 
     // Semantic colours used sparingly (overdue / done), kept readable on every tint.
     // On the orange/red palettes the default brick tone collides with the warm
@@ -119,19 +120,16 @@ enum Theme {
     private static var coralHex: String {
         switch palette.id {
         case "orange", "red": return "6E1810"
-        // Plain deliberately drops hue everywhere EXCEPT overdue. Going fully greyscale
-        // would delete the only at-a-glance signal that something is late, which is a real
-        // usability loss, not just a style choice. So overdue keeps a muted, desaturated red
-        // — legible on each plain background without being loud.
-        case "plain":     return "A03A28"
-        case "plainDark": return "C97567"
         default: return "B14B3A"
         }
     }
-    static var coral: Color   { Color(hex: coralHex) }
-    static var coralBg: Color { Color(hex: coralHex).opacity(0.12) }
-    /// "Done" green — neutralised in plain mode so completion reads as grey, not celebratory.
-    static var sage: Color    { Color(hex: minimal ? palette.textSoft : "4E7B54") }
+    /// Overdue red. Minimal is otherwise monochrome, but overdue keeps colour on purpose:
+    /// going fully greyscale deletes the only at-a-glance signal that something is late, which
+    /// is a real usability loss rather than a style choice. `systemRed` self-adjusts for dark.
+    static var coral: Color   { minimal ? Color(.systemRed) : Color(hex: coralHex) }
+    static var coralBg: Color { coral.opacity(0.12) }
+    /// "Done" green — neutralised in minimal so completion reads as grey, not celebratory.
+    static var sage: Color    { minimal ? Color(.secondaryLabel) : Color(hex: "4E7B54") }
 
     // Flat fills (no gradients — those read as tacky). Kept as gradients for API compat.
     static var violetGrad: LinearGradient { LinearGradient(colors: [accent, accent], startPoint: .top, endPoint: .bottom) }
@@ -141,27 +139,26 @@ enum Theme {
 
     // MARK: - Shape
     //
-    // Card geometry is read from here rather than hardcoded per view, so plain mode can
-    // square everything off into Apple-Reminders-style flat rows from one place.
+    // Card geometry is read from here rather than hardcoded per view, so minimal can flatten
+    // the whole app from one place instead of editing ~90 views.
 
-    /// Corner radius for cards. 0 in plain mode → rows, not floating cards.
+    /// Corner radius for cards. 0 in minimal → straight edges, no rounded boxes anywhere.
     static func radius(_ normal: CGFloat) -> CGFloat { minimal ? 0 : normal }
-    /// Border width around a card. Plain mode uses a single hairline divider instead of a
-    /// full box outline, so the standard border is dropped to zero.
+    /// Border width around a card. Minimal draws a single hairline UNDER each row instead of a
+    /// box around it, so the standard border goes to zero.
     static var cardBorderWidth: CGFloat { minimal ? 0 : 1 }
-    /// Horizontal page inset for the scrolling content.
-    ///
-    /// Plain mode keeps a modest 16pt inset rather than going truly edge-to-edge like Apple
-    /// Reminders. True full-bleed would drop the section headers ("TODAY", "OVERDUE") and the
-    /// empty-state text flush against the screen edge, which looks broken — making that work
-    /// properly means re-padding text separately from rows in six tabs. Squared corners, zero
-    /// row gap and hairline dividers already carry the list feel, so this trades the last 16pt
-    /// for not touching every view. Revisit if the inset reads as too card-like on device.
-    static var rowInset: CGFloat { minimal ? 16 : 18 }
+    /// Horizontal page inset for the scrolling content. 24pt in minimal, matching the design
+    /// this was copied from — the generous margin is a big part of why it reads as calm.
+    static var rowInset: CGFloat { minimal ? 24 : 18 }
+    /// Vertical padding inside a reminder row. Minimal rows are taller and airier than the
+    /// tinted cards, because the whitespace is doing the work the card fill used to do.
+    static var rowVerticalPadding: CGFloat { 13 }
+    /// Gap between sections. Minimal separates by whitespace alone, so it needs more of it.
+    static var sectionSpacing: CGFloat { minimal ? 30 : 20 }
 
     // MARK: - Motion
     //
-    // In plain mode every animation collapses to a zero-duration step. Views keep calling
+    // In minimal every animation collapses to a zero-duration step. Views keep calling
     // `withAnimation(Theme.spring)` unchanged; the movement simply doesn't happen. This is
     // why nothing outside this file needs an `if minimal` branch for motion.
 
@@ -183,7 +180,7 @@ var textMeta: Color { Theme.textMeta }
 struct PressableStyle: ButtonStyle {
     var scale: CGFloat = 0.95
     func makeBody(configuration: Configuration) -> some View {
-        // Plain mode: no press scale, no fade. A button either is pressed or isn't.
+        // Minimal: no press scale, no fade. A button either is pressed or isn't.
         let s = Theme.minimal ? 1 : scale
         return configuration.label
             .scaleEffect(configuration.isPressed ? s : 1)
@@ -194,7 +191,7 @@ struct PressableStyle: ButtonStyle {
 
 extension View {
     /// Subtle soft shadow (kept very light — the tinted cards do most of the work).
-    /// Fully suppressed in plain mode: flat rows sit on the page, they don't float above it.
+    /// Fully suppressed in minimal: flat rows sit on the page, they don't float above it.
     @ViewBuilder
     func cardElevation(_ radius: CGFloat = 8, y: CGFloat = 3, opacity: Double = 0.05) -> some View {
         if Theme.minimal {
@@ -206,7 +203,7 @@ extension View {
 
     /// Staggered "pop" entrance — scales up from small, fades + de-blurs into place
     /// with a little overshoot. `index` cascades the rows so they arrive in sequence.
-    /// In plain mode this is a no-op: content is simply there when the screen appears.
+    /// In minimal this is a no-op: content is simply there when the screen appears.
     @ViewBuilder
     func popIn(_ index: Int = 0, delayStep: Double = 0.045) -> some View {
         if Theme.minimal {
@@ -216,28 +213,38 @@ extension View {
         }
     }
 
-    /// Card container for a reminder-style block. In the tinted themes this is a rounded,
-    /// bordered card; in plain mode it collapses to a flat full-width row with a single
-    /// bottom hairline, matching Apple Reminders.
+    /// Card container for a reminder-style block.
     ///
-    /// `border` overrides the resting border colour (used for the overdue / selected states),
-    /// and `borderWidth` forces a visible outline even in plain mode — selection still needs
-    /// to be unmistakable, boring or not.
+    /// Tinted themes: a rounded, filled, bordered card, exactly as before.
+    ///
+    /// Minimal: **no fill and no border at all** — just a hairline divider underneath, so rows
+    /// read as lines of text separated by rules rather than as boxes. This is the difference
+    /// that mattered. The previous attempt kept the fill and border and only removed the corner
+    /// radius, which produced squared-off cards — visually still Nudge, just uglier. A minimal
+    /// list is defined by the ABSENCE of the container, not by its shape.
+    ///
+    /// `showsDivider: false` for the last row in a section (design 1 has no trailing rule).
+    /// `emphasis` still draws something in minimal for selected/overdue rows — a leading bar
+    /// rather than a box, because a full outline would put the card back.
     @ViewBuilder
     func cardSurface(radius normal: CGFloat,
                      fill: Color = Theme.surface,
                      border: Color = Theme.hairline,
-                     borderWidth: CGFloat? = nil) -> some View {
+                     borderWidth: CGFloat? = nil,
+                     showsDivider: Bool = true,
+                     emphasis: Color? = nil) -> some View {
         if Theme.minimal {
             self
-                .background(fill)
                 .overlay(alignment: .bottom) {
-                    Rectangle().fill(Theme.hairline).frame(height: 0.5)
+                    if showsDivider {
+                        Rectangle().fill(Theme.hairline).frame(height: 0.5)
+                    }
                 }
-                .overlay {
-                    // Only draw a box when a caller explicitly asks for one (selection).
-                    if let w = borderWidth, w > 0 {
-                        Rectangle().strokeBorder(border, lineWidth: w)
+                .overlay(alignment: .leading) {
+                    // Selected / overdue still has to be unmistakable. A 3pt leading bar reads
+                    // clearly without reintroducing a container.
+                    if let e = emphasis {
+                        Rectangle().fill(e).frame(width: 3)
                     }
                 }
         } else {

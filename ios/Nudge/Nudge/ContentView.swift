@@ -72,11 +72,10 @@ struct ContentView: View {
                 header
                 if let d = signingDaysLeft, d <= 2, expiryDismissedAtDays != d { expiryBanner(d) }
                 ScrollView {
-                    // Plain mode: rows butt up against each other with no gutter and run
-                    // edge-to-edge, so the page reads as one continuous system list rather
-                    // than a stack of floating cards. Tinted themes keep the 18pt inset and
-                    // the airy 14/20pt spacing.
-                    VStack(alignment: .leading, spacing: Theme.minimal ? 0 : (settings.compact ? 14 : 20)) {
+                    // Minimal: sections are separated by whitespace alone (30pt), since there
+                    // are no cards or boxes to do it. Rows inside a section butt together and
+                    // are separated by hairlines — that spacing lives in `sectionView`.
+                    VStack(alignment: .leading, spacing: Theme.minimal ? Theme.sectionSpacing : (settings.compact ? 14 : 20)) {
                         switch tab {
                         case 0: dashboardTab
                         case 1: todayTab
@@ -316,9 +315,14 @@ struct ContentView: View {
                     Text(headerTitle)
                         .font(.system(.largeTitle, design: .default).weight(.bold))
                         .foregroundStyle(Theme.textMain)
-                    Text(headerSubtitle.uppercased())
-                        .font(.caption.weight(.semibold)).tracking(0.6)
-                        .foregroundStyle(Theme.accent)
+                    // Minimal writes the subtitle as ordinary grey sentence case ("Saturday 6
+                    // June"), matching the design. The tinted themes keep the tracked, accent
+                    // -coloured caps — in minimal the accent is plain black/white, so caps
+                    // would read as a second heading rather than a subtitle.
+                    Text(Theme.minimal ? headerSubtitle : headerSubtitle.uppercased())
+                        .font(Theme.minimal ? .subheadline : .caption.weight(.semibold))
+                        .tracking(Theme.minimal ? 0 : 0.6)
+                        .foregroundStyle(Theme.minimal ? Theme.textMeta : Theme.accent)
                 }
                 Spacer()
                 HStack(spacing: 10) {
@@ -517,7 +521,11 @@ struct ContentView: View {
     // MARK: - Home dashboard
 
     @ViewBuilder private var dashboardTab: some View {
-        progressHero.popIn(0)
+        // The hero is a filled card wrapping a big number and a progress ring — the single
+        // most decorative thing on Home. Minimal drops it entirely; the header above already
+        // says the date and the status line already says how many are left, so no information
+        // is lost, only the gauge.
+        if !Theme.minimal { progressHero.popIn(0) }
         if let nu = nextUp { nextUpCard(nu).popIn(1) }
 
         // Pay day: surface the buy list right on Home (tickable), capped so it stays tidy.
@@ -782,27 +790,21 @@ struct ContentView: View {
         return HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text("TODAY").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.textMeta)
-                // Plain mode dials the hero number down from a 30pt heavy display face to
-                // ordinary body text, and drops the progress ring for a plain "3 of 7" count.
-                // A progress ring is a small dopamine gauge; that's exactly what this theme
-                // is trying not to be.
-                Text(s.total == 0 ? "All clear" : (Theme.minimal ? "\(s.done) of \(s.total) done" : "\(s.done)/\(s.total) done"))
-                    .font(Theme.minimal ? .title3.weight(.semibold) : .system(size: 30, weight: .heavy))
-                    .foregroundStyle(Theme.textMain)
+                // Not rendered in minimal at all (see dashboardTab), so no branching here.
+                Text(s.total == 0 ? "All clear" : "\(s.done)/\(s.total) done")
+                    .font(.system(size: 30, weight: .heavy)).foregroundStyle(Theme.textMain)
                     .contentTransition(.numericText())
             }
             Spacer()
-            if !Theme.minimal {
-                ZStack {
-                    Circle().stroke(Theme.hairline, lineWidth: 7)
-                    Circle().trim(from: 0, to: max(0.001, frac))
-                        .stroke(Theme.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .animation(Theme.spring, value: frac)
-                }.frame(width: 54, height: 54)
-            }
+            ZStack {
+                Circle().stroke(Theme.hairline, lineWidth: 7)
+                Circle().trim(from: 0, to: max(0.001, frac))
+                    .stroke(Theme.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(Theme.spring, value: frac)
+            }.frame(width: 54, height: 54)
         }
-        .padding(Theme.minimal ? 14 : 18)
+        .padding(18)
         .cardSurface(radius: 20, fill: Theme.surface)
     }
 
@@ -958,25 +960,36 @@ struct ContentView: View {
     private func sectionView(_ section: NudgeStore.ReminderSection) -> some View {
         let isCollapsed = collapsed.contains(section.id)
         let isOverdue = section.id == "overdue"
-        return VStack(alignment: .leading, spacing: settings.compact ? 8 : 10) {
+        // Minimal: rows sit flush so their hairlines read as one ruled list, and the header
+        // gets its own 8pt breathing room below instead of a uniform stack gap.
+        return VStack(alignment: .leading, spacing: Theme.minimal ? 0 : (settings.compact ? 8 : 10)) {
             Button {
                 withAnimation(Theme.spring) {
                     if isCollapsed { collapsed.remove(section.id) } else { collapsed.insert(section.id) }
                 }
             } label: {
                 HStack(spacing: 7) {
-                    Text(section.title.uppercased()).font(.caption.weight(.bold)).tracking(0.8)
+                    Text(section.title.uppercased())
+                        .font(.caption.weight(.semibold))
+                        .tracking(Theme.minimal ? 1 : 0.8)
                         .foregroundStyle(isOverdue ? Theme.coral : Theme.textMeta)
-                    Text("\(section.items.count)").font(.caption2.weight(.bold))
-                        .contentTransition(.numericText())
-                        .foregroundStyle(isOverdue ? Theme.onCoral : Theme.textMeta)
-                        .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(isOverdue ? AnyShapeStyle(Theme.coral) : AnyShapeStyle(Theme.surfaceAlt), in: Capsule())
+                    // The count pill is a filled capsule — exactly the kind of decoration the
+                    // minimal design does without. The rows are right there to be counted.
+                    if !Theme.minimal {
+                        Text("\(section.items.count)").font(.caption2.weight(.bold))
+                            .contentTransition(.numericText())
+                            .foregroundStyle(isOverdue ? Theme.onCoral : Theme.textMeta)
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(isOverdue ? AnyShapeStyle(Theme.coral) : AnyShapeStyle(Theme.surfaceAlt), in: Capsule())
+                    }
                     Spacer()
-                    Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(Theme.textMeta)
+                    Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+                        .foregroundStyle(Theme.textMeta.opacity(Theme.minimal ? 0.5 : 1))
                         .rotationEffect(.degrees(isCollapsed ? -90 : 0))
                 }
-                .padding(.leading, 2).contentShape(Rectangle())
+                .padding(.leading, Theme.minimal ? 0 : 2)
+                .padding(.bottom, Theme.minimal ? 8 : 0)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             if !isCollapsed {
@@ -1076,8 +1089,8 @@ struct ContentView: View {
     }
 
     // Reverse text colour for on-accent fills. Used to be hardcoded white on the assumption
-    // that every accent is dark — true of the 8 tinted palettes, false of Plain Dark, whose
-    // accent is a light grey. Theme.onAccent picks the right one per palette.
+    // that every accent is dark — true of the 8 tinted palettes, false in minimal dark mode
+    // where the accent is white. Theme.onAccent picks the right one.
     private var reverseText: Color { Theme.onAccent }
 
     // Glowing red banner pinned to the very top on the first open after an AI carry-over ran.
@@ -1088,7 +1101,7 @@ struct ContentView: View {
             showCarryReview = e
             carryLog.dismissBanner()
         } label: {
-            // Plain mode: this banner is the single loudest element in the app — a saturated
+            // Minimal: this banner is the single loudest element in the app — a saturated
             // red gradient with a shadow that pulses forever. Keeping it would defeat the
             // whole point of a low-stimulation theme, so it degrades to a flat surface row
             // with plain text. The information is identical; only the shouting is removed.
@@ -1121,8 +1134,8 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .padding(.horizontal, Theme.minimal ? 0 : 18).padding(.top, 8).padding(.bottom, 4)
         .onAppear {
-            // No forever-repeating pulse in plain mode — a permanently animating element is
-            // exactly the kind of attention hook this theme exists to remove.
+            // No forever-repeating pulse in minimal — a permanently animating element is
+            // exactly the kind of attention hook this design exists to remove.
             guard !Theme.minimal else { return }
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { carryGlow = true }
         }
@@ -1137,7 +1150,7 @@ struct ContentView: View {
             groupLog.dismissBanner()
         } label: {
             HStack(spacing: 10) {
-                // Same reasoning as carryOverBanner: flat neutral row in Plain mode, no
+                // Same reasoning as carryOverBanner: flat neutral row in Minimal, no
                 // orange gradient and no forever-pulsing glow.
                 let fg = Theme.minimal ? Theme.textMain : Color.white
                 Image(systemName: "folder.fill.badge.plus").foregroundStyle(fg)

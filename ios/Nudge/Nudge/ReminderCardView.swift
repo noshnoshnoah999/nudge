@@ -68,7 +68,133 @@ struct ReminderCardView: View {
         }
     }
 
+    /// Which row to draw. Minimal is a genuinely different row — not the card with its corners
+    /// filed off — so it gets its own body rather than a pile of `if minimal` branches inside
+    /// the card. That was the mistake the first time round.
+    @ViewBuilder
     private var cardBody: some View {
+        if Theme.minimal { minimalBody } else { tintedCardBody }
+    }
+
+    // MARK: - Minimal row (flat, hairline-separated, Apple Reminders / Things style)
+    //
+    // Structure is deliberately spare: circle · title · right-aligned time. Everything the
+    // tinted card shows as coloured chips and pills collapses into ONE quiet grey line of
+    // plain text underneath, and only when there's actually something to say. No capsules, no
+    // fills, no borders — the divider under the row is the only decoration.
+    //
+    // The one thing kept as a real control is "Ask Claude", because it's a function, not
+    // decoration; it just renders as plain underlined text instead of a filled pill.
+
+    private var minimalBody: some View {
+        let r = reminder
+        let overdue = store.isOverdue(r)
+        let claudeP = ClaudeLink.prompt(from: r.title)
+        let done = r.isCompleted
+        let meta = minimalMetaLine(r)
+
+        return HStack(alignment: .firstTextBaseline, spacing: 14) {
+            Button {
+                if selectMode { onToggleSelect() } else { completeWithFlair(r) }
+            } label: {
+                Image(systemName: selectMode
+                      ? (isSelected ? "checkmark.circle.fill" : "circle")
+                      : (done ? "checkmark.circle.fill" : "circle"))
+                    .font(.title3)
+                    .foregroundStyle(selectMode
+                                     ? (isSelected ? Theme.accent : Theme.textMeta.opacity(0.45))
+                                     : (done ? Theme.textMeta : Theme.textMeta.opacity(0.45)))
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(claudeP ?? displayTitle(r))
+                    .font(.body)
+                    .foregroundStyle(done ? Theme.textMeta : Theme.textMain)
+                    .strikethrough(done, color: Theme.textMeta)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let meta {
+                    Text(meta)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textMeta)
+                        .lineLimit(1)
+                }
+                if let p = claudeP {
+                    Button {
+                        askClaude(p)
+                    } label: {
+                        Text(isPolishing ? "Polishing…" : "Ask Claude")
+                            .font(.subheadline).underline()
+                            .foregroundStyle(Theme.textMeta)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            // The time sits hard right, like the design. Overdue is the only colour in the
+            // entire minimal layout — see Theme.coral for why that exception exists.
+            if let label = dueLabel(r) {
+                Text(label)
+                    .font(.subheadline)
+                    .foregroundStyle(overdue ? Theme.coral : Theme.textMeta)
+                    .lineLimit(1)
+            } else if r.dueDate == nil && !done {
+                Text("No date")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textMeta.opacity(0.7))
+            }
+        }
+        .padding(.vertical, Theme.rowVerticalPadding)
+        .contentShape(Rectangle())
+        .onTapGesture { if selectMode { onToggleSelect() } else { onEdit() } }
+        .cardSurface(radius: 0,
+                     showsDivider: true,
+                     emphasis: isSelected ? Theme.accent : nil)
+        .opacity(done ? 0.55 : 1)
+    }
+
+    /// Everything the tinted card shows as chips, squeezed into one grey line — "Money ·
+    /// repeats weekly · 2/3 · 📍 school". Returns nil when there's nothing worth a line, which
+    /// is the common case, keeping most rows to a single line like the design.
+    private func minimalMetaLine(_ r: Reminder) -> String? {
+        var parts: [String] = []
+        if let l = store.list(for: r.listId) { parts.append(l.name) }
+        if r.priorityOrNormal == "high" { parts.append("High") }
+        if r.routine == true, !(r.escalation ?? []).isEmpty {
+            let d = store.routineIntervalDays(r)
+            parts.append(d == 1 ? "daily" : "every \(d)d")
+        } else if let rec = r.recurrence, rec.freq != "none" {
+            parts.append(recurText(rec))
+        }
+        if r.routine == true { parts.append("nightly") }
+        if let subs = r.subtasks, !subs.isEmpty {
+            parts.append("\(subs.filter { $0.done }.count)/\(subs.count)")
+        }
+        if let loc = r.location, !loc.isEmpty { parts.append(loc) }
+        if let u = r.url, !u.isEmpty { parts.append(linkLabel(u)) }
+        if ImageStore.hasImages(for: r.id) { parts.append("photo") }
+        if let badge = sourceBadge(r.source) { parts.append(badge) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Shared by the pill button and the minimal text button.
+    private func askClaude(_ p: String) {
+        guard !isPolishing else { return }
+        isPolishing = true
+        Task {
+            let polished = await PromptPolisher.polish(p)   // on-device, falls back to raw
+            UIPasteboard.general.string = polished
+            if let u = ClaudeLink.url(for: polished) { claudeURL = IdentifiableURL(url: u) }
+            isPolishing = false
+        }
+    }
+
+    // MARK: - Tinted card (the default Nudge design)
+
+    private var tintedCardBody: some View {
         let r = reminder
         let overdue = store.isOverdue(r)
         let compact = settings.compact
@@ -190,18 +316,14 @@ struct ReminderCardView: View {
         // Overdue: drop the red wash (harsh on the warm bg) — same card fill, just a
         // gentle warm border + the due chip mark it.
         //
-        // `cardSurface` is the one place card geometry is decided. Tinted themes get the
-        // rounded, bordered card; Plain gets a flat full-width row with a bottom hairline,
-        // like a system list. Selection and overdue still force a visible outline in Plain —
-        // "boring" must not mean "can't tell what's selected or late".
+        // This body only ever renders outside minimal (see `cardBody`), so it's always the
+        // rounded, filled, bordered card — no minimal branching needed here.
         .cardSurface(radius: radius,
                      fill: Theme.surface,
                      border: isSelected ? settings.accent
                                         : (overdue ? Theme.coral.opacity(0.85) : Theme.hairline),
-                     borderWidth: isSelected ? 2.5
-                                             : (overdue ? 2.5 : (Theme.minimal ? 0 : 1)))
-        // Gold tracing border that draws around the card on completion. Skipped entirely in
-        // Plain mode — see completeWithFlair, which never sets `trace` there.
+                     borderWidth: isSelected ? 2.5 : (overdue ? 2.5 : 1))
+        // Gold tracing border that draws around the card on completion.
         .overlay(
             RoundedRectangle(cornerRadius: Theme.radius(radius), style: .continuous)
                 .trim(from: 0, to: trace)
@@ -219,9 +341,9 @@ struct ReminderCardView: View {
     /// list springs to bunch up. Un-ticking and nightly routines skip the slide (routines roll
     /// forward in place rather than leaving the list).
     private func completeWithFlair(_ r: Reminder) {
-        // Plain mode: no flair at all. No gold trace, no slide-off, no haptic, no chime —
+        // Minimal: no flair at all. No gold trace, no slide-off, no haptic, no chime —
         // just tick it and move on, the way Apple Reminders does. Completing a task should
-        // not be a reward event in a theme whose whole purpose is to be unstimulating.
+        // not be a reward event in a design whose whole purpose is to be unstimulating.
         guard !Theme.minimal else {
             store.toggleComplete(r)
             return
@@ -285,14 +407,7 @@ struct ReminderCardView: View {
 
     private func askClaudeButton(_ p: String) -> some View {
         Button {
-            guard !isPolishing else { return }
-            isPolishing = true
-            Task {
-                let polished = await PromptPolisher.polish(p)   // on-device, falls back to raw
-                UIPasteboard.general.string = polished
-                if let u = ClaudeLink.url(for: polished) { claudeURL = IdentifiableURL(url: u) }
-                isPolishing = false
-            }
+            askClaude(p)
         } label: {
             HStack(spacing: 5) {
                 if isPolishing {

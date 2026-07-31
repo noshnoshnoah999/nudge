@@ -27,6 +27,7 @@ final class AppSettings: ObservableObject {
         static let theme = "theme"
         static let boldText = "boldText"
         static let compact = "compact"
+        static let minimalDesign = "minimalDesign"
     }
 
     /// The synced store, wired at launch via `attach(_:)` (mirrors sync/notifier.attach).
@@ -47,6 +48,17 @@ final class AppSettings: ObservableObject {
     @Published var compact: Bool {
         didSet {
             UserDefaults.standard.set(compact, forKey: K.compact)
+            pushAppearanceIfLocal()
+        }
+    }
+    /// Minimal design — the flat, Apple-Reminders-style layout. While this is on, the eight
+    /// colour palettes are ignored entirely and the app renders in UIKit semantic colours,
+    /// which is what lets it follow iOS's own Light/Dark setting (see `colorScheme`).
+    /// Synced across devices like the other appearance prefs.
+    @Published var minimalDesign: Bool {
+        didSet {
+            Theme.minimalDesign = minimalDesign
+            UserDefaults.standard.set(minimalDesign, forKey: K.minimalDesign)
             pushAppearanceIfLocal()
         }
     }
@@ -81,18 +93,27 @@ final class AppSettings: ObservableObject {
         static let boldText = "pref.boldText"
         static let upcomingSections = "pref.upcomingSections"
         static let celebrationFeedback = "pref.celebrationFeedback"
+        static let minimalDesign = "pref.minimalDesign"
     }
 
     init() {
         var t = UserDefaults.standard.string(forKey: K.theme) ?? "mocha"
         if t == "tan" { t = "mocha" }    // renamed; keep existing installs on the brown theme
+        // The short-lived "Plain" / "Plain Dark" palettes (shipped in 85cc7f0, removed the same
+        // week) no longer exist. Anyone left on one lands back on Mocha with the real minimal
+        // design switched on instead, which is what they were reaching for.
+        var startMinimal = UserDefaults.standard.bool(forKey: K.minimalDesign)
+        if t == "plain" || t == "plainDark" { t = "mocha"; startMinimal = true }
         theme = t
         compact = (UserDefaults.standard.object(forKey: K.compact) as? Bool) ?? true
         appLock = UserDefaults.standard.bool(forKey: K.appLock)
         boldText = UserDefaults.standard.bool(forKey: K.boldText)
+        minimalDesign = startMinimal
         upcomingSections = (UserDefaults.standard.array(forKey: K.upcomingSections) as? [String]) ?? []
         celebrationFeedback = (UserDefaults.standard.object(forKey: K.celebrationFeedback) as? Bool) ?? true
-        Theme.palette = Palettes.by(t)   // didSet doesn't fire on init's first assignment
+        // didSet doesn't fire on init's first assignment, so seed Theme's globals by hand.
+        Theme.palette = Palettes.by(t)
+        Theme.minimalDesign = startMinimal
     }
 
     // MARK: - Cross-device sync bridge
@@ -106,44 +127,59 @@ final class AppSettings: ObservableObject {
         // Adopt whatever the cloud already has (e.g. the OTHER device set the theme before
         // this build ran here) …
         let a = store.cloudAppearance()
-        applyFromCloud(theme: a.theme, boldText: a.boldText, compact: a.compact)
+        applyFromCloud(theme: a.theme, boldText: a.boldText, compact: a.compact,
+                       minimalDesign: a.minimalDesign)
         // … then, if the cloud carries none of these keys yet, seed it with this device's look.
-        store.seedAppearanceIfMissing(theme: theme, boldText: boldText, compact: compact)
+        store.seedAppearanceIfMissing(theme: theme, boldText: boldText, compact: compact,
+                                      minimalDesign: minimalDesign)
         // Register for future cloud updates (a change made on the other device after launch).
-        store.onCloudAppearance = { [weak self] t, b, c in
-            self?.applyFromCloud(theme: t, boldText: b, compact: c)
+        store.onCloudAppearance = { [weak self] t, b, c, m in
+            self?.applyFromCloud(theme: t, boldText: b, compact: c, minimalDesign: m)
         }
     }
 
-    /// Push the current appearance triple into the synced settings row — UNLESS we're mid
+    /// Push the current appearance values into the synced settings row — UNLESS we're mid
     /// cloud-apply (which would ping-pong). Called from every synced pref's didSet.
     private func pushAppearanceIfLocal() {
         guard !applyingFromCloud else { return }
-        store?.applyLocalAppearance(theme: theme, boldText: boldText, compact: compact)
+        store?.applyLocalAppearance(theme: theme, boldText: boldText, compact: compact,
+                                    minimalDesign: minimalDesign)
     }
 
     /// Adopt appearance values that arrived from the cloud. Sets the guard so the resulting
     /// didSet observers update UI/UserDefaults without re-pushing. Only assigns when the value
     /// actually differs, so we don't churn @Published for no reason.
-    func applyFromCloud(theme cloudTheme: String?, boldText cloudBold: Bool?, compact cloudCompact: Bool?) {
+    func applyFromCloud(theme cloudTheme: String?, boldText cloudBold: Bool?,
+                        compact cloudCompact: Bool?, minimalDesign cloudMinimal: Bool?) {
         applyingFromCloud = true
         defer { applyingFromCloud = false }
-        if let cloudTheme, cloudTheme != theme { theme = cloudTheme }
+        // A theme id the cloud carries but this build no longer knows about (the removed
+        // "plain" / "plainDark") must not be adopted — `Palettes.by` would silently fall back
+        // to Mocha while `theme` still held the dead id, and the next local change would push
+        // that dead id straight back up. Translate it to the real minimal switch instead.
+        if let cloudTheme {
+            if cloudTheme == "plain" || cloudTheme == "plainDark" {
+                if theme != "mocha" { theme = "mocha" }
+                if !minimalDesign { minimalDesign = true }
+            } else if cloudTheme != theme {
+                theme = cloudTheme
+            }
+        }
         if let cloudBold, cloudBold != boldText { boldText = cloudBold }
         if let cloudCompact, cloudCompact != compact { compact = cloudCompact }
+        if let cloudMinimal, cloudMinimal != minimalDesign { minimalDesign = cloudMinimal }
     }
 
-    /// System chrome (keyboard, sheets, date wheels, context menus, scroll indicators)
-    /// follows the palette. The eight tinted themes are all light-backed, so they force
-    /// `.light` as before — otherwise iOS in dark mode would render dark chrome on top of a
-    /// pale tint. "Plain Dark" is the only dark-backed palette, and it must force `.dark`:
-    /// leaving this at `.light` would give a black page with a white keyboard.
-    var colorScheme: ColorScheme? { Palettes.by(theme).isDark ? .dark : .light }
-
-    /// True when the selected palette is one of the Plain (low-stimulation) ones. Views can
-    /// read this off the environment object; `Theme.minimal` is the same value for code
-    /// that isn't holding an AppSettings.
-    var minimal: Bool { Palettes.by(theme).minimal }
+    /// System chrome (keyboard, sheets, date wheels, context menus, scroll indicators).
+    ///
+    /// The eight tinted themes are all light-backed, so they pin `.light` exactly as before —
+    /// otherwise a phone in dark mode would render dark chrome on top of a pale tint.
+    ///
+    /// Minimal returns **nil**, which hands the decision back to iOS. That single nil is the
+    /// whole of "minimal dark mode": the app has no light/dark picker of its own, it just
+    /// inherits the phone's, and every Theme colour in minimal is a semantic UIColor that
+    /// resolves itself per appearance. Turn on Dark Mode in iOS Settings and Nudge follows.
+    var colorScheme: ColorScheme? { minimalDesign ? nil : .light }
 
     var accent: Color { Theme.accent }
     var accentSoft: Color { Theme.accentSoft }

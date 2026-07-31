@@ -38,11 +38,18 @@ struct SyncSettingsView: View {
             Form {
                 // MARK: Appearance
                 Section {
+                    // The design switch sits ABOVE the theme picker on purpose: while Minimal
+                    // is on the palettes do nothing, so showing the switch first explains why
+                    // the swatches below are greyed out rather than leaving them looking broken.
+                    Toggle("Minimal design", isOn: Binding(
+                        get: { settings.minimalDesign },
+                        set: { v in withAnimation(Theme.spring) { settings.minimalDesign = v } }))
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Theme").font(.subheadline)
-                        // All palettes wrap into a 4-column grid (no gaps) so none are hidden
-                        // off-screen (Ocean used to be clipped past the right edge of a
-                        // horizontal scroll). The two Plain swatches land on the third row.
+                        // All 8 palettes wrap into a 4-column grid (2 even rows, no gaps)
+                        // so none are hidden off-screen (Ocean used to be clipped past the
+                        // right edge of a horizontal scroll).
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
                                   spacing: 14) {
                             ForEach(Palettes.all) { p in
@@ -52,14 +59,7 @@ struct SyncSettingsView: View {
                                             Circle().fill(Color(hex: p.bg)).frame(width: 40, height: 40)
                                             Circle().fill(Color(hex: p.accent)).frame(width: 18, height: 18)
                                         }
-                                        // The Plain swatches are near-white and near-black, so
-                                        // the usual faint black ring is invisible on one and
-                                        // indistinguishable on the other. Give every swatch a
-                                        // ring that contrasts with its own background.
-                                        .overlay(Circle().stroke(settings.theme == p.id
-                                                                 ? Color(hex: p.accent)
-                                                                 : (p.isDark ? Color.white.opacity(0.35)
-                                                                             : Color.black.opacity(0.18)),
+                                        .overlay(Circle().stroke(settings.theme == p.id ? Color(hex: p.accent) : Color.black.opacity(0.1),
                                                                  lineWidth: settings.theme == p.id ? 2.5 : 1)
                                             .frame(width: 46, height: 46))
                                         Text(p.name)
@@ -73,6 +73,10 @@ struct SyncSettingsView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    // Minimal ignores the palettes entirely, so the picker is disabled and
+                    // dimmed rather than silently doing nothing when tapped.
+                    .disabled(settings.minimalDesign)
+                    .opacity(settings.minimalDesign ? 0.4 : 1)
 
                     Toggle("Compact list", isOn: Binding(
                         get: { settings.compact }, set: { settings.compact = $0 }))
@@ -82,10 +86,14 @@ struct SyncSettingsView: View {
 
                     Toggle("Sound & haptics on complete", isOn: Binding(
                         get: { settings.celebrationFeedback }, set: { settings.celebrationFeedback = $0 }))
+                        .disabled(settings.minimalDesign)
+                        .opacity(settings.minimalDesign ? 0.4 : 1)
                 } header: {
                     Text("Appearance")
                 } footer: {
-                    Text("Pick a colour theme. Plain and Plain Dark are deliberately boring: flat grey rows, no animations, no completion sound or slide-off, and Plain Dark turns the whole app black. Compact fits more reminders on screen. Bold text renders the app in a heavier weight. Turn off Sound & haptics to keep the completion animation silent.")
+                    Text(settings.minimalDesign
+                         ? "Minimal design is on: flat rows with hairline separators, no cards, no animations, and completing a reminder just ticks it. Colour themes are switched off while it's on, and the app follows your phone's Light/Dark setting — turn on Dark Mode in iOS Settings for minimal dark. Compact fits more reminders on screen; Bold text renders the app in a heavier weight."
+                         : "Minimal design swaps Nudge's cards for a flat list like the built-in Reminders app, and follows your phone's Light/Dark setting. Otherwise, pick a colour theme. Compact fits more reminders on screen. Bold text renders the app in a heavier weight. Turn off Sound & haptics to keep the completion animation silent.")
                 }
                 .listRowBackground(Theme.surface)
 
@@ -418,11 +426,10 @@ struct SyncSettingsView: View {
 
                 // MARK: About
                 Section("About") {
-                    NavigationLink {
-                        DesignGalleryView()
-                    } label: {
-                        Label("Preview designs (beta)", systemImage: "paintpalette")
-                    }
+                    // "Preview designs (beta)" lived here — a temporary gallery of three
+                    // candidate looks on fake data. Design 1 won and is now a real switch in
+                    // Appearance ("Minimal design"), so the preview and DesignGalleryView.swift
+                    // are gone.
                     NavigationLink {
                         ChangelogView()
                     } label: {

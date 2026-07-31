@@ -55,11 +55,15 @@ struct GroupCardView: View {
         }
         // When expanded, wrap the header + members in a dark-orange box so the grouped
         // reminders read as one unit, clearly separated from the individual cards around them.
-        .padding(expanded ? (settings.compact ? 8 : 10) : 0)
-        .background(expanded ? darkOrange.opacity(0.06) : Color.clear,
+        // Minimal has no orange wrapper box at all: an expanded group is shown by indenting
+        // its members under the header, the way a nested list does it. A 2pt orange border is
+        // the loudest possible container, which is the opposite of the point.
+        .padding(expanded && !Theme.minimal ? (settings.compact ? 8 : 10) : 0)
+        .padding(.leading, expanded && Theme.minimal ? 14 : 0)
+        .background(expanded && !Theme.minimal ? darkOrange.opacity(0.06) : Color.clear,
                     in: RoundedRectangle(cornerRadius: Theme.radius(radius + 4), style: .continuous))
         .overlay {
-            if expanded {
+            if expanded && !Theme.minimal {
                 RoundedRectangle(cornerRadius: Theme.radius(radius + 4), style: .continuous)
                     .strokeBorder(darkOrange, lineWidth: 2)
             }
@@ -99,11 +103,11 @@ struct GroupCardView: View {
                     .foregroundStyle(Theme.textMeta)
                     .rotationEffect(.degrees(expanded ? 0 : -90))
             }
-            .padding(settings.compact ? 13 : 15)
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius(radius), style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius(radius), style: .continuous)
-                .strokeBorder(Theme.hairline, lineWidth: 1))
+            .padding(.vertical, Theme.minimal ? Theme.rowVerticalPadding : (settings.compact ? 13 : 15))
+            .padding(.horizontal, Theme.minimal ? 0 : (settings.compact ? 13 : 15))
+            // Minimal: a group header is just another row — hairline underneath, no fill or
+            // box. Without this it would be the one squared-off card left on the screen.
+            .cardSurface(radius: radius, fill: Theme.surface, border: Theme.hairline)
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
