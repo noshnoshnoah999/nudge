@@ -18,6 +18,7 @@
 
 import SwiftUI
 import Combine
+import UIKit   // applyWindowAppearance() touches UIWindow.overrideUserInterfaceStyle directly
 
 @MainActor
 final class AppSettings: ObservableObject {
@@ -59,6 +60,7 @@ final class AppSettings: ObservableObject {
         didSet {
             Theme.minimalDesign = minimalDesign
             UserDefaults.standard.set(minimalDesign, forKey: K.minimalDesign)
+            applyWindowAppearance()
             pushAppearanceIfLocal()
         }
     }
@@ -175,11 +177,38 @@ final class AppSettings: ObservableObject {
     /// The eight tinted themes are all light-backed, so they pin `.light` exactly as before —
     /// otherwise a phone in dark mode would render dark chrome on top of a pale tint.
     ///
-    /// Minimal returns **nil**, which hands the decision back to iOS. That single nil is the
-    /// whole of "minimal dark mode": the app has no light/dark picker of its own, it just
-    /// inherits the phone's, and every Theme colour in minimal is a semantic UIColor that
-    /// resolves itself per appearance. Turn on Dark Mode in iOS Settings and Nudge follows.
+    /// Minimal returns **nil**, which hands the decision back to iOS. That is the whole of
+    /// "minimal dark mode": the app has no light/dark picker of its own, and every Theme colour
+    /// in minimal is a semantic UIColor that resolves itself per appearance.
+    ///
+    /// `preferredColorScheme` alone was NOT enough — see `applyWindowAppearance()`.
     var colorScheme: ColorScheme? { minimalDesign ? nil : .light }
+
+    /// Force the window's interface style to match the current mode.
+    ///
+    /// WHY THIS EXISTS: with only `.preferredColorScheme(nil)` at the root, the Settings sheet
+    /// rendered LIGHT while the rest of the app was correctly dark. Every tinted theme pins
+    /// `.light`, which SwiftUI implements by setting `overrideUserInterfaceStyle = .light` on
+    /// the window. Switching to minimal changes the preference to nil — "no preference" — which
+    /// does not reliably CLEAR that existing override, and a sheet gets its style from the
+    /// window it's presented in. So the root re-rendered dark while sheets kept the stale light
+    /// override.
+    ///
+    /// Writing `.unspecified` explicitly clears it, which `nil` does not. Called from the
+    /// `minimalDesign` didSet and again on every foreground (a scene can be rebuilt).
+    func applyWindowAppearance() {
+        let style: UIUserInterfaceStyle = minimalDesign ? .unspecified : .light
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows { window.overrideUserInterfaceStyle = style }
+        }
+    }
+
+    /// Bold Text is deliberately unavailable in minimal. The minimal design's weight hierarchy
+    /// is the whole point of it — a light body against a heavy title — and forcing every glyph
+    /// to bold flattens that into a wall of black text. The Settings toggle is disabled in
+    /// minimal too, so this and the UI agree.
+    var effectiveBoldText: Bool { boldText && !minimalDesign }
 
     var accent: Color { Theme.accent }
     var accentSoft: Color { Theme.accentSoft }

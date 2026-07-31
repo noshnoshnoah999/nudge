@@ -478,14 +478,28 @@ struct ContentView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
+    /// Header action button. In minimal it's a bare glyph, like the toolbar in Reminders.
+    ///
+    /// The tinted version draws a filled, bordered rounded square. Squaring that off with
+    /// `Theme.radius(0)` turned it into a hard box outline — worse than the original, and the
+    /// first thing Noah flagged. A minimal toolbar icon has no container at all; it's just the
+    /// symbol, sized for touch.
     private func iconButton(_ name: String, pulse: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: name).font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(pulse ? Theme.coral : Theme.textMain)
+            Image(systemName: name)
+                .font(.system(size: Theme.minimal ? 19 : 17, weight: Theme.minimal ? .regular : .semibold))
+                .foregroundStyle(pulse ? Theme.coral : (Theme.minimal ? Theme.accent : Theme.textMain))
                 .symbolEffect(.pulse, isActive: pulse)
-                .frame(width: 40, height: 40)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                .frame(width: Theme.minimal ? 34 : 40, height: Theme.minimal ? 34 : 40)
+                .background {
+                    if !Theme.minimal {
+                        RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
+                            .fill(Theme.surface)
+                            .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
+                                .stroke(Theme.hairline, lineWidth: 1))
+                    }
+                }
+                .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
     }
@@ -681,8 +695,12 @@ struct ContentView: View {
             }
             .buttonStyle(PressableStyle(scale: 0.85))
         }
-        .padding(18)
-        .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
+        // Minimal: the filled grey "Next up" block was the last remaining card on Home — a
+        // squared-off box sitting above a cardless list. Here it becomes a plain row with a
+        // rule under it, so Home reads as one continuous list from the top.
+        .padding(.vertical, Theme.minimal ? 12 : 18)
+        .padding(.horizontal, Theme.minimal ? 0 : 18)
+        .cardSurface(radius: 18, fill: Theme.surfaceAlt, border: .clear, borderWidth: 0)
     }
 
     private func statCard(_ label: String, _ value: Int, _ icon: String, _ color: Color, action: @escaping () -> Void) -> some View {

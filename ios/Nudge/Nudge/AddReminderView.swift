@@ -171,9 +171,23 @@ struct AddReminderView: View {
                         .foregroundStyle(Theme.textMain)
                         .lineLimit(1...8)        // grows down as the title gets longer
                         .focused($titleFocused)
-                        .padding(16)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        // Minimal: the title field is just text on the page with a rule under
+                        // it, not a boxed input — same reasoning as `section(_:_:)` below.
+                        .padding(Theme.minimal ? 0 : 16)
+                        .padding(.vertical, Theme.minimal ? 10 : 0)
+                        .background {
+                            if Theme.minimal {
+                                Rectangle().fill(Color.clear)
+                                    .overlay(alignment: .bottom) {
+                                        Rectangle().fill(Theme.hairline).frame(height: 0.5)
+                                    }
+                            } else {
+                                RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous)
+                                    .fill(Theme.surface)
+                                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous)
+                                        .stroke(Theme.hairline, lineWidth: 1))
+                            }
+                        }
                         // Tap-to-focus assist: a vertical-axis TextField inside a ScrollView
                         // won't reliably become first responder from .focused() alone on iOS.
                         // The `including:` mask is the crux of the fix: while the field is already
@@ -482,14 +496,29 @@ struct AddReminderView: View {
 
     // MARK: - Themed building blocks
 
+    /// A titled group of rows.
+    ///
+    /// Tinted: a filled, bordered, rounded box. Minimal: no box at all — a grey caps label with
+    /// the rows underneath, separated by the hairlines the rows already draw. Squaring the box
+    /// off (which is all `Theme.radius` did) left a hard rectangle outline around every group,
+    /// which read as MORE decoration than the rounded version, not less.
     @ViewBuilder private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased()).font(.caption.weight(.bold)).tracking(0.8)
-                .foregroundStyle(Theme.accent).padding(.leading, 6)
-            VStack(spacing: 0) { content() }
-                .padding(.horizontal, 16)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        VStack(alignment: .leading, spacing: Theme.minimal ? 8 : 6) {
+            Text(title.uppercased())
+                .font(.caption.weight(Theme.minimal ? .semibold : .bold))
+                .tracking(Theme.minimal ? 1 : 0.8)
+                .foregroundStyle(Theme.minimal ? Theme.textMeta : Theme.accent)
+                .padding(.leading, Theme.minimal ? 0 : 6)
+            if Theme.minimal {
+                VStack(spacing: 0) { content() }
+                    .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+                    .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+            } else {
+                VStack(spacing: 0) { content() }
+                    .padding(.horizontal, 16)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+            }
         }
     }
 

@@ -81,8 +81,13 @@ struct SyncSettingsView: View {
                     Toggle("Compact list", isOn: Binding(
                         get: { settings.compact }, set: { settings.compact = $0 }))
 
+                    // Bold text and the completion sound are both meaningless in minimal —
+                    // one flattens its weight hierarchy, the other doesn't fire at all — so
+                    // they're disabled and dimmed rather than left looking functional.
                     Toggle("Bold text", isOn: Binding(
                         get: { settings.boldText }, set: { settings.boldText = $0 }))
+                        .disabled(settings.minimalDesign)
+                        .opacity(settings.minimalDesign ? 0.4 : 1)
 
                     Toggle("Sound & haptics on complete", isOn: Binding(
                         get: { settings.celebrationFeedback }, set: { settings.celebrationFeedback = $0 }))
@@ -92,7 +97,7 @@ struct SyncSettingsView: View {
                     Text("Appearance")
                 } footer: {
                     Text(settings.minimalDesign
-                         ? "Minimal design is on: flat rows with hairline separators, no cards, no animations, and completing a reminder just ticks it. Colour themes are switched off while it's on, and the app follows your phone's Light/Dark setting — turn on Dark Mode in iOS Settings for minimal dark. Compact fits more reminders on screen; Bold text renders the app in a heavier weight."
+                         ? "Minimal design is on: flat rows with hairline separators, no cards, no animations, and completing a reminder just ticks it. Colour themes, Bold text and the completion sound are switched off while it's on. The app follows your phone's Light/Dark setting — turn on Dark Mode in iOS Settings for minimal dark. Compact fits more reminders on screen."
                          : "Minimal design swaps Nudge's cards for a flat list like the built-in Reminders app, and follows your phone's Light/Dark setting. Otherwise, pick a colour theme. Compact fits more reminders on screen. Bold text renders the app in a heavier weight. Turn off Sound & haptics to keep the completion animation silent.")
                 }
                 .listRowBackground(Theme.surface)

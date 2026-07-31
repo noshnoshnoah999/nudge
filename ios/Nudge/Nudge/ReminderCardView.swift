@@ -76,24 +76,26 @@ struct ReminderCardView: View {
         if Theme.minimal { minimalBody } else { tintedCardBody }
     }
 
-    // MARK: - Minimal row (flat, hairline-separated, Apple Reminders / Things style)
+    // MARK: - Minimal row (modelled directly on Apple Reminders)
     //
-    // Structure is deliberately spare: circle · title · right-aligned time. Everything the
-    // tinted card shows as coloured chips and pills collapses into ONE quiet grey line of
-    // plain text underneath, and only when there's actually something to say. No capsules, no
-    // fills, no borders — the divider under the row is the only decoration.
+    // Line 1: the title, wrapping across the FULL width — no right-hand column stealing space.
+    // Line 2: the list name and the time, grey, with the time turning red when overdue.
     //
-    // The one thing kept as a real control is "Ask Claude", because it's a function, not
-    // decoration; it just renders as plain underlined text instead of a filled pill.
+    // The first minimal attempt put the time right-aligned on line 1. That looked fine with
+    // short titles and fell apart with Noah's real data: long titles were squeezed and the
+    // meta line truncated to "Personal · Every 2 days ·…". Moving the time down and cutting
+    // the meta line to essentials fixes both, and matches Reminders.
+    //
+    // The one real control kept here is "Ask Claude", because it's a function, not decoration.
+    // It renders as plain underlined text rather than a filled pill.
 
     private var minimalBody: some View {
         let r = reminder
         let overdue = store.isOverdue(r)
         let claudeP = ClaudeLink.prompt(from: r.title)
         let done = r.isCompleted
-        let meta = minimalMetaLine(r)
 
-        return HStack(alignment: .firstTextBaseline, spacing: 14) {
+        return HStack(alignment: .top, spacing: 14) {
             Button {
                 if selectMode { onToggleSelect() } else { completeWithFlair(r) }
             } label: {
@@ -102,27 +104,39 @@ struct ReminderCardView: View {
                       : (done ? "checkmark.circle.fill" : "circle"))
                     .font(.title3)
                     .foregroundStyle(selectMode
-                                     ? (isSelected ? Theme.accent : Theme.textMeta.opacity(0.45))
-                                     : (done ? Theme.textMeta : Theme.textMeta.opacity(0.45)))
+                                     ? (isSelected ? Theme.accent : Theme.textMeta.opacity(0.5))
+                                     : (done ? Theme.textMeta : Theme.textMeta.opacity(0.5)))
             }
             .buttonStyle(.plain)
+            // Nudge the circle down so it sits on the title's optical centre when the title
+            // wraps to several lines, instead of drifting toward the middle of the block.
+            .padding(.top, 1)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(claudeP ?? displayTitle(r))
                     .font(.body)
                     .foregroundStyle(done ? Theme.textMeta : Theme.textMain)
                     .strikethrough(done, color: Theme.textMeta)
                     .fixedSize(horizontal: false, vertical: true)
-                if let meta {
-                    Text(meta)
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textMeta)
-                        .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // "Personal  20:00" — list on the left, time after it, red when overdue.
+                // Built as two Texts rather than one string so only the time takes the colour.
+                if minimalListName(r) != nil || minimalTimeLabel(r) != nil {
+                    HStack(spacing: 8) {
+                        if let list = minimalListName(r) {
+                            Text(list).foregroundStyle(Theme.textMeta)
+                        }
+                        if let time = minimalTimeLabel(r) {
+                            Text(time).foregroundStyle(overdue ? Theme.coral : Theme.textMeta)
+                        }
+                    }
+                    .font(.subheadline)
+                    .lineLimit(1)
                 }
+
                 if let p = claudeP {
-                    Button {
-                        askClaude(p)
-                    } label: {
+                    Button { askClaude(p) } label: {
                         Text(isPolishing ? "Polishing…" : "Ask Claude")
                             .font(.subheadline).underline()
                             .foregroundStyle(Theme.textMeta)
@@ -131,53 +145,43 @@ struct ReminderCardView: View {
                     .padding(.top, 2)
                 }
             }
-
-            Spacer(minLength: 8)
-
-            // The time sits hard right, like the design. Overdue is the only colour in the
-            // entire minimal layout — see Theme.coral for why that exception exists.
-            if let label = dueLabel(r) {
-                Text(label)
-                    .font(.subheadline)
-                    .foregroundStyle(overdue ? Theme.coral : Theme.textMeta)
-                    .lineLimit(1)
-            } else if r.dueDate == nil && !done {
-                Text("No date")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textMeta.opacity(0.7))
-            }
         }
         .padding(.vertical, Theme.rowVerticalPadding)
         .contentShape(Rectangle())
         .onTapGesture { if selectMode { onToggleSelect() } else { onEdit() } }
         .cardSurface(radius: 0,
                      showsDivider: true,
+                     dividerInset: Theme.minimalRowTextInset,
                      emphasis: isSelected ? Theme.accent : nil)
         .opacity(done ? 0.55 : 1)
     }
 
-    /// Everything the tinted card shows as chips, squeezed into one grey line — "Money ·
-    /// repeats weekly · 2/3 · 📍 school". Returns nil when there's nothing worth a line, which
-    /// is the common case, keeping most rows to a single line like the design.
-    private func minimalMetaLine(_ r: Reminder) -> String? {
-        var parts: [String] = []
-        if let l = store.list(for: r.listId) { parts.append(l.name) }
-        if r.priorityOrNormal == "high" { parts.append("High") }
-        if r.routine == true, !(r.escalation ?? []).isEmpty {
-            let d = store.routineIntervalDays(r)
-            parts.append(d == 1 ? "daily" : "every \(d)d")
-        } else if let rec = r.recurrence, rec.freq != "none" {
-            parts.append(recurText(rec))
+    /// List name for the minimal second line. Everything else the tinted card shows as chips
+    /// (repeat cadence, subtask counts, location, link, photo, source badge) is deliberately
+    /// NOT here — it lives in the reminder when you open it. Cramming it back in is what
+    /// caused the truncated "Personal · Every 2 days ·…" line.
+    private func minimalListName(_ r: Reminder) -> String? {
+        store.list(for: r.listId)?.name
+    }
+
+    /// Time for the minimal second line, with the date included only when it isn't obvious.
+    ///
+    /// A reminder due today shows just "20:00" — on the Today tab the date is implied and
+    /// repeating "Today," on every row is noise. Anything not due today (so everything on
+    /// Overdue and Upcoming) shows "9 May, 09:00", because there the date is the point.
+    /// Deriving this from the reminder's own date rather than from which tab is on screen
+    /// means no tab plumbing, and it stays correct on Home and Search where both kinds mix.
+    private func minimalTimeLabel(_ r: Reminder) -> String? {
+        guard let d = parseDate(r.dueDate) else { return r.isCompleted ? nil : "No date" }
+        let hasTime = r.hasTime ?? false
+        let f = DateFormatter()
+        if Calendar.current.isDateInToday(d) {
+            guard hasTime else { return "Today" }
+            f.dateFormat = "HH:mm"
+        } else {
+            f.dateFormat = hasTime ? "d MMM, HH:mm" : "d MMM"
         }
-        if r.routine == true { parts.append("nightly") }
-        if let subs = r.subtasks, !subs.isEmpty {
-            parts.append("\(subs.filter { $0.done }.count)/\(subs.count)")
-        }
-        if let loc = r.location, !loc.isEmpty { parts.append(loc) }
-        if let u = r.url, !u.isEmpty { parts.append(linkLabel(u)) }
-        if ImageStore.hasImages(for: r.id) { parts.append("photo") }
-        if let badge = sourceBadge(r.source) { parts.append(badge) }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        return f.string(from: d)
     }
 
     /// Shared by the pill button and the minimal text button.

@@ -79,15 +79,30 @@ struct NudgeApp: App {
                 // a separate modifier from font. This catches the ~270 .font(...) calls that don't
                 // pin their own weight. (Requires iOS 16+; deployment target is well past that.)
                 // Views that DO set an explicit weight keep it; those are the only stragglers.
-                .fontWeight(settings.boldText ? .bold : nil)
+                // `effectiveBoldText`, not `boldText`: minimal mode ignores the Bold Text
+                // preference entirely (see AppSettings), because bolding every glyph destroys
+                // the light-body / heavy-title contrast the minimal design depends on.
+                .fontWeight(settings.effectiveBoldText ? .bold : nil)
                 .tint(settings.accent)
                 .preferredColorScheme(settings.colorScheme)
                 // Touching `shared` here builds the CLLocationManager at launch, which is what
                 // lets the OS relaunch us straight into a region event. Its delegate must exist
                 // before any geofence can fire.
-                .task { sync.attach(store); notifier.attach(store); settings.attach(store); LocationMonitor.shared.sync(reminders: store.reminders) }
+                .task {
+                    sync.attach(store); notifier.attach(store); settings.attach(store)
+                    // Clear/set the window's interface style override. Must run after the
+                    // scene exists, and again on every foreground because SwiftUI reapplies
+                    // `preferredColorScheme` and a scene can be rebuilt. See the doc comment
+                    // on applyWindowAppearance() — this is what fixed Settings rendering light
+                    // while the rest of the app was dark.
+                    settings.applyWindowAppearance()
+                    LocationMonitor.shared.sync(reminders: store.reminders)
+                }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { LocationMonitor.shared.sync(reminders: store.reminders) }
+                    if phase == .active {
+                        settings.applyWindowAppearance()
+                        LocationMonitor.shared.sync(reminders: store.reminders)
+                    }
                 }
                 .onOpenURL { url in
                     // Lock Screen quick-add widget deep link → open the same Quick Catch

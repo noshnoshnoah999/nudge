@@ -144,15 +144,18 @@ enum Theme {
 
     /// Corner radius for cards. 0 in minimal → straight edges, no rounded boxes anywhere.
     static func radius(_ normal: CGFloat) -> CGFloat { minimal ? 0 : normal }
-    /// Border width around a card. Minimal draws a single hairline UNDER each row instead of a
-    /// box around it, so the standard border goes to zero.
-    static var cardBorderWidth: CGFloat { minimal ? 0 : 1 }
     /// Horizontal page inset for the scrolling content. 24pt in minimal, matching the design
     /// this was copied from — the generous margin is a big part of why it reads as calm.
     static var rowInset: CGFloat { minimal ? 24 : 18 }
-    /// Vertical padding inside a reminder row. Minimal rows are taller and airier than the
-    /// tinted cards, because the whitespace is doing the work the card fill used to do.
-    static var rowVerticalPadding: CGFloat { 13 }
+    /// Vertical padding inside a minimal reminder row. Kept fairly tight (10pt) on purpose:
+    /// the first minimal build used 13pt with a full-bleed rule and the rows read as floating
+    /// blobs of text rather than a list. Tighter rows + an inset rule is what makes a list
+    /// scan as a list.
+    static var rowVerticalPadding: CGFloat { 10 }
+    /// Gap between the completion circle and the text column in a minimal row, and therefore
+    /// how far the divider under it is inset. One constant so the two can't drift — if they
+    /// disagree the rule looks misaligned with the text above it.
+    static let minimalRowTextInset: CGFloat = 36
     /// Gap between sections. Minimal separates by whitespace alone, so it needs more of it.
     static var sectionSpacing: CGFloat { minimal ? 30 : 20 }
 
@@ -223,26 +226,38 @@ extension View {
     /// radius, which produced squared-off cards — visually still Nudge, just uglier. A minimal
     /// list is defined by the ABSENCE of the container, not by its shape.
     ///
-    /// `showsDivider: false` for the last row in a section (design 1 has no trailing rule).
-    /// `emphasis` still draws something in minimal for selected/overdue rows — a leading bar
-    /// rather than a box, because a full outline would put the card back.
+    /// `showsDivider: false` for the last row in a section.
+    ///
+    /// `dividerInset` shifts the rule's left edge inward so it starts where the TEXT starts,
+    /// not at the circle — the way Reminders, Mail and Settings all do it. This inset is what
+    /// makes a row read as one object: the ruled line visually belongs to the text column, so
+    /// the circle and its title group together. A full-bleed rule instead cuts the screen into
+    /// horizontal bands and the rows stop feeling like units. It does more work than making the
+    /// line brighter, which is the obvious-but-wrong fix.
+    ///
+    /// `emphasis` still draws something in minimal for selected rows — a leading bar rather
+    /// than a box, because a full outline would put the card back.
     @ViewBuilder
     func cardSurface(radius normal: CGFloat,
                      fill: Color = Theme.surface,
                      border: Color = Theme.hairline,
                      borderWidth: CGFloat? = nil,
                      showsDivider: Bool = true,
+                     dividerInset: CGFloat = 0,
                      emphasis: Color? = nil) -> some View {
         if Theme.minimal {
             self
                 .overlay(alignment: .bottom) {
                     if showsDivider {
-                        Rectangle().fill(Theme.hairline).frame(height: 0.5)
+                        // Spacer + rule rather than `.padding(.leading:)`, so the inset is
+                        // unambiguous regardless of how the overlay sizes itself.
+                        HStack(spacing: 0) {
+                            Color.clear.frame(width: dividerInset, height: 0.5)
+                            Rectangle().fill(Theme.hairline).frame(height: 0.5)
+                        }
                     }
                 }
                 .overlay(alignment: .leading) {
-                    // Selected / overdue still has to be unmistakable. A 3pt leading bar reads
-                    // clearly without reintroducing a container.
                     if let e = emphasis {
                         Rectangle().fill(e).frame(width: 3)
                     }
