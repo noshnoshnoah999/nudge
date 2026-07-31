@@ -133,8 +133,17 @@ final class AppSettings: ObservableObject {
         if let cloudCompact, cloudCompact != compact { compact = cloudCompact }
     }
 
-    // Themes are light-tinted; keep the system chrome light so tints render true.
-    var colorScheme: ColorScheme? { .light }
+    /// System chrome (keyboard, sheets, date wheels, context menus, scroll indicators)
+    /// follows the palette. The eight tinted themes are all light-backed, so they force
+    /// `.light` as before — otherwise iOS in dark mode would render dark chrome on top of a
+    /// pale tint. "Plain Dark" is the only dark-backed palette, and it must force `.dark`:
+    /// leaving this at `.light` would give a black page with a white keyboard.
+    var colorScheme: ColorScheme? { Palettes.by(theme).isDark ? .dark : .light }
+
+    /// True when the selected palette is one of the Plain (low-stimulation) ones. Views can
+    /// read this off the environment object; `Theme.minimal` is the same value for code
+    /// that isn't holding an AppSettings.
+    var minimal: Bool { Palettes.by(theme).minimal }
 
     var accent: Color { Theme.accent }
     var accentSoft: Color { Theme.accentSoft }

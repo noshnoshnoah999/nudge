@@ -81,7 +81,7 @@ struct RescheduleHistoryView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
-                    .background(Theme.bg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Theme.bg, in: RoundedRectangle(cornerRadius: Theme.radius(10), style: .continuous))
                 }
                 if !isUndone {
                     Button {
@@ -96,8 +96,8 @@ struct RescheduleHistoryView: View {
             }
         }
         .padding(14)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
         .opacity(isUndone ? 0.6 : 1)
     }
 

@@ -86,7 +86,7 @@ struct ReminderCardView: View {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 23, weight: .regular))
                         .foregroundStyle(isSelected ? settings.accent : Theme.textMeta.opacity(0.5))
-                        .symbolEffect(.bounce, value: isSelected)
+                        .symbolEffect(.bounce, value: Theme.minimal ? false : isSelected)
                 }
                 .buttonStyle(PressableStyle(scale: 0.8))
                 .padding(.top, 1)
@@ -97,7 +97,7 @@ struct ReminderCardView: View {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 23, weight: .regular))
                         .foregroundStyle(done ? Theme.sage : (overdue ? Theme.coral : Theme.textMeta.opacity(0.5)))
-                        .symbolEffect(.bounce, value: done)
+                        .symbolEffect(.bounce, value: Theme.minimal ? false : done)
                 }
                 .buttonStyle(PressableStyle(scale: 0.8))
                 .padding(.top, 1)
@@ -189,14 +189,21 @@ struct ReminderCardView: View {
         .padding(compact ? 13 : 15)
         // Overdue: drop the red wash (harsh on the warm bg) — same card fill, just a
         // gentle warm border + the due chip mark it.
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .strokeBorder(isSelected ? settings.accent : (overdue ? Theme.coral.opacity(0.85) : Theme.hairline),
-                          lineWidth: isSelected ? 2.5 : (overdue ? 2.5 : 1)))
-        // Gold tracing border that draws around the card on completion.
+        //
+        // `cardSurface` is the one place card geometry is decided. Tinted themes get the
+        // rounded, bordered card; Plain gets a flat full-width row with a bottom hairline,
+        // like a system list. Selection and overdue still force a visible outline in Plain —
+        // "boring" must not mean "can't tell what's selected or late".
+        .cardSurface(radius: radius,
+                     fill: Theme.surface,
+                     border: isSelected ? settings.accent
+                                        : (overdue ? Theme.coral.opacity(0.85) : Theme.hairline),
+                     borderWidth: isSelected ? 2.5
+                                             : (overdue ? 2.5 : (Theme.minimal ? 0 : 1)))
+        // Gold tracing border that draws around the card on completion. Skipped entirely in
+        // Plain mode — see completeWithFlair, which never sets `trace` there.
         .overlay(
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.radius(radius), style: .continuous)
                 .trim(from: 0, to: trace)
                 .stroke(LinearGradient(colors: [gold, gold.opacity(0.35)],
                                        startPoint: .topLeading, endPoint: .bottomTrailing),
@@ -212,6 +219,13 @@ struct ReminderCardView: View {
     /// list springs to bunch up. Un-ticking and nightly routines skip the slide (routines roll
     /// forward in place rather than leaving the list).
     private func completeWithFlair(_ r: Reminder) {
+        // Plain mode: no flair at all. No gold trace, no slide-off, no haptic, no chime —
+        // just tick it and move on, the way Apple Reminders does. Completing a task should
+        // not be a reward event in a theme whose whole purpose is to be unstimulating.
+        guard !Theme.minimal else {
+            store.toggleComplete(r)
+            return
+        }
         let haptics = settings.celebrationFeedback
         guard !r.isCompleted, !(r.routine ?? false) else {
             store.toggleComplete(r)
@@ -282,14 +296,14 @@ struct ReminderCardView: View {
         } label: {
             HStack(spacing: 5) {
                 if isPolishing {
-                    ProgressView().controlSize(.mini).tint(.white)
+                    ProgressView().controlSize(.mini).tint(Theme.onAccent)
                     Text("Polishing…")
                 } else {
                     Image(systemName: "sparkles")
                     Text("Ask Claude")
                 }
             }
-            .font(.caption.weight(.bold)).foregroundStyle(.white)
+            .font(.caption.weight(.bold)).foregroundStyle(Theme.onAccent)
             .padding(.horizontal, 11).padding(.vertical, 5)
             .background(settings.accentGrad, in: Capsule())
         }

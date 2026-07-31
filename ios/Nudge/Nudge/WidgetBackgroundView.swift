@@ -31,9 +31,9 @@ struct WidgetBackgroundView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(height: 140)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
                                 .stroke(.secondary.opacity(0.35), lineWidth: 1)
                         )
                         .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))

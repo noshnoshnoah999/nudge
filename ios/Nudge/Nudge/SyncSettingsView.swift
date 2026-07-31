@@ -40,9 +40,9 @@ struct SyncSettingsView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Theme").font(.subheadline)
-                        // All 8 palettes wrap into a 4-column grid (2 even rows, no gaps)
-                        // so none are hidden off-screen (Ocean used to be clipped past the
-                        // right edge of a horizontal scroll).
+                        // All palettes wrap into a 4-column grid (no gaps) so none are hidden
+                        // off-screen (Ocean used to be clipped past the right edge of a
+                        // horizontal scroll). The two Plain swatches land on the third row.
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
                                   spacing: 14) {
                             ForEach(Palettes.all) { p in
@@ -52,7 +52,14 @@ struct SyncSettingsView: View {
                                             Circle().fill(Color(hex: p.bg)).frame(width: 40, height: 40)
                                             Circle().fill(Color(hex: p.accent)).frame(width: 18, height: 18)
                                         }
-                                        .overlay(Circle().stroke(settings.theme == p.id ? Color(hex: p.accent) : Color.black.opacity(0.1),
+                                        // The Plain swatches are near-white and near-black, so
+                                        // the usual faint black ring is invisible on one and
+                                        // indistinguishable on the other. Give every swatch a
+                                        // ring that contrasts with its own background.
+                                        .overlay(Circle().stroke(settings.theme == p.id
+                                                                 ? Color(hex: p.accent)
+                                                                 : (p.isDark ? Color.white.opacity(0.35)
+                                                                             : Color.black.opacity(0.18)),
                                                                  lineWidth: settings.theme == p.id ? 2.5 : 1)
                                             .frame(width: 46, height: 46))
                                         Text(p.name)
@@ -78,7 +85,7 @@ struct SyncSettingsView: View {
                 } header: {
                     Text("Appearance")
                 } footer: {
-                    Text("Pick a colour theme. Compact fits more reminders on screen. Bold text renders the app in a heavier weight. Turn off Sound & haptics to keep the completion animation silent.")
+                    Text("Pick a colour theme. Plain and Plain Dark are deliberately boring: flat grey rows, no animations, no completion sound or slide-off, and Plain Dark turns the whole app black. Compact fits more reminders on screen. Bold text renders the app in a heavier weight. Turn off Sound & haptics to keep the completion animation silent.")
                 }
                 .listRowBackground(Theme.surface)
 

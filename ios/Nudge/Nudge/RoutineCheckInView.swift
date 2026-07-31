@@ -92,7 +92,7 @@ struct RoutineCheckInView: View {
                 HStack(spacing: 10) {
                     Button { didIt(r, night: night) } label: {
                         Label("Yes, did it", systemImage: "checkmark")
-                            .font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                            .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
                             .frame(maxWidth: .infinity).padding(.vertical, 11)
                             .background(Theme.sage, in: Capsule())
                     }.buttonStyle(PressableStyle())
@@ -105,8 +105,8 @@ struct RoutineCheckInView: View {
             }
         }
         .padding(16)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     private func stepUpCard(_ r: Reminder) -> some View {
@@ -120,7 +120,7 @@ struct RoutineCheckInView: View {
                 .font(.subheadline).foregroundStyle(Theme.textMeta)
             HStack(spacing: 10) {
                 Button { store.routineStepUp(r.id); resolved.insert(r.id) } label: {
-                    Label("Step up", systemImage: "arrow.up").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    Label("Step up", systemImage: "arrow.up").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
                         .frame(maxWidth: .infinity).padding(.vertical, 11).background(Theme.accent, in: Capsule())
                 }.buttonStyle(PressableStyle())
                 Button { store.routineSnoozeAsk(r.id); resolved.insert(r.id) } label: {
@@ -130,8 +130,8 @@ struct RoutineCheckInView: View {
             }
         }
         .padding(16)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     private func pill(_ label: String, _ action: @escaping () -> Void) -> some View {

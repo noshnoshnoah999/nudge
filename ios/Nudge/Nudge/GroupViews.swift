@@ -50,7 +50,7 @@ struct GroupReviewView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
-                        .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
                     }
                 }
                 .padding(18)

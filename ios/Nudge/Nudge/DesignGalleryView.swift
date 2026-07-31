@@ -128,7 +128,7 @@ private struct BoldStyle: View {
                 .padding(22).frame(maxWidth: .infinity, alignment: .leading)
                 .background(LinearGradient(colors: [Color(hex: "6E5BF0"), Color(hex: "C24AC8")],
                                            startPoint: .topLeading, endPoint: .bottomTrailing))
-                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius(26), style: .continuous))
 
                 boldSec("OVERDUE", gOverdue)
                 boldSec("TODAY", gToday)
@@ -142,7 +142,7 @@ private struct BoldStyle: View {
             Text(t).font(.title3.weight(.heavy))
             ForEach(rows) { r in
                 HStack(spacing: 14) {
-                    RoundedRectangle(cornerRadius: 3).fill(r.color).frame(width: 5, height: 40)
+                    RoundedRectangle(cornerRadius: Theme.radius(3)).fill(r.color).frame(width: 5, height: 40)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(r.title).font(.body.weight(.bold))
                         Text("\(r.list) · \(r.time)").font(.caption.weight(.medium)).foregroundStyle(.secondary)
@@ -152,7 +152,7 @@ private struct BoldStyle: View {
                 }
                 .padding(16)
                 .background(Color(.systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
                 .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
             }
         }

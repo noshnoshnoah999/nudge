@@ -47,15 +47,15 @@ struct RescheduleOptionsView: View {
                         Button {
                             apply(smart)
                         } label: {
-                            Text("Use this time").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                            Text("Use this time").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
                                 .frame(maxWidth: .infinity).padding(12)
-                                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
                         }
                         .buttonStyle(PressableStyle())
                     }
                     .padding(16)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     // Manual pick
                     VStack(alignment: .leading, spacing: 12) {
@@ -71,13 +71,13 @@ struct RescheduleOptionsView: View {
                         } label: {
                             Text("Reschedule to this").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
                                 .frame(maxWidth: .infinity).padding(12)
-                                .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
                         }
                         .buttonStyle(PressableStyle())
                     }
                     .padding(16)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
                 }
                 .padding(18)
             }

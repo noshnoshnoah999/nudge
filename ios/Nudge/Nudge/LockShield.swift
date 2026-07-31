@@ -62,12 +62,12 @@ private struct LockShieldView: View {
                 VStack(spacing: 18) {
                     ZStack {
                         Circle().fill(Theme.accent).frame(width: 84, height: 84)
-                        Image(systemName: "lock.fill").font(.system(size: 34, weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: "lock.fill").font(.system(size: 34, weight: .bold)).foregroundStyle(Theme.onAccent)
                     }
                     Text("Nudge is locked").font(.title3.weight(.bold)).foregroundStyle(Theme.textMain)
                     Button { onUnlock() } label: {
                         Label("Unlock", systemImage: "faceid")
-                            .font(.headline).foregroundStyle(.white)
+                            .font(.headline).foregroundStyle(Theme.onAccent)
                             .padding(.horizontal, 24).padding(.vertical, 13)
                             .background(Theme.accent, in: Capsule())
                     }

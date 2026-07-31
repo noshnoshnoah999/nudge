@@ -132,11 +132,11 @@ struct TimetableView: View {
                         VStack(spacing: 3) {
                             Text(dayName(d)).font(.caption2.weight(.bold))
                             Text("\(cal.component(.day, from: d))").font(.headline.weight(.bold))
-                            Circle().fill(count > 0 ? (on ? Color.white : Theme.accent) : .clear).frame(width: 5, height: 5)
+                            Circle().fill(count > 0 ? (on ? Theme.onAccent : Theme.accent) : .clear).frame(width: 5, height: 5)
                         }
                         .frame(width: 50, height: 66)
-                        .background(on ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .foregroundStyle(on ? .white : Theme.textMain)
+                        .background(on ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
+                        .foregroundStyle(on ? Theme.onAccent : Theme.textMain)
                     }
                     .buttonStyle(.plain)
                 }
@@ -197,9 +197,9 @@ struct TimetableView: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
         .frame(width: max(60, width - lead - 4), height: bottom - top, alignment: .topLeading)
-        .background(Theme.sage.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Theme.sage.opacity(0.30), lineWidth: 1))
-        .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(Theme.sage).frame(width: 3) }
+        .background(Theme.sage.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radius(9), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(9), style: .continuous).stroke(Theme.sage.opacity(0.30), lineWidth: 1))
+        .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: Theme.radius(2)).fill(Theme.sage).frame(width: 3) }
         .offset(x: lead, y: top)
         .allowsHitTesting(false)
     }
@@ -231,7 +231,7 @@ struct TimetableView: View {
         let w = (avail - CGFloat(cols - 1) * gap) / CGFloat(max(cols, 1))
         let x = lead + CGFloat(col) * (w + gap)
         return HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 3).fill(Theme.accent).frame(width: 4)
+            RoundedRectangle(cornerRadius: Theme.radius(3)).fill(Theme.accent).frame(width: 4)
             VStack(alignment: .leading, spacing: 1) {
                 Text(displayTitle(r)).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMain).lineLimit(1)
                 Text(timeStr(dragging ? timeFrom(y: y, on: selected) : due))
@@ -242,8 +242,8 @@ struct TimetableView: View {
         }
         .padding(.horizontal, cols > 1 ? 8 : 10).padding(.vertical, 8)
         .frame(width: w, height: blockH, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(11), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(11), style: .continuous)
             .stroke(Theme.accent.opacity(dragging ? 0.9 : 0.25), lineWidth: dragging ? 2 : 1))
         .shadow(color: .black.opacity(dragging ? 0.16 : 0), radius: 7, y: 3)
         .offset(x: x, y: y)

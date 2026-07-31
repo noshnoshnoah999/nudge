@@ -72,7 +72,11 @@ struct ContentView: View {
                 header
                 if let d = signingDaysLeft, d <= 2, expiryDismissedAtDays != d { expiryBanner(d) }
                 ScrollView {
-                    VStack(alignment: .leading, spacing: settings.compact ? 14 : 20) {
+                    // Plain mode: rows butt up against each other with no gutter and run
+                    // edge-to-edge, so the page reads as one continuous system list rather
+                    // than a stack of floating cards. Tinted themes keep the 18pt inset and
+                    // the airy 14/20pt spacing.
+                    VStack(alignment: .leading, spacing: Theme.minimal ? 0 : (settings.compact ? 14 : 20)) {
                         switch tab {
                         case 0: dashboardTab
                         case 1: todayTab
@@ -82,14 +86,15 @@ struct ContentView: View {
                         default: searchTab
                         }
                     }
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, Theme.rowInset)
                     .padding(.top, 6)
                     .padding(.bottom, 110)
                     .animation(Theme.spring, value: store.reminders)
                     .id(tab)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .offset(y: 10)),
-                        removal: .opacity))
+                    .transition(Theme.minimal
+                                ? .identity
+                                : .asymmetric(insertion: .opacity.combined(with: .offset(y: 10)),
+                                              removal: .opacity))
                 }
             }
 
@@ -345,8 +350,8 @@ struct ContentView: View {
                                 }
                             }
                             .frame(width: 40, height: 40)
-                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
                         }
                         .buttonStyle(PressableStyle())
                         .disabled(notionPushing)
@@ -376,22 +381,22 @@ struct ContentView: View {
 
     private var selectionBar: some View {
         HStack(spacing: 12) {
-            Text("\(selectedIds.count) selected").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+            Text("\(selectedIds.count) selected").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain)
             Spacer(minLength: 12)
             Button {
                 withAnimation(Theme.spring) { selectMode = false; selectedIds.removeAll() }
             } label: {
-                Text("Cancel").font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
+                Text("Cancel").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain.opacity(0.85))
             }
             Button { showBulkMove = true } label: {
-                Text("Move").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                Text("Move").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
                     .padding(.horizontal, 14).padding(.vertical, 7)
                     .background(Theme.accent, in: Capsule())
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 13)
         .background(Theme.textMain.opacity(0.94), in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 1))
+        .overlay(Capsule().stroke(Theme.onTextMain.opacity(0.1), lineWidth: 1))
         .cardElevation(14, y: 5, opacity: 0.2)
         .padding(.horizontal, 24).padding(.bottom, 100)
         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -399,16 +404,16 @@ struct ContentView: View {
 
     private func undoToast(_ r: Reminder) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "trash").font(.subheadline).foregroundStyle(.white.opacity(0.85))
-            Text("Reminder deleted").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+            Image(systemName: "trash").font(.subheadline).foregroundStyle(Theme.onTextMain.opacity(0.85))
+            Text("Reminder deleted").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain)
             Spacer(minLength: 12)
             Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); store.undoDelete() } label: {
-                Text("Undo").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                Text("Undo").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onTextMain)
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 13)
         .background(Theme.textMain.opacity(0.94), in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 1))
+        .overlay(Capsule().stroke(Theme.onTextMain.opacity(0.1), lineWidth: 1))
         .cardElevation(14, y: 5, opacity: 0.2)
         .padding(.horizontal, 24).padding(.bottom, 100)
         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -460,10 +465,10 @@ struct ContentView: View {
     }
 
     private func simpleToast(_ message: String) -> some View {
-        Text(message).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+        Text(message).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain)
             .padding(.horizontal, 18).padding(.vertical, 13)
             .background(Theme.textMain.opacity(0.94), in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 1))
+            .overlay(Capsule().stroke(Theme.onTextMain.opacity(0.1), lineWidth: 1))
             .cardElevation(14, y: 5, opacity: 0.2)
             .padding(.horizontal, 24).padding(.bottom, 100)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -475,8 +480,8 @@ struct ContentView: View {
                 .foregroundStyle(pulse ? Theme.coral : Theme.textMain)
                 .symbolEffect(.pulse, isActive: pulse)
                 .frame(width: 40, height: 40)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
         }
         .buttonStyle(PressableStyle())
     }
@@ -669,7 +674,7 @@ struct ContentView: View {
             .buttonStyle(PressableStyle(scale: 0.85))
         }
         .padding(18)
-        .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
     }
 
     private func statCard(_ label: String, _ value: Int, _ icon: String, _ color: Color, action: @escaping () -> Void) -> some View {
@@ -685,8 +690,8 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
         }
         .buttonStyle(PressableStyle(scale: 0.97))
     }
@@ -704,15 +709,15 @@ struct ContentView: View {
         Button { runSmartReschedule() } label: {
             HStack(spacing: 8) {
                 if aiRescheduling {
-                    ProgressView().tint(.white)
+                    ProgressView().tint(Theme.onAccent)
                     Text("Thinking…")
                 } else {
                     Label("Smart Reschedule overdue", systemImage: "sparkles")
                 }
             }
-            .font(.subheadline.weight(.bold)).foregroundStyle(.white)
+            .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
             .frame(maxWidth: .infinity).padding(13)
-            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
         }
         .buttonStyle(PressableStyle())
         .disabled(aiRescheduling)
@@ -747,7 +752,7 @@ struct ContentView: View {
                 }
                 .font(.subheadline).foregroundStyle(Theme.coral)
                 .padding(14)
-                .background(Theme.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Theme.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
             }
             .buttonStyle(PressableStyle())
         }
@@ -777,21 +782,28 @@ struct ContentView: View {
         return HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text("TODAY").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.textMeta)
-                Text(s.total == 0 ? "All clear" : "\(s.done)/\(s.total) done")
-                    .font(.system(size: 30, weight: .heavy)).foregroundStyle(Theme.textMain)
+                // Plain mode dials the hero number down from a 30pt heavy display face to
+                // ordinary body text, and drops the progress ring for a plain "3 of 7" count.
+                // A progress ring is a small dopamine gauge; that's exactly what this theme
+                // is trying not to be.
+                Text(s.total == 0 ? "All clear" : (Theme.minimal ? "\(s.done) of \(s.total) done" : "\(s.done)/\(s.total) done"))
+                    .font(Theme.minimal ? .title3.weight(.semibold) : .system(size: 30, weight: .heavy))
+                    .foregroundStyle(Theme.textMain)
                     .contentTransition(.numericText())
             }
             Spacer()
-            ZStack {
-                Circle().stroke(Theme.hairline, lineWidth: 7)
-                Circle().trim(from: 0, to: max(0.001, frac))
-                    .stroke(Theme.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(Theme.spring, value: frac)
-            }.frame(width: 54, height: 54)
+            if !Theme.minimal {
+                ZStack {
+                    Circle().stroke(Theme.hairline, lineWidth: 7)
+                    Circle().trim(from: 0, to: max(0.001, frac))
+                        .stroke(Theme.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(Theme.spring, value: frac)
+                }.frame(width: 54, height: 54)
+            }
         }
-        .padding(18)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(Theme.minimal ? 14 : 18)
+        .cardSurface(radius: 20, fill: Theme.surface)
     }
 
     // MARK: - Upcoming tab
@@ -862,7 +874,7 @@ struct ContentView: View {
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textMeta)
             }
             .padding(15)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
         }
         .buttonStyle(PressableStyle(scale: 0.98))
         .padding(.top, 8)
@@ -884,8 +896,8 @@ struct ContentView: View {
             Text(c.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMain).lineLimit(1)
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     private func listCard(_ l: ReminderList) -> some View {
@@ -901,8 +913,8 @@ struct ContentView: View {
             Text(l.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMain).lineLimit(1)
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     // MARK: - Search tab
@@ -914,7 +926,7 @@ struct ContentView: View {
             if !search.isEmpty { Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textMeta) } }
         }
         .padding(12)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
 
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         if !q.isEmpty {
@@ -957,7 +969,7 @@ struct ContentView: View {
                         .foregroundStyle(isOverdue ? Theme.coral : Theme.textMeta)
                     Text("\(section.items.count)").font(.caption2.weight(.bold))
                         .contentTransition(.numericText())
-                        .foregroundStyle(isOverdue ? .white : Theme.textMeta)
+                        .foregroundStyle(isOverdue ? Theme.onCoral : Theme.textMeta)
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(isOverdue ? AnyShapeStyle(Theme.coral) : AnyShapeStyle(Theme.surfaceAlt), in: Capsule())
                     Spacer()
@@ -1029,7 +1041,7 @@ struct ContentView: View {
                         Image(systemName: t.icon)
                             .font(.system(size: 17, weight: active ? .bold : .regular))
                             .scaleEffect(active ? 1.1 : 1)
-                            .symbolEffect(.bounce, value: active)
+                            .symbolEffect(.bounce, value: Theme.minimal ? false : active)
                         Text(t.name).font(.caption2.weight(active ? .bold : .medium))
                     }
                     .foregroundStyle(active ? Theme.accent : Theme.textMeta)
@@ -1037,7 +1049,7 @@ struct ContentView: View {
                     .padding(.vertical, 10)
                     .background {
                         if active {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
                                 .fill(Theme.accentSoft)
                                 .matchedGeometryEffect(id: "tabSel", in: tabNS)
                         }
@@ -1059,12 +1071,14 @@ struct ContentView: View {
                 ProgressView().controlSize(.large).tint(Theme.accent)
                 Text("Preparing Claude…").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMain)
             }
-            .padding(24).background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(24).background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
         }
     }
 
-    // reverse text colour for on-accent (white on dark accent, dark on light accent) — accents are dark, so white.
-    private var reverseText: Color { .white }
+    // Reverse text colour for on-accent fills. Used to be hardcoded white on the assumption
+    // that every accent is dark — true of the 8 tinted palettes, false of Plain Dark, whose
+    // accent is a light grey. Theme.onAccent picks the right one per palette.
+    private var reverseText: Color { Theme.onAccent }
 
     // Glowing red banner pinned to the very top on the first open after an AI carry-over ran.
     @State private var carryGlow = false
@@ -1074,28 +1088,42 @@ struct ContentView: View {
             showCarryReview = e
             carryLog.dismissBanner()
         } label: {
+            // Plain mode: this banner is the single loudest element in the app — a saturated
+            // red gradient with a shadow that pulses forever. Keeping it would defeat the
+            // whole point of a low-stimulation theme, so it degrades to a flat surface row
+            // with plain text. The information is identical; only the shouting is removed.
+            let fg = Theme.minimal ? Theme.textMain : Color.white
             HStack(spacing: 10) {
-                Image(systemName: "sparkles").foregroundStyle(.white)
+                Image(systemName: "sparkles").foregroundStyle(fg)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("AI tidied up last night").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    Text("AI tidied up last night").font(.subheadline.weight(.bold)).foregroundStyle(fg)
                     Text("Moved \(e?.moved.count ?? 0) to today · left \(e?.kept.count ?? 0). Tap to review.")
-                        .font(.caption).foregroundStyle(.white.opacity(0.95))
+                        .font(.caption).foregroundStyle(fg.opacity(0.95))
                 }
                 Spacer()
-                Image(systemName: "chevron.right").font(.subheadline.weight(.bold)).foregroundStyle(.white.opacity(0.9))
+                Image(systemName: "chevron.right").font(.subheadline.weight(.bold)).foregroundStyle(fg.opacity(0.9))
             }
             .padding(12)
-            .background(
-                LinearGradient(colors: [Color(red: 0.86, green: 0.15, blue: 0.18),
-                                        Color(red: 0.70, green: 0.05, blue: 0.12)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(color: Color.red.opacity(carryGlow ? 0.85 : 0.3),
-                    radius: carryGlow ? 16 : 6, y: 0)
+            .background {
+                if Theme.minimal {
+                    Rectangle().fill(Theme.surface)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+                } else {
+                    RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
+                        .fill(LinearGradient(colors: [Color(red: 0.86, green: 0.15, blue: 0.18),
+                                                      Color(red: 0.70, green: 0.05, blue: 0.12)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .shadow(color: Color.red.opacity(carryGlow ? 0.85 : 0.3),
+                                radius: carryGlow ? 16 : 6, y: 0)
+                }
+            }
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 4)
+        .padding(.horizontal, Theme.minimal ? 0 : 18).padding(.top, 8).padding(.bottom, 4)
         .onAppear {
+            // No forever-repeating pulse in plain mode — a permanently animating element is
+            // exactly the kind of attention hook this theme exists to remove.
+            guard !Theme.minimal else { return }
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { carryGlow = true }
         }
     }
@@ -1109,27 +1137,37 @@ struct ContentView: View {
             groupLog.dismissBanner()
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: "folder.fill.badge.plus").foregroundStyle(.white)
+                // Same reasoning as carryOverBanner: flat neutral row in Plain mode, no
+                // orange gradient and no forever-pulsing glow.
+                let fg = Theme.minimal ? Theme.textMain : Color.white
+                Image(systemName: "folder.fill.badge.plus").foregroundStyle(fg)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("AI grouped reminders last night").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    Text("AI grouped reminders last night").font(.subheadline.weight(.bold)).foregroundStyle(fg)
                     Text("Made \(e?.groups.count ?? 0) group\((e?.groups.count ?? 0) == 1 ? "" : "s") from \(e?.groupedCount ?? 0) reminders. Tap to review.")
-                        .font(.caption).foregroundStyle(.white.opacity(0.95))
+                        .font(.caption).foregroundStyle(fg.opacity(0.95))
                 }
                 Spacer()
-                Image(systemName: "chevron.right").font(.subheadline.weight(.bold)).foregroundStyle(.white.opacity(0.9))
+                Image(systemName: "chevron.right").font(.subheadline.weight(.bold)).foregroundStyle(fg.opacity(0.9))
             }
             .padding(12)
-            .background(
-                LinearGradient(colors: [Color(red: 0.98, green: 0.55, blue: 0.10),
-                                        Color(red: 0.92, green: 0.38, blue: 0.02)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(color: Color.orange.opacity(groupGlow ? 0.8 : 0.3),
-                    radius: groupGlow ? 15 : 6, y: 0)
+            .background {
+                if Theme.minimal {
+                    Rectangle().fill(Theme.surface)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+                } else {
+                    RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
+                        .fill(LinearGradient(colors: [Color(red: 0.98, green: 0.55, blue: 0.10),
+                                                      Color(red: 0.92, green: 0.38, blue: 0.02)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .shadow(color: Color.orange.opacity(groupGlow ? 0.8 : 0.3),
+                                radius: groupGlow ? 15 : 6, y: 0)
+                }
+            }
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 4)
+        .padding(.horizontal, Theme.minimal ? 0 : 18).padding(.top, 8).padding(.bottom, 4)
         .onAppear {
+            guard !Theme.minimal else { return }
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { groupGlow = true }
         }
     }
@@ -1163,20 +1201,20 @@ struct ContentView: View {
 
     private func expiryBanner(_ days: Int) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.white)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.onCoral)
             VStack(alignment: .leading, spacing: 1) {
                 Text(days <= 0 ? "App access expires today" : "App expires in \(days) day\(days == 1 ? "" : "s")")
-                    .font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onCoral)
                 Text("Run “Reinstall Nudge” on your Mac to keep it working.")
-                    .font(.caption).foregroundStyle(.white.opacity(0.9))
+                    .font(.caption).foregroundStyle(Theme.onCoral.opacity(0.9))
             }
             Spacer()
             Button { withAnimation(Theme.spring) { expiryDismissedAtDays = days } } label: {
-                Image(systemName: "xmark").font(.subheadline.weight(.bold)).foregroundStyle(.white.opacity(0.9))
+                Image(systemName: "xmark").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onCoral.opacity(0.9))
             }.buttonStyle(.plain)
         }
         .padding(12)
-        .background(Theme.coral, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Theme.coral, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
         .padding(.horizontal, 18).padding(.bottom, 8)
     }
 
@@ -1418,7 +1456,7 @@ struct FilteredListView: View {
                 if list_.isEmpty {
                     Text("Drag reminders here").font(.caption).foregroundStyle(Theme.textMeta)
                         .frame(maxWidth: .infinity).padding(.vertical, 18)
-                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .background(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
                             .strokeBorder(Theme.hairline, style: StrokeStyle(lineWidth: 1.5, dash: [6])))
                 } else {
                     ForEach(list_) { r in
@@ -1429,7 +1467,7 @@ struct FilteredListView: View {
             }
             .padding(8)
             .background((dropTarget == key ? Theme.accentSoft : Color.clear),
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
             .dropDestination(for: String.self) { ids, _ in
                 for id in ids { store.setSection(id, to: title) }
                 return true

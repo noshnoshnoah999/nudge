@@ -48,21 +48,21 @@ struct TriageView: View {
                     Label("Delete", systemImage: "trash")
                         .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMeta)
                         .frame(maxWidth: .infinity).padding(.vertical, 11)
-                        .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
                 }
                 .buttonStyle(PressableStyle())
                 Button { remove(item.r); store.acknowledgeKeep(item.r.id); keptCount += 1 } label: {
                     Label("Keep", systemImage: "checkmark")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
                         .frame(maxWidth: .infinity).padding(.vertical, 11)
-                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
                 }
                 .buttonStyle(PressableStyle())
             }
         }
         .padding(16)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
         .transition(.scale(scale: 0.92).combined(with: .opacity))
     }
 
@@ -83,7 +83,7 @@ struct TriageView: View {
             if let onSmart = onSmartReschedule, store.overdueCount() > 0 {
                 Button { onSmart() } label: {
                     Label("Reschedule overdue now", systemImage: "sparkles")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
                         .padding(.horizontal, 18).padding(.vertical, 12)
                         .background(Theme.accent, in: Capsule())
                 }

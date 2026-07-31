@@ -57,7 +57,7 @@ struct AddReminderView: View {
     private func photoThumb(_ img: AttachedImage) -> some View {
         Image(uiImage: img.image).resizable().scaledToFill()
             .frame(width: 72, height: 72)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
             .overlay(alignment: .topTrailing) {
                 Button { remove(img) } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(Color.white, Color.black.opacity(0.5))
@@ -172,8 +172,8 @@ struct AddReminderView: View {
                         .lineLimit(1...8)        // grows down as the title gets longer
                         .focused($titleFocused)
                         .padding(16)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
                         // Tap-to-focus assist: a vertical-axis TextField inside a ScrollView
                         // won't reliably become first responder from .focused() alone on iOS.
                         // The `including:` mask is the crux of the fix: while the field is already
@@ -198,7 +198,7 @@ struct AddReminderView: View {
                             .foregroundStyle(Theme.accent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
-                            .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -384,7 +384,7 @@ struct AddReminderView: View {
                             Label("Delete Reminder", systemImage: "trash")
                                 .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.coral)
                                 .frame(maxWidth: .infinity).padding(14)
-                                .background(Theme.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .background(Theme.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
                         }
                         .padding(.top, 4)
                     }
@@ -488,8 +488,8 @@ struct AddReminderView: View {
                 .foregroundStyle(Theme.accent).padding(.leading, 6)
             VStack(spacing: 0) { content() }
                 .padding(.horizontal, 16)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
         }
     }
 
@@ -539,7 +539,7 @@ struct AddReminderView: View {
                     .padding(.vertical, 6).padding(.horizontal, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.coral.opacity(0.12),
-                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                in: RoundedRectangle(cornerRadius: Theme.radius(10), style: .continuous))
                 }
 
                 if events.isEmpty {
@@ -908,7 +908,7 @@ struct AddReminderView: View {
                         Image(systemName: "sparkles").font(.system(size: 11, weight: .bold))
                         Text("Recommended").font(.caption.weight(.bold))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.onAccent)
                     .padding(.horizontal, 13).padding(.vertical, 7)
                     .background(Theme.accent, in: Capsule())
                 }
@@ -918,7 +918,7 @@ struct AddReminderView: View {
                     let on = isPreset(p.hour, p.min)
                     Button { applyPreset(p.hour, p.min) } label: {
                         Text(p.label).font(.caption.weight(.semibold))
-                            .foregroundStyle(on ? .white : Theme.accent)
+                            .foregroundStyle(on ? Theme.onAccent : Theme.accent)
                             .padding(.horizontal, 13).padding(.vertical, 7)
                             .background(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.accent.opacity(0.14)), in: Capsule())
                     }

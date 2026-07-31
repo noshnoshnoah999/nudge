@@ -134,9 +134,9 @@ struct ScanReminderView: View {
         HStack(spacing: 8) {
             Image(systemName: icon); Text(text).fontWeight(.semibold)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(Theme.onAccent)
         .frame(maxWidth: .infinity).padding(.vertical, 14)
-        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
     }
 
     private func pasteImage() {

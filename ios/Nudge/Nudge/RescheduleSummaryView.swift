@@ -46,7 +46,7 @@ struct RescheduleSummaryView: View {
                                             .font(.caption.weight(.semibold)).foregroundStyle(Theme.textMeta)
                                     }
                                     .padding(12)
-                                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
                                     .opacity(shown ? 1 : 0)
                                     .offset(x: shown ? 0 : 60)
                                     .animation(Theme.spring.delay(Double(gi) * 0.12 + Double(ii) * 0.05), value: shown)

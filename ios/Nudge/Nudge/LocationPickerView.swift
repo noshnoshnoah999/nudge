@@ -65,7 +65,7 @@ struct LocationPickerView: View {
                     }
                 }
                 .padding(12)
-                .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
                 .padding(16)
 
                 if let coord = pickedCoord {
@@ -74,7 +74,7 @@ struct LocationPickerView: View {
                             .tint(Theme.violet)
                     }
                     .frame(height: 240)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
                     .padding(.horizontal, 16)
 
                     Text(pickedName ?? "")
@@ -85,9 +85,9 @@ struct LocationPickerView: View {
                     Button {
                         onSelect(pickedName ?? "", coord.latitude, coord.longitude); dismiss()
                     } label: {
-                        Text("Use this location").font(.headline).foregroundStyle(.white)
+                        Text("Use this location").font(.headline).foregroundStyle(Theme.onAccent)
                             .frame(maxWidth: .infinity).padding(14)
-                            .background(Theme.violetGrad, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(Theme.violetGrad, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
                     }
                     .padding(16)
                     Spacer()

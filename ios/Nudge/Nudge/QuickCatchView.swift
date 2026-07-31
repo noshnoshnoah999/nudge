@@ -75,9 +75,9 @@ struct QuickCatchView: View {
     private func choiceRow(icon: String, title: String, sub: String, filled: Bool) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.title3).foregroundStyle(filled ? .white : Theme.accent)
+                .font(.title3).foregroundStyle(filled ? Theme.onAccent : Theme.accent)
                 .frame(width: 44, height: 44)
-                .background(filled ? Theme.accent : Theme.accentSoft, in: RoundedRectangle(cornerRadius: 11))
+                .background(filled ? Theme.accent : Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.radius(11)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline).foregroundStyle(Theme.textMain)
                 Text(sub).font(.caption).foregroundStyle(Theme.textMeta)
@@ -87,7 +87,7 @@ struct QuickCatchView: View {
             Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textMeta)
         }
         .padding(14)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14)))
     }
 
     /// Hand off to the full New Reminder form: close this sheet, then ask the router to
@@ -115,15 +115,15 @@ struct QuickCatchView: View {
                 .textFieldStyle(.plain)
                 .font(.body)
                 .padding(12)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(12)))
                 .submitLabel(.go)
                 .onSubmit(go)
 
             Button(action: go) {
                 Text("Find a time")
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(canGo ? Theme.accent : Theme.accentSoft, in: RoundedRectangle(cornerRadius: 12))
-                    .foregroundStyle(canGo ? .white : Theme.textMeta)
+                    .background(canGo ? Theme.accent : Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.radius(12)))
+                    .foregroundStyle(canGo ? Theme.onAccent : Theme.textMeta)
             }
             .disabled(!canGo)
             Spacer(minLength: 0)
@@ -176,7 +176,7 @@ struct QuickCatchView: View {
                                displayedComponents: hasTime ? [.date, .hourAndMinute] : [.date])
                         .padding(.horizontal, 14).padding(.vertical, 6)
                 }
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14)))
 
                 Picker("Priority", selection: $priority) {
                     Text("Low").tag("low"); Text("Normal").tag("normal"); Text("High").tag("high")
@@ -186,8 +186,8 @@ struct QuickCatchView: View {
                 Button(action: save) {
                     Text("Add to Nudge")
                         .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 13)
-                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12))
-                        .foregroundStyle(.white)
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radius(12)))
+                        .foregroundStyle(Theme.onAccent)
                 }
                 .padding(.top, 4)
             }

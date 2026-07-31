@@ -57,10 +57,10 @@ struct GroupCardView: View {
         // reminders read as one unit, clearly separated from the individual cards around them.
         .padding(expanded ? (settings.compact ? 8 : 10) : 0)
         .background(expanded ? darkOrange.opacity(0.06) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: radius + 4, style: .continuous))
+                    in: RoundedRectangle(cornerRadius: Theme.radius(radius + 4), style: .continuous))
         .overlay {
             if expanded {
-                RoundedRectangle(cornerRadius: radius + 4, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.radius(radius + 4), style: .continuous)
                     .strokeBorder(darkOrange, lineWidth: 2)
             }
         }
@@ -72,7 +72,7 @@ struct GroupCardView: View {
         } label: {
             HStack(spacing: settings.compact ? 12 : 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.radius(9), style: .continuous)
                         .fill(settings.accentSoft)
                         .frame(width: 34, height: 34)
                     Image(systemName: expanded ? "folder.fill" : "folder")
@@ -101,8 +101,8 @@ struct GroupCardView: View {
             }
             .padding(settings.compact ? 13 : 15)
             .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius(radius), style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius(radius), style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 1))
             .contentShape(Rectangle())
         }

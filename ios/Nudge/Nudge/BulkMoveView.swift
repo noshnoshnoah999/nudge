@@ -58,8 +58,8 @@ struct BulkMoveView: View {
                         }
                     }
                     .padding(16)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     // Per-reminder overrides — each defaults to the shared date above, but can
                     // be pulled to a different day without affecting the others.
@@ -74,9 +74,9 @@ struct BulkMoveView: View {
                         confirmAndApply()
                     } label: {
                         Text("Move \(reminders.count) Reminder\(reminders.count == 1 ? "" : "s")")
-                            .font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                            .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
                             .frame(maxWidth: .infinity).padding(14)
-                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
                     }
                     .buttonStyle(PressableStyle())
                     .padding(.top, 4)
@@ -122,7 +122,7 @@ struct BulkMoveView: View {
                 .tint(Theme.accent)
         }
         .padding(12)
-        .background(Theme.surfaceAlt.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Theme.surfaceAlt.opacity(0.5), in: RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous))
     }
 
     /// Re-seed every row the user hasn't individually overridden — a naive "set every

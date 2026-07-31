@@ -16,6 +16,17 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.30", title: "Plain mode & dark mode", date: "31 Jul 2026",
+            added: [
+                "Two new themes in Settings → Appearance: Plain and Plain Dark. They're deliberately boring — flat grey rows with hairline separators instead of rounded tinted cards, like the built-in Reminders app",
+                "Plain Dark is Nudge's first proper dark theme: black background, white text, and the keyboard, sheets and date pickers all go dark to match"
+            ],
+            changed: [
+                "Picking either Plain theme also switches off the flourishes: no pop-in animation when a screen loads, no card shadows, no progress ring, and completing a reminder just ticks it — no gold border, no slide-off, no sound or haptic",
+                "The pulsing red and orange \"AI tidied up / AI grouped\" banners become flat grey rows in Plain mode instead of glowing",
+                "Like the other themes, your Plain choice syncs between your iPhone and MacBook"
+            ]),
+        ChangelogEntry(
             version: "2.29", title: "Grouped reminders stand out", date: "4 Jul 2026",
             added: [],
             changed: [
@@ -393,8 +404,8 @@ struct ChangelogView: View {
                     }
                     .padding(16)
                     .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(18), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
                     .cardElevation(10, y: 4, opacity: 0.06)
                 }
             }

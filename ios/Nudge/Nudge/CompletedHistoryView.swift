@@ -89,8 +89,8 @@ struct CompletedHistoryView: View {
             Spacer(minLength: 0)
         }
         .padding(13)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous).stroke(Theme.hairline, lineWidth: 1))
         .transition(.opacity)
     }
 

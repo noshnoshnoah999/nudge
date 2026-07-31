@@ -100,7 +100,7 @@ struct MiniCalendar: View {
                 else if isToday { Circle().stroke(Theme.accent, lineWidth: 2).frame(width: 36, height: 36) }
                 Text("\(cal.component(.day, from: d))")
                     .font(.callout.weight(isSel || isToday ? .bold : .regular))
-                    .foregroundStyle(isSel ? .white : (isToday ? Theme.accent : Theme.textMain))
+                    .foregroundStyle(isSel ? Theme.onAccent : (isToday ? Theme.accent : Theme.textMain))
             }
             .frame(maxWidth: .infinity, minHeight: 40)
         }
