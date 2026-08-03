@@ -32,7 +32,11 @@ final class SearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterD
         guard let resp = try? await MKLocalSearch(request: req).start(),
               let item = resp.mapItems.first else { return nil }
         let name = completion.title.isEmpty ? (item.name ?? "Location") : completion.title
-        return (name, item.placemark.coordinate)
+        // `MKMapItem.placemark` was deprecated in iOS 26.0 in favour of `location` /
+        // `address` / `addressRepresentations`. We only ever wanted the coordinate, and
+        // `location` is a CLLocation carrying exactly that. Deployment target is iOS 26.5,
+        // so no availability gate is needed.
+        return (name, item.location.coordinate)
     }
 }
 

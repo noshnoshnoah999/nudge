@@ -33,15 +33,20 @@ struct IdentifiableURL: Identifiable {
 }
 
 /// SFSafariViewController wrapper — an in-app browser sheet.
+///
+/// The old `tint:` parameter is gone. It only ever fed `preferredControlTintColor`, which was
+/// deprecated in iOS 26.0 ("tinting the controls interferes with background effects that the
+/// system provides") with no replacement — the system tints Safari's chrome itself now.
+/// Deployment target is iOS 26.5, so this is removed outright rather than version-gated, and
+/// the parameter is removed with it rather than left as a no-op that silently does nothing.
+/// Visible effect: the in-app browser's controls use the system tint, not Theme.violet.
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
-    var tint: Color = Theme.violet
 
     func makeUIViewController(context: Context) -> SFSafariViewController {
         let cfg = SFSafariViewController.Configuration()
         cfg.entersReaderIfAvailable = false
         let vc = SFSafariViewController(url: url, configuration: cfg)
-        vc.preferredControlTintColor = UIColor(tint)
         vc.dismissButtonStyle = .close
         return vc
     }

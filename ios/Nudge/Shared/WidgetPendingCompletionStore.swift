@@ -30,12 +30,23 @@
 
 import Foundation
 
-struct PendingCompletion: Codable, Equatable {
+nonisolated struct PendingCompletion: Codable, Equatable {
     let id: String
     let armedAt: Date
 }
 
-enum WidgetPendingCompletionStore {
+// `nonisolated` because the project builds with SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor,
+// which would otherwise pin every method here to the main actor. This store is called from
+// `CompleteReminderWidgetIntent.perform()`, which is NOT main-actor isolated — hence the
+// "Main actor-isolated static method cannot be called from outside of the actor" warnings
+// (errors under the Swift 6 language mode).
+//
+// Opting out is correct, not a workaround: every method below is a synchronous Keychain
+// call (SecItemCopyMatching / SecItemUpdate / SecItemAdd / SecItemDelete). The Keychain is
+// thread-safe, and this enum holds no mutable state of its own — all state lives in the
+// Keychain item. There is nothing here that needs main-actor protection, and forcing an
+// actor hop inside a widget intent would be actively wrong.
+nonisolated enum WidgetPendingCompletionStore {
     private static let service = "uk.flouty.Nudge.widgetPendingCompletion"
     private static let account = "today"
     private static let accessGroup = "FMF6YAVA23.uk.flouty.Nudge.shared"

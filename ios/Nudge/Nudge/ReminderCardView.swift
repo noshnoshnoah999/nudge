@@ -35,7 +35,7 @@ struct ReminderCardView: View {
         // pan and made scrolling glitchy with many cards. Delete is on the long-press menu
         // and the edit sheet (both with undo).
         cardBody
-            .sheet(item: $claudeURL) { SafariView(url: $0.url, tint: settings.accent) }
+            .sheet(item: $claudeURL) { SafariView(url: $0.url) }
         .sheet(isPresented: $showReschedule) { RescheduleOptionsView(reminder: reminder).environmentObject(store) }
         .contextMenu {
             // Suppressed while selecting — long-press actions (delete, reschedule, etc.)

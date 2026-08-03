@@ -4,7 +4,12 @@
 // extracted TEXT is later sent to Claude (see AIScanParser) to structure into reminders.
 
 import Foundation
-import Vision
+// @preconcurrency: Vision predates strict concurrency and does not mark VNImageRequestHandler
+// or VNRecognizeTextRequest as Sendable, so handing them to the dispatch queue below raised
+// Sendable warnings (Xcode's own fix-it for this is to add @preconcurrency here). The usage is
+// safe: both objects are created inside extractText, handed to exactly one background block,
+// and never touched from another thread afterwards.
+@preconcurrency import Vision
 import UIKit
 
 enum ReminderScanner {

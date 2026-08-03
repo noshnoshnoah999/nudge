@@ -136,7 +136,7 @@ struct ContentView: View {
                 runSmartReschedule()
             }).environmentObject(store)
         }
-        .sheet(item: $autoClaudeURL) { SafariView(url: $0.url, tint: Theme.accent) }
+        .sheet(item: $autoClaudeURL) { SafariView(url: $0.url) }
         .sheet(item: $rescheduleResult) { SmartReschedulePreviewView(proposed: $0.changes).environmentObject(store) }
         .sheet(isPresented: $showTimetable) { TimetableView().environmentObject(store) }
         .sheet(isPresented: $showCompleted) { CompletedHistoryView().environmentObject(store) }

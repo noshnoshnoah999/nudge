@@ -29,7 +29,12 @@ import WidgetKit
 #endif
 
 /// Small helper to ask WidgetKit to rebuild the Today widget's timeline.
-enum WidgetReload {
+///
+/// `nonisolated` for the same reason as WidgetPendingCompletionStore: the project builds with
+/// SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor, which would pin `today()` to the main actor and
+/// make it unreachable from the non-isolated `perform()` below. `WidgetCenter.shared` is
+/// documented as safe to call from any thread, so there is nothing to protect here.
+nonisolated enum WidgetReload {
     static func today() {
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadTimelines(ofKind: "NudgeToday")
