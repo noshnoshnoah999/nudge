@@ -248,39 +248,91 @@ final class NotificationManager: NSObject, ObservableObject {
 
 // Show banners even when Nudge is in the foreground.
 extension NotificationManager: UNUserNotificationCenterDelegate {
+    // Completion-handler variant, not `async`, for the SAME reason as didReceive below:
+    // a `nonisolated async` @objc delegate method resumes on the cooperative thread pool,
+    // so UIKit/UserNotifications runs the completion work off the main thread. This one is
+    // not named in any crash report — the change is PRECAUTIONARY, because it is the identical
+    // hazard and this method also awaits network I/O (`store.refresh()`), which is exactly
+    // what forces the off-main resumption. Behaviour is otherwise unchanged.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            willPresent notification: UNNotification) async
-        -> UNNotificationPresentationOptions {
+                                            willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler:
+                                                @escaping (UNNotificationPresentationOptions) -> Void) {
         let show: UNNotificationPresentationOptions = [.banner, .sound, .list]
+        // UNNotification is not Sendable — take the id now rather than capturing the object.
         let id = notification.request.identifier
         // Only reminder alerts are state-checked; payday / birthdays always show.
         guard id.hasPrefix("nudge-"), !id.hasPrefix("nudge-bday-"),
-              id != "nudge-payday" else { return show }
+              id != "nudge-payday" else { completionHandler(show); return }
         let raw = String(id.dropFirst("nudge-".count))   // strip "~e<min>" early-alert suffix
         let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
 
-        // Pull the latest blob first: if this reminder was completed (or, for a daily repeat,
-        // rolled to its next occurrence under a new id) on another device — the iPhone — the
-        // Mac's own pending alert is now stale. Suppress it instead of banner-ing a thing you
-        // already did. (Only helps while Nudge is foregrounded; a fully-asleep Mac can't run
-        // this — that's the per-device local-notification limit.)
-        let store = await storeForPresentationCheck()
-        await store?.refresh()
-        let stale = await MainActor.run { () -> Bool in
-            guard let store else { return false }
-            guard let r = store.reminders.first(where: { $0.id == rid }) else { return true }
-            return (r.completed ?? false) || (r.dismissed ?? false)
+        Task { @MainActor in
+            // Pull the latest blob first: if this reminder was completed (or, for a daily repeat,
+            // rolled to its next occurrence under a new id) on another device — the iPhone — the
+            // Mac's own pending alert is now stale. Suppress it instead of banner-ing a thing you
+            // already did. (Only helps while Nudge is foregrounded; a fully-asleep Mac can't run
+            // this — that's the per-device local-notification limit.)
+            let store = storeForPresentationCheck()
+            await store?.refresh()
+            let stale: Bool = {
+                guard let store else { return false }
+                guard let r = store.reminders.first(where: { $0.id == rid }) else { return true }
+                return (r.completed ?? false) || (r.dismissed ?? false)
+            }()
+            completionHandler(stale ? [] : show)
         }
-        return stale ? [] : show
     }
 
     @MainActor private func storeForPresentationCheck() -> NudgeStore? { nudge }
 
-    // Handle the Complete / Snooze action buttons.
+    // Handle a notification tap and the Complete / Snooze / Reschedule action buttons.
+    //
+    // ⚠️ THIS MUST BE THE COMPLETION-HANDLER VARIANT, NOT THE `async` ONE. ⚠️
+    //
+    // It used to be `nonisolated func ... async`. Swift wraps an `async` @objc delegate method
+    // in a thunk that invokes UIKit's completion handler when the async function RETURNS.
+    // Because the method was `nonisolated`, that final resumption landed on the Swift
+    // cooperative thread pool — so UIKit ran its completion work
+    // (`-[UIApplication _updateSnapshotAndStateRestorationWithAction:windowScene:]`, which
+    // refreshes the app-switcher snapshot) OFF the main thread and tripped an
+    // NSAssertionHandler failure → SIGABRT, about a second after the app opened.
+    //
+    // Confirmed by five identical crash reports (2026-07-28 → 2026-08-03), every one with
+    // faulting-thread queue `com.apple.root.user-initiated-qos.cooperative`:
+    //
+    //   -[NSAssertionHandler handleFailureInMethod:...]
+    //   -[UIApplication _performBlockAfterCATransactionCommitSynchronizes:]
+    //   -[UIApplication _updateStateRestorationArchiveForBackgroundEvent:...updateSnapshot:...]
+    //   -[UIApplication _updateSnapshotAndStateRestorationWithAction:windowScene:]
+    //   @objc closure #1 in NotificationManager.userNotificationCenter(_:didReceive:)
+    //   libswift_Concurrency  completeTaskWithClosure
+    //
+    // `handle()` being @MainActor did NOT prevent this: it hops to main correctly, but the
+    // crash is on the way back OUT, when the nonisolated async function resumes.
+    //
+    // It only crashed on SOME notifications because a `handle()` call that returns without
+    // ever suspending (a plain tap hitting an early `return`) completes inline on the main
+    // thread. One that actually awaits — store.refresh(), persistNow(), any network I/O —
+    // resumes on the pool and crashes. That is why Reschedule reproduced it reliably.
+    //
+    // The completion-handler variant fixes it outright: we own the Task, we pin it to
+    // @MainActor, and we call `completionHandler()` there — so UIKit's snapshot work is
+    // guaranteed to run on the main thread. Do not "simplify" this back to `async`.
+    //
+    // (This is also why AppDelegate's `shouldSaveSecureApplicationState = false` never
+    // helped — UIKit still runs the `updateSnapshot:` half regardless of that opt-out.)
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            didReceive response: UNNotificationResponse) async {
-        await handle(action: response.actionIdentifier,
-                     notifId: response.notification.request.identifier)
+                                            didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Copy the two values we need off the response now — UNNotificationResponse is not
+        // Sendable, so it must not be captured by the Task.
+        let action = response.actionIdentifier
+        let notifId = response.notification.request.identifier
+        Task { @MainActor in
+            await handle(action: action, notifId: notifId)
+            completionHandler()
+        }
     }
 
     /// "1 month" / "2 weeks" / "3 days" / "1 hour" / "45 min" for an early-alert lead time.
