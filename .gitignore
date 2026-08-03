@@ -13,6 +13,10 @@ nudge_backup_*.json
 **/xcuserdata/
 **/*.xcuserstate
 **/DerivedData/
+# Local xcodebuild output — ~479MB of build artifacts, must never be committed.
+# NOTE: xcshareddata/ is deliberately NOT ignored. Shared schemes belong in git;
+# the Nudge scheme going missing (2026-08-04) is exactly what happens otherwise.
+ios/Nudge/build/
 .claude/
 
 # iOS Supabase credentials (anon-tier, but kept out of git)
