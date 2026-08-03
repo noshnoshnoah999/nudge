@@ -361,8 +361,10 @@ final class NudgeStore: ObservableObject {
         for r in blob.reminders { remindersMeta.tombstone.removeValue(forKey: r.id) }
         for l in blob.lists { listsMeta.tombstone.removeValue(forKey: l.id) }
         for s in blob.smartLists ?? [] { smartListsMeta.tombstone.removeValue(forKey: s.id) }
+        // persist() schedules the push, and push() reloads the widget once the restored rows
+        // are actually in the cloud. Reloading here as well would just fire the same stale
+        // pre-push fetch this bug was about.
         persist()
-        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Save (debounced per-item upsert)
@@ -385,7 +387,14 @@ final class NudgeStore: ObservableObject {
         // Let the EventKit mirror know local data changed (it debounces). The sync
         // engine's own write-backs pass notify:false to avoid a feedback loop.
         if notify { NotificationCenter.default.post(name: .nudgeDataChanged, object: nil) }
-        WidgetCenter.shared.reloadAllTimelines()
+        // NOTE: deliberately NO WidgetCenter reload here. The widget does not read local
+        // data — NudgeFeed (WidgetData.swift) fetches the reminders straight from the
+        // per-item Supabase tables over the network. Reloading at edit time therefore woke
+        // the widget BEFORE the 700ms-debounced push had uploaded anything, so it re-fetched
+        // the OLD rows, rendered them, and was never reloaded again — the "widget doesn't
+        // update until I force it" bug. The reload now happens in push(), once the new rows
+        // are actually in the cloud for the widget to find. This also stops burning WidgetKit's
+        // limited daily reload budget on fetches that could only ever return stale data.
         // Single choke point for keeping the monitored geofences in step with the data —
         // covers add / edit / complete / dismiss without scattering calls around.
         LocationMonitor.shared.sync(reminders: reminders)
@@ -487,7 +496,17 @@ final class NudgeStore: ObservableObject {
 
         var code = await pushAll()
         if code == 401, await Auth.refreshSession() { code = await pushAll() }
-        setSync((200..<300).contains(code) ? "Synced" : "Offline")
+        let ok = (200..<300).contains(code)
+        setSync(ok ? "Synced" : "Offline")
+
+        // THIS is the right moment to reload the widget: the edited rows are now in Supabase,
+        // so when WidgetKit wakes the extension it will fetch the NEW data. Reloading in
+        // persist() (as we used to) raced the debounced upload and always lost.
+        //
+        // On failure we deliberately do NOT reload: the cloud still holds the old rows, so a
+        // reload would just re-render the stale state and spend reload budget for nothing.
+        // The dirty set survives, and the next successful push reloads then.
+        if ok { WidgetCenter.shared.reloadAllTimelines() }
     }
 
     // MARK: - Mutations
