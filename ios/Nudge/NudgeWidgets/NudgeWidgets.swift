@@ -489,19 +489,30 @@ private struct WidgetRowTitle: View {
     /// obvious nothing has been completed yet.
     var armed: Bool = false
 
-    /// Title + optional hint as ONE `Text`, concatenated with `+`.
+    /// Title + optional hint as ONE `Text`, built from a two-run `AttributedString`.
     ///
     /// Deliberately a single Text rather than an HStack: the row's height must not change when it
     /// arms, or `TodayWidgetView.rowLimit(for:)` would disagree with reality and the list could
-    /// overflow the widget again — the exact bug fixed in 16d8f6f. Concatenated Text stays on one
+    /// overflow the widget again — the exact bug fixed in 16d8f6f. A single Text stays on one
     /// line and keeps the natural-width + mask trick below working unchanged.
+    ///
+    /// This used to concatenate two Texts with `+`, which was deprecated in iOS 26.0. Xcode's
+    /// suggested fix-it (plain string interpolation) is WRONG here: the two segments need
+    /// different fonts, and only the title takes the strikethrough. An AttributedString carries
+    /// per-run attributes, so it reproduces the old rendering exactly while still collapsing to
+    /// one Text — which is the property this view actually depends on. Do not "simplify" this
+    /// into an HStack or a plain interpolated string.
     private var content: Text {
-        let base = Text(title)
-            .font(.system(size: size, weight: .bold, design: design))
-        guard armed else { return base }
-        return base.strikethrough()
-            + Text("  tap again")
-                .font(.system(size: max(size * 0.55, 10), weight: .semibold, design: design))
+        var s = AttributedString(title)
+        s.font = .system(size: size, weight: .bold, design: design)
+        guard armed else { return Text(s) }
+        // Applied before the hint is appended, so it covers the title run only — matching the
+        // old `base.strikethrough() + Text("  tap again")`.
+        s.strikethroughStyle = Text.LineStyle.single
+        var hint = AttributedString("  tap again")
+        hint.font = .system(size: max(size * 0.55, 10), weight: .semibold, design: design)
+        s.append(hint)
+        return Text(s)
     }
 
     var body: some View {
