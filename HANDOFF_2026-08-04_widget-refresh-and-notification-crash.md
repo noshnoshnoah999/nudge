@@ -1,5 +1,40 @@
 # Handoff — 2026-08-04: Widget refresh race + notification-tap crash
 
+> **FINAL STATUS — session closed 2026-08-04. Everything below is DONE, committed, pushed,
+> and confirmed working by Noah on both iPhone and MacBook. Build is at 0 warnings.**
+>
+> | Commit | What |
+> |---|---|
+> | `82862e8` | Widget refresh race — reload timelines after the push, not before |
+> | `611e37d` | Notification-tap crash — delegate completion handler on the main actor |
+> | `deac668` | Restored the missing shared `Nudge.xcscheme` |
+> | `d3ee7ae` | Xcode warnings: iOS 26 deprecations + main-actor isolation (14 → 1) |
+> | `6bd0dd6` | Gitignore `ios/Nudge/build/` (479 MB); commit the July–August docs |
+> | `3fe935d` | Widget row: deprecated `Text +` → two-run `AttributedString` (1 → 0) |
+> | `e1932b1` | Correct the comments that recorded the wrong crash cause |
+>
+> **The one lesson worth carrying forward:** the notification crash survived five previous
+> fix attempts because every one of them addressed *where the work started* (`pendingColdTap`,
+> the `onMain` deferral, `shouldSaveSecureApplicationState`). The five crash reports showed
+> the fault was *where the method returned* — a `nonisolated async` @objc delegate resumes on
+> the cooperative thread pool, so UIKit's completion work ran off the main thread. Five
+> identical stack traces settled in minutes what months of reasoning had not. **When a bug
+> resists more than one or two fixes, stop theorising and go get the evidence.**
+>
+> Residual checks (low priority, not blocking):
+> - Analytics Data in a few days — no new `Nudge-*.ips` is the durable proof.
+> - A long-titled reminder on the Today widget, tapped once to arm: confirm it stays on one
+>   line, clips cleanly, and the visible row count doesn't change. `3fe935d` changed the width
+>   measurement path, and measurement is what the `16d8f6f` overflow bug was about.
+>
+> Deliberately NOT removed, and why — see the comments now in the code:
+> `NudgeSceneDelegate` + `pendingColdTap` are **load-bearing**, not leftover workaround. The UN
+> delegate is attached from SwiftUI's `.task`, after `didFinishLaunching` returns, so
+> UNUserNotificationCenter will not deliver a launch tap to it. Deleting them would silently
+> break notification taps from a fully-quit app — with no crash, so you'd find out days later.
+
+---
+
 ## Bug 2 — Widget not refreshing after an edit — FIXED (needs build + on-device test)
 
 ### Symptom
