@@ -352,24 +352,32 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         guard notifId.hasPrefix("nudge-") else { return }
         let opensApp = action != Self.completeAction && action != Self.snoozeAction
 
-        // COLD-LAUNCH foreground-opening tap (plain tap / Reschedule / pay-day): the live
-        // store + UI aren't up yet. We must touch NO @Published state here — mutating an
-        // observed property makes SwiftUI commit a CATransaction inside UIKit's launch &
-        // state-restoration window, which throws an assertion and crashes (the bug you saw).
-        // Stash the tap in a plain holder; the app consumes it once live (ContentView
-        // .processPendingNotification).
+        // COLD-LAUNCH foreground-opening tap (plain tap / Reschedule / pay-day): the live store
+        // + UI aren't up yet, so there is nothing to drive. Stash the tap in a plain holder and
+        // let the app consume it once live (ContentView.processPendingNotification).
+        //
+        // This branch is REQUIRED, and not for the reason originally written here. The old note
+        // claimed touching @Published state during launch commits a CATransaction inside UIKit's
+        // restoration window and asserts. That diagnosis was wrong — the real cause of the crash
+        // was this delegate method being `nonisolated async`, so its completion handler ran off
+        // the main thread (see the long comment on the delegate method above). The branch stays
+        // because at this point `nudge` genuinely is nil: NotificationManager.attach() runs from
+        // SwiftUI's .task, after didFinishLaunching, so on a cold launch there is no store yet.
         if nudge == nil && opensApp {
             Self.pendingColdTap = (action, notifId)
             return
         }
 
         // Warm (app already live) — or a background Complete/Snooze, or (for Urgent reminders)
-        // an app that AlarmKit woke in the background to manage its alarm. In that last case the
-        // tap arrives while the app is mid background→foreground state-restoration, so writing
-        // any @Published property synchronously here makes SwiftUI commit a CATransaction inside
-        // UIKit's restoration window → the same assertion crash. Defer every observed-state
-        // write one runloop tick (`onMain`) so it lands AFTER the restoration transaction. A
-        // genuine foreground tap is unaffected — it's just one tick later.
+        // an app that AlarmKit woke in the background to manage its alarm.
+        //
+        // `onMain` defers each observed-state write one runloop tick. Its original justification
+        // (avoiding a CATransaction commit inside UIKit's restoration window) was part of the
+        // same wrong diagnosis, so this is very probably redundant now that the delegate's
+        // completion handler is correctly main-actor pinned. It is kept because it costs one
+        // tick, is provably harmless, and the crash it was written for took five attempts and
+        // five crash reports to pin down — removing it buys nothing and reopens a settled
+        // question. If it ever does get removed, re-run the full notification test matrix.
         func onMain(_ work: @escaping @MainActor () -> Void) { DispatchQueue.main.async { work() } }
         if notifId == "nudge-payday" { onMain { AppRouter.shared.pendingShopping = true }; return }
         let raw = String(notifId.dropFirst("nudge-".count))   // strip "~e<min>" early-alert suffix

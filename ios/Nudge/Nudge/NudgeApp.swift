@@ -12,8 +12,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // Register only the action-button categories here. The notification DELEGATE is set
-        // later (NotificationManager.attach, after the SwiftUI scene exists) — setting it this
-        // early delivers a launch tap into the half-built window and UIKit asserts (crash).
+        // later, in NotificationManager.attach(), once the SwiftUI scene exists.
+        //
+        // Because the delegate is attached AFTER didFinishLaunching returns, UNUserNotification-
+        // Center will not deliver a tap that LAUNCHED the app to it. That is precisely why
+        // NudgeSceneDelegate + NotificationManager.pendingColdTap exist below — they are the
+        // cold-launch path, and removing them would silently break tapping a notification while
+        // Nudge is fully quit. They are load-bearing, not leftover workaround.
+        //
+        // (The original note here claimed attaching the delegate early "delivers a launch tap
+        // into the half-built window and UIKit asserts". That diagnosis was wrong — see the
+        // correction on shouldSaveSecureApplicationState below. Attaching early may well be
+        // safe now, but it has not been tested, so the working arrangement stands.)
         MainActor.assumeIsolated { NotificationManager.shared.registerCategories() }
         // Security: move any plaintext Anthropic key from UserDefaults into the Keychain and
         // delete the plaintext copy. One-time, no-op after the first migrated launch.
@@ -30,9 +40,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    // Nudge keeps no UIKit state to restore (SwiftUI owns the UI). Opting out stops UIKit
-    // building a state-restoration archive on background/launch events — the codepath whose
-    // assertion was crashing the app when a notification tap launched it from fully-quit.
+    // Nudge keeps no UIKit state to restore (SwiftUI owns the UI), so opting out saves UIKit
+    // the work of building a restoration archive on background/launch events.
+    //
+    // CORRECTION (2026-08-04): this was originally added believing it would stop the
+    // notification-tap crash. It did not, and could not. UIKit's
+    // `_updateSnapshotAndStateRestorationWithAction:` still runs the `updateSnapshot:` half
+    // regardless of this opt-out, and the snapshot — not the archive — was what asserted.
+    // The real cause was the notification delegate being a `nonisolated async` method whose
+    // completion handler therefore ran off the main thread; see the long comment on
+    // `userNotificationCenter(_:didReceive:withCompletionHandler:)` in Notifications.swift.
+    // These two lines are kept because they are harmless and mildly useful, NOT because they
+    // fix anything.
     func application(_ application: UIApplication, shouldSaveSecureApplicationState coder: NSCoder) -> Bool { false }
     func application(_ application: UIApplication, shouldRestoreSecureApplicationState coder: NSCoder) -> Bool { false }
 
