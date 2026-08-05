@@ -545,28 +545,12 @@ final class NudgeStore: ObservableObject {
     }
 
     /// Advance a due date to the next FUTURE occurrence per the recurrence rule.
+    ///
+    /// The maths lives in RecurrenceEngine (Shared/) so the Today widget's tap-to-complete
+    /// computes the identical date — before that, the widget knew nothing about recurrence
+    /// and simply killed the series. See RecurrenceEngine for the full story.
     func nextOccurrence(after dueStr: String?, rec: Recurrence) -> String? {
-        guard let due = parseDate(dueStr) else { return nil }
-        let cal = Calendar.current
-        let step = max(1, rec.interval ?? 1)
-        let comp: Calendar.Component
-        switch rec.freq {
-        case "hourly": comp = .hour
-        case "daily": comp = .day
-        case "weekly": comp = .weekOfYear
-        case "monthly": comp = .month
-        case "yearly": comp = .year
-        default: return nil
-        }
-        var next = due
-        var guardCount = 0
-        repeat {
-            next = cal.date(byAdding: comp, value: step, to: next) ?? next
-            guardCount += 1
-        } while next <= Date() && guardCount < 2000
-        // Respect an "end repeat" date.
-        if let u = parseDate(rec.until), next > u { return nil }
-        return iso(next)
+        RecurrenceEngine.nextOccurrence(afterDue: dueStr, rule: rec.engineRule)
     }
 
     /// Open Shopping-list reminders due on payday itself (not the whole Shopping list),
@@ -593,22 +577,7 @@ final class NudgeStore: ObservableObject {
     /// Current repeat interval (in days) for a routine reminder, honouring escalation
     /// phases (the first phase whose `until` is still in the future, else the open one).
     func routineIntervalDays(_ r: Reminder) -> Int {
-        if let steps = r.escalation, !steps.isEmpty {
-            let now = Date()
-            for s in steps {
-                if let u = parseDate(s.until) { if now < u { return max(1, s.everyDays) } }
-                else { return max(1, s.everyDays) }
-            }
-            return max(1, steps.last?.everyDays ?? 1)
-        }
-        if let rec = r.recurrence {
-            switch rec.freq {
-            case "daily":  return max(1, rec.interval ?? 1)
-            case "weekly": return 7 * max(1, rec.interval ?? 1)
-            default: break
-            }
-        }
-        return 1
+        RecurrenceEngine.routineIntervalDays(escalation: r.enginePhases, rule: r.recurrence?.engineRule)
     }
 
     /// Routine reminders that lapsed on a PREVIOUS night (open, due before today) — the
@@ -624,11 +593,8 @@ final class NudgeStore: ObservableObject {
 
     /// The evening time-of-day a routine fires at (from its current due date; default 21:00).
     private func routineEveningComponents(_ r: Reminder) -> (h: Int, m: Int) {
-        if let d = parseDate(r.dueDate) {
-            let c = Calendar.current.dateComponents([.hour, .minute], from: d)
-            return (c.hour ?? 21, c.minute ?? 0)
-        }
-        return (21, 0)
+        let c = RecurrenceEngine.eveningComponents(ofDue: r.dueDate)
+        return (c.hour, c.minute)
     }
 
     /// Roll a routine reminder forward one cycle: next occurrence after `night`, stepping
@@ -636,18 +602,10 @@ final class NudgeStore: ObservableObject {
     /// advances), keeping its evening time-of-day. Stays open; `completedAt` is stamped so
     /// the tick counts toward Done-today. Pure mutation — no persist (caller decides).
     func advanceRoutine(_ r: inout Reminder, night: Date) {
-        let cal = Calendar.current
-        let interval = routineIntervalDays(r)
-        let (h, m) = routineEveningComponents(r)
-        var c = cal.dateComponents([.year, .month, .day], from: night)
-        c.hour = h; c.minute = m
-        var next = cal.date(from: c) ?? night
-        var guardN = 0
-        repeat {
-            next = cal.date(byAdding: .day, value: interval, to: next) ?? next
-            guardN += 1
-        } while next <= Date() && guardN < 2000
-        r.dueDate = iso(next)
+        r.dueDate = RecurrenceEngine.advancedRoutineDue(night: night,
+                                                        currentDue: r.dueDate,
+                                                        escalation: r.enginePhases,
+                                                        rule: r.recurrence?.engineRule)
         r.completed = false
         r.completedAt = iso(Date())
         r.snoozedUntil = nil

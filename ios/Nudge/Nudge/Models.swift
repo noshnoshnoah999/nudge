@@ -69,6 +69,27 @@ struct EscalationStep: Codable, Hashable, Identifiable {
     }
 }
 
+// MARK: - Bridge to RecurrenceEngine
+//
+// RecurrenceEngine lives in Shared/ and is compiled by the widget extension too, which does
+// NOT compile this file (Nudge/ is an app-only synchronized group). So the engine cannot
+// mention Recurrence or EscalationStep; instead the app maps its rich models onto the
+// engine's two tiny value types here. The widget builds the same value types from raw JSON.
+
+extension Recurrence {
+    /// This rule as the engine sees it.
+    var engineRule: RecurrenceEngine.Rule {
+        RecurrenceEngine.Rule(freq: freq, interval: interval, until: until)
+    }
+}
+
+extension Reminder {
+    /// This reminder's escalation phases as the engine sees them (nil when it has none).
+    var enginePhases: [RecurrenceEngine.EscalationPhase]? {
+        escalation?.map { RecurrenceEngine.EscalationPhase(everyDays: $0.everyDays, until: $0.until) }
+    }
+}
+
 struct Subtask: Codable, Hashable, Identifiable {
     var id: String
     var title: String

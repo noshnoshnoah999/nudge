@@ -31,6 +31,8 @@
 		FD69A38D8D9BB778DC05DC93 /* NudgeWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53CD5B060D93168A9A1D1D1 /* NudgeWidgets.swift */; };
 		FE01000000000000000000A2 /* NudgeAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01000000000000000000A1 /* NudgeAlarm.swift */; };
 		FE01000000000000000000A3 /* NudgeAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01000000000000000000A1 /* NudgeAlarm.swift */; };
+		FE02000000000000000000B2 /* RecurrenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE02000000000000000000B1 /* RecurrenceEngine.swift */; };
+		FE02000000000000000000B3 /* RecurrenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE02000000000000000000B1 /* RecurrenceEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,6 +66,7 @@
 		3A9BD1F02FCE10E000E88354 /* Nudge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nudge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BF39B9EDA82FC57432ACE7E /* Secrets.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		608FA682CC6A99D24FEAE55B /* WidgetPendingCompletionStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WidgetPendingCompletionStore.swift; sourceTree = "<group>"; };
+		FE02000000000000000000B1 /* RecurrenceEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecurrenceEngine.swift; sourceTree = "<group>"; };
 		6B4DE77BF970E57C76202DBE /* QuickAddIntent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickAddIntent.swift; sourceTree = "<group>"; };
 		6B9C5DE0B02C50CE957E2B65 /* NudgeWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NudgeWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7DF3C757367D3B53CF1889A5 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -78,7 +81,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		FE02000000000000000000B1 /* Exceptions for "Nudge" folder in "Nudge" target */ = {
+		FE02000000000000000000B4 /* Exceptions for "Nudge" folder in "Nudge" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -91,7 +94,7 @@
 		3A9BD1F22FCE10E000E88354 /* Nudge */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				FE02000000000000000000B1 /* Exceptions for "Nudge" folder in "Nudge" target */,
+				FE02000000000000000000B4 /* Exceptions for "Nudge" folder in "Nudge" target */,
 			);
 			path = Nudge;
 			sourceTree = "<group>";
@@ -129,6 +132,7 @@
 				608FA682CC6A99D24FEAE55B /* WidgetPendingCompletionStore.swift */,
 				2816A8E60E576643D217AC45 /* WidgetBackgroundImageStore.swift */,
 				9B813D8885716C975385AF34 /* CompleteReminderWidgetIntent.swift */,
+				FE02000000000000000000B1 /* RecurrenceEngine.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -290,6 +294,7 @@
 				AF584F76E8C3AC5E3B593FD1 /* WidgetPendingCompletionStore.swift in Sources */,
 				139148C841C436AA3B6BEA32 /* WidgetBackgroundImageStore.swift in Sources */,
 				AE7979FF8C0EE4D29814B0D2 /* CompleteReminderWidgetIntent.swift in Sources */,
+				FE02000000000000000000B2 /* RecurrenceEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -309,6 +314,7 @@
 				FCCE7C30E68BDCC859B1B189 /* WidgetPendingCompletionStore.swift in Sources */,
 				FBAD338765DC3F467444910E /* WidgetBackgroundImageStore.swift in Sources */,
 				549746A42C67463727648113 /* CompleteReminderWidgetIntent.swift in Sources */,
+				FE02000000000000000000B3 /* RecurrenceEngine.swift in Sources */,
 				8CA3E02CA54716152B0692A7 /* TodayWidgetStyle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
