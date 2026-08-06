@@ -15,6 +15,11 @@ struct WItem: Identifiable {
     let hasTime: Bool
     let overdue: Bool
     let color: String
+    /// Only used to order the past-day overdue fallback, which sorts high-priority first to
+    /// match the app's Overdue tab (`NudgeStore.pastDayOverdue()`). Today's list stays purely
+    /// chronological, as it always has. `var` with a default so the existing positional
+    /// initialisers (samples, placeholders) still compile.
+    var priority: String = "normal"
 }
 
 /// Whether the timeline entry reflects real fetched data or a failed sync.
@@ -34,6 +39,14 @@ struct NudgeEntry: TimelineEntry {
     let items: [WItem]
     // Defaults to .loaded so existing initialisers (samples/placeholders) stay valid.
     var state: WLoadState = .loaded
+    /// True when `items` holds PAST-DAY overdue reminders rather than today's.
+    ///
+    /// The Today widget normally shows only what's due today — a reminder that rolled past
+    /// midnight uncompleted belongs on the app's Overdue tab, not here. But if today is
+    /// genuinely empty, showing a bare "All clear" while a stale pile sits in Overdue is a
+    /// lie, so in that one case the list falls back to the past-day items and this flag tells
+    /// the view to label them as such.
+    var showingOverdue: Bool = false
 
     static let sample = NudgeEntry(
         date: .now, overdue: 3, todayDone: 2, todayTotal: 5,
@@ -50,6 +63,21 @@ struct NudgeEntry: TimelineEntry {
     static let signedOut = NudgeEntry(date: .now, overdue: 0, todayDone: 0, todayTotal: 0, items: [], state: .signedOut)
 }
 
+/// When the widget should next rebuild: the usual 30-minute cadence, or the stroke of midnight
+/// if that comes first.
+///
+/// Today-vs-past-day is now a CALENDAR-DAY test, so every item due today silently becomes
+/// past-day overdue at 00:00. On the plain 30-minute cadence the widget could sit for half an
+/// hour after midnight still presenting yesterday's reminders as today's — the exact confusion
+/// this change exists to remove. Asking for a refresh at midnight closes that window.
+/// (WidgetKit treats `.after` as "no earlier than", so this is a floor, not a guarantee.)
+func wNextRefresh(from now: Date = .now) -> Date {
+    let cal = Calendar.current
+    let halfHour = cal.date(byAdding: .minute, value: 30, to: now) ?? now.addingTimeInterval(1800)
+    guard let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) else { return halfHour }
+    return min(halfHour, midnight)
+}
+
 struct NudgeProvider: TimelineProvider {
     func placeholder(in context: Context) -> NudgeEntry { .sample }
     func getSnapshot(in context: Context, completion: @escaping (NudgeEntry) -> Void) {
@@ -58,8 +86,7 @@ struct NudgeProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<NudgeEntry>) -> Void) {
         Task {
             let entry = await Self.build()
-            let next = Calendar.current.date(byAdding: .minute, value: 30, to: .now) ?? .now.addingTimeInterval(1800)
-            completion(Timeline(entries: [entry], policy: .after(next)))
+            completion(Timeline(entries: [entry], policy: .after(wNextRefresh())))
         }
     }
 
@@ -75,12 +102,21 @@ struct NudgeProvider: TimelineProvider {
         case .unavailable:   return .failed
         }
         let now = Date(); let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
         func color(_ id: String?) -> String { data.lists.first { $0.id == (id ?? "reminders") }?.color ?? "5B4FCF" }
         func open(_ r: WReminder) -> Bool { !(r.completed ?? false) && !(r.dismissed ?? false) }
         func snoozed(_ r: WReminder) -> Bool { if let s = wParseDate(r.snoozedUntil) { return s > now }; return false }
 
-        var overdue = 0, todayDone = 0, todayOpen = 0
-        var items: [WItem] = []
+        var todayDone = 0, todayOpen = 0
+        // Today's list and the past-day pile are built SEPARATELY and never mixed.
+        //
+        // The app has drawn this line since the Today/Overdue tab split: NudgeStore's
+        // `pastDayOverdue()` is "due on a PREVIOUS calendar day … a reminder due earlier
+        // *today* stays on the Today page — it only lands here once midnight rolls it into a
+        // past day". The widget used to test `d < now` for its list, which lumped the entire
+        // historical overdue pile into Today and diverged from every other surface in the app.
+        var todayItems: [WItem] = []
+        var pastDayItems: [WItem] = []
         for r in data.reminders {
             // Today progress — mirror the app's todayStats exactly: done = completed today;
             // the total also counts open items DUE today even if their time has already
@@ -89,19 +125,39 @@ struct NudgeProvider: TimelineProvider {
             if let ca = wParseDate(r.completedAt), cal.isDateInToday(ca) { todayDone += 1 }
             else if !(r.completed ?? false), let dd = wParseDate(r.dueDate), cal.isDateInToday(dd) { todayOpen += 1 }
 
-            // Overdue count + the items list keep their own open/not-snoozed logic.
+            // The lists keep their own open/not-snoozed logic.
             guard open(r), !snoozed(r), let d = wParseDate(r.dueDate) else { continue }
-            let isOver = d < now
-            if isOver { overdue += 1 }
-            if isOver || cal.isDateInToday(d) {
-                items.append(WItem(id: r.id, title: wDisplay(r.title), due: d,
-                                   hasTime: r.hasTime ?? false, overdue: isOver, color: color(r.listId)))
-            }
+            let hasTime = r.hasTime ?? false
+            // Mirror NudgeStore.isOverdue(): a DATE-ONLY reminder isn't overdue until its whole
+            // day has passed, otherwise it renders red from 00:01 on the very day it's due.
+            // The widget previously used a bare `d < now`, which had exactly that bug.
+            let cutoff = hasTime ? d : (cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: d)) ?? d)
+            let isOver = cutoff < now
+            let item = WItem(id: r.id, title: wDisplay(r.title), due: d,
+                             hasTime: hasTime, overdue: isOver, color: color(r.listId),
+                             priority: r.priority ?? "normal")
+            if cal.startOfDay(for: d) < today { pastDayItems.append(item) }
+            else if cal.isDateInToday(d) { todayItems.append(item) }
         }
-        items.sort { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
-        return NudgeEntry(date: now, overdue: overdue, todayDone: todayDone,
-                          todayTotal: todayDone + todayOpen, items: Array(items.prefix(8)),
-                          state: .loaded)
+        let byDue: (WItem, WItem) -> Bool = { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
+        todayItems.sort(by: byDue)
+        // The past-day pile sorts high-priority first, then oldest — the exact ordering the
+        // app's Overdue tab uses. Today's list keeps its plain chronological sort.
+        let prank: (WItem) -> Int = { $0.priority == "high" ? 0 : $0.priority == "low" ? 2 : 1 }
+        pastDayItems.sort {
+            let ra = prank($0), rb = prank($1)
+            if ra != rb { return ra < rb }
+            return byDue($0, $1)
+        }
+
+        // Fall back to the past-day pile ONLY when today is completely empty — otherwise a
+        // widget reading "All clear" would be flatly untrue. When today has anything at all,
+        // even a single item, the old pile stays hidden and lives on the Overdue tab.
+        let useOverdue = todayItems.isEmpty && !pastDayItems.isEmpty
+        let shown = useOverdue ? pastDayItems : todayItems
+        return NudgeEntry(date: now, overdue: pastDayItems.count, todayDone: todayDone,
+                          todayTotal: todayDone + todayOpen, items: Array(shown.prefix(8)),
+                          state: .loaded, showingOverdue: useOverdue)
     }
 }
 
@@ -285,7 +341,9 @@ struct TodayConfigProvider: AppIntentTimelineProvider {
     func timeline(for configuration: TodayWidgetConfigIntent, in context: Context) async -> Timeline<TodayConfigEntry> {
         let base = await NudgeProvider.build()
         let style = TodayStyle(configuration)
-        let next = Calendar.current.date(byAdding: .minute, value: 30, to: .now) ?? .now.addingTimeInterval(1800)
+        // 30 minutes, or midnight if sooner — see wNextRefresh. The Today widget is the one
+        // that actually shows the day's list, so the midnight boundary matters most here.
+        let next = wNextRefresh()
 
         // Tap-to-complete asks for a confirming second tap. If a row is currently armed, render
         // it armed now AND schedule a second entry at the arm's expiry that renders it normally
@@ -388,6 +446,12 @@ struct TodayWidgetView: View {
         return max(1, min(fit, family == .systemLarge ? 8 : 3))
     }
 
+    /// Height reserved for the "N overdue" caption in the overdue-fallback state.
+    /// Pinned with an explicit `.frame(height:)` on the label below so this number is exact
+    /// rather than a guess — the rowLimit maths must subtract a real value or the list
+    /// overflows the widget, which is the bug the GeometryReader rewrite already fixed once.
+    private var overdueCaptionHeight: CGFloat { 13 }
+
     var body: some View {
         // GeometryReader supplies the real content height, so the row count is derived from
         // actual available space instead of hardcoded per-family guesses. It fills whatever
@@ -426,8 +490,9 @@ struct TodayWidgetView: View {
                     }
                     Spacer()
                 } else if entry.items.isEmpty {
-                    // Genuine empty result: fetch succeeded, nothing due today. This is the
-                    // only case that should ever read "All clear".
+                    // Genuine empty result: fetch succeeded, nothing due today AND nothing
+                    // sitting past-day. This is the only case that should ever read "All
+                    // clear" — build() only leaves `items` empty when both piles are empty.
                     Spacer()
                     HStack { Spacer()
                         VStack(spacing: 6) {
@@ -437,12 +502,33 @@ struct TodayWidgetView: View {
                         Spacer() }
                     Spacer()
                 } else {
+                    // Overdue-fallback caption. Only appears when there is nothing due today at
+                    // all and the list has fallen back to the past-day pile — without it the
+                    // rows would read as today's reminders when they're actually days old.
+                    // Deliberately plain text, not a pill: the old header pill rendered as a
+                    // grey blob in Apple's tinted home-screen mode, which is why it was removed.
+                    if entry.showingOverdue {
+                        Text(entry.overdue == 1 ? "1 overdue" : "\(entry.overdue) overdue")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(WTheme.coral)
+                            // Height is pinned so rowLimit's arithmetic stays exact — an
+                            // unpinned caption could grow under Dynamic Type and push the list
+                            // past the widget's bottom edge, which is the overflow bug the
+                            // GeometryReader rewrite already had to fix once. lineLimit +
+                            // minimumScaleFactor make the text shrink to fit that height
+                            // instead of clipping at large accessibility sizes.
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .frame(height: overdueCaptionHeight)
+                    }
                     // Dumb-Phone style list: each row is just the reminder title — lowercase, bold,
                     // left-aligned, big — like an app-launcher. No ring, no due label. Tapping the
                     // text completes the reminder (writes straight to Supabase; no app launch).
                     // Recurring reminders complete here too, but their next occurrence is spawned
                     // when the app next opens (see CompleteReminderWidgetIntent).
-                    ForEach(entry.items.prefix(rowLimit(for: geo.size.height))) { it in
+                    let listHeight = geo.size.height
+                        - (entry.showingOverdue ? overdueCaptionHeight + style.rowSpacing : 0)
+                    ForEach(entry.items.prefix(rowLimit(for: listHeight))) { it in
                         // First tap arms, second tap on the SAME row completes — a widget can't
                         // show a confirmation dialog, so the second tap IS the confirmation.
                         // See CompleteReminderWidgetIntent.perform().
