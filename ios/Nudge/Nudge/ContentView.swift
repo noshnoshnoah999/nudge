@@ -672,23 +672,26 @@ struct ContentView: View {
         }
     }
 
-    private var nextUp: Reminder? {
-        let now = Date()
-        return store.open()
-            .compactMap { r -> (Reminder, Date)? in
-                guard let d = parseDate(r.dueDate), d > now else { return nil }
-                return (r, d)
-            }
-            .min { $0.1 < $1.1 }?.0
-    }
+    /// The Home "next up" card. Shows the OLDEST still-open reminder due TODAY — including one
+    /// whose time has already passed, because that's the one being ignored and it belongs on
+    /// screen. It deliberately never reaches into tomorrow: once today is clear the card
+    /// disappears rather than pulling a future item forward (that's what Upcoming is for).
+    /// todayReminders() is already open-only, snooze-aware and sorted earliest-due-first.
+    private var nextUp: Reminder? { store.todayReminders().first }
 
     private func nextUpCard(_ r: Reminder) -> some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.right.circle.fill").font(.caption).foregroundStyle(Theme.accent)
-                    Text("NEXT UP").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.textMeta)
-                    if let lbl = dueLabel(r) { Text("· " + lbl).font(.caption.weight(.semibold)).foregroundStyle(Theme.accent) }
+                    // Past its time but still dated today → say so. "NEXT UP" on a 07:00
+                    // reminder at 11:20 reads as a lie. isOverdue() is the same rule the rest
+                    // of the app uses, so a date-only item isn't "late" until its day is gone.
+                    let late = store.isOverdue(r)
+                    let tint = late ? Theme.coral : Theme.accent
+                    Image(systemName: late ? "exclamationmark.circle.fill" : "arrow.right.circle.fill")
+                        .font(.caption).foregroundStyle(tint)
+                    Text(late ? "STILL DUE" : "NEXT UP").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.textMeta)
+                    if let lbl = dueLabel(r) { Text("· " + lbl).font(.caption.weight(.semibold)).foregroundStyle(tint) }
                 }
                 Text(displayTitle(r)).font(.title3.weight(.bold)).foregroundStyle(Theme.textMain).lineLimit(2)
             }
@@ -847,22 +850,42 @@ struct ContentView: View {
             (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture)
         }
         // Default Upcoming + No-date buckets, minus anything already shown in a pinned list.
+        let cal = Calendar.current
+        // Tomorrow is the one future day you actually plan around, so it gets its own section
+        // pinned to the very top instead of being the first few rows of a flat future
+        // timeline. These items are then REMOVED from the general Upcoming bucket and from
+        // pinned list sections below, so nothing appears twice on this page. A reminder dated
+        // tomorrow but snoozed past it stays in Upcoming — the snooze is the real due signal.
+        let prank: (Reminder) -> Int = { $0.priorityOrNormal == "high" ? 0 : $0.priorityOrNormal == "low" ? 2 : 1 }
+        let tomorrowItems = store.open().filter { r in
+            guard let d = parseDate(r.dueDate) else { return false }
+            if parseDate(r.snoozedUntil).map({ $0 > Date() }) == true { return false }
+            return cal.isDateInTomorrow(d)
+        }.sorted {
+            let da = parseDate($0.dueDate) ?? .distantFuture, db = parseDate($1.dueDate) ?? .distantFuture
+            if da != db { return da < db }
+            return prank($0) < prank($1)
+        }
+        let tomorrowIds = Set(tomorrowItems.map { $0.id })
         let defaults = store.sections().filter { $0.id == "upcoming" || $0.id == "nodate" }
             .map { NudgeStore.ReminderSection(id: $0.id, title: $0.title,
-                                              items: $0.items.filter { !chosenIds.contains($0.listIdOrDefault) }) }
+                                              items: $0.items.filter { !chosenIds.contains($0.listIdOrDefault) && !tomorrowIds.contains($0.id) }) }
             .filter { !$0.items.isEmpty }
-        let cal = Calendar.current
         let pinned: [NudgeStore.ReminderSection] = chosen.compactMap { l in
             let items = store.open().filter { r in
                 guard r.listIdOrDefault == l.id, !store.isOverdue(r) else { return false }
                 if parseDate(r.snoozedUntil).map({ $0 > Date() }) == true { return false }   // snoozed → Upcoming default bucket
                 if parseDate(r.dueDate).map({ cal.isDateInToday($0) }) == true { return false } // today → Today tab
+                if tomorrowIds.contains(r.id) { return false }                                // tomorrow → its own section
                 return true
             }.sorted(by: byDate)
             return items.isEmpty ? nil : NudgeStore.ReminderSection(id: "list-\(l.id)", title: l.name, items: items)
         }
-        if pinned.isEmpty && defaults.isEmpty {
+        if pinned.isEmpty && defaults.isEmpty && tomorrowItems.isEmpty {
             emptyCard("calendar", "Nothing upcoming", "New reminders will show here.")
+        }
+        if !tomorrowItems.isEmpty {
+            sectionView(NudgeStore.ReminderSection(id: "tomorrow", title: "Tomorrow", items: tomorrowItems))
         }
         ForEach(pinned) { sectionView($0) }
         ForEach(defaults) { sectionView($0) }
