@@ -20,7 +20,9 @@ struct ContentView: View {
     @State private var showTriage = false
     @State private var aiRescheduling = false
     @State private var showSettings = false
-    @State private var collapsed: Set<String> = []
+    // "completed-today" starts in this set so the Today tab's Completed Today section
+    // is collapsed by default; other section ids join here only once the user collapses them.
+    @State private var collapsed: Set<String> = ["completed-today"]
     @State private var search = ""
     @State private var listFilter: ReminderList?
     @State private var autoClaudeURL: IdentifiableURL?
@@ -598,7 +600,10 @@ struct ContentView: View {
             statCard("Overdue", od, "exclamationmark.triangle", od > 0 ? Theme.coral : Theme.accent) { if od > 0 { switchTab(2) } }
             statCard("Due today", dueTodayCount, "sun.max", Theme.accent) { switchTab(1) }
             statCard("This week", thisWeekCount, "calendar", Theme.accent) { switchTab(3) }
-            statCard("Done today", todayStats.done, "checkmark.circle", Theme.sage) { showCompleted = true }
+            statCard("Done today", todayStats.done, "checkmark.circle", Theme.sage) {
+                collapsed.remove("completed-today")
+                switchTab(1)
+            }
         }
         .popIn(2)
 
@@ -801,6 +806,87 @@ struct ContentView: View {
         } else {
             groupedRows(items)
         }
+        if !completedTodayReminders.isEmpty {
+            completedTodaySection
+        }
+    }
+
+    /// Reminders completed today (by completedAt), regardless of their original due date —
+    // matches the "Done today" stat on Home so both stay in sync.
+    private var completedTodayReminders: [Reminder] {
+        let cal = Calendar.current
+        return store.completedReminders().filter { r in
+            guard let ca = parseDate(r.completedAt) else { return false }
+            return cal.isDateInToday(ca)
+        }
+    }
+
+    private var completedTodaySection: some View {
+        let isCollapsed = collapsed.contains("completed-today")
+        return VStack(alignment: .leading, spacing: Theme.minimal ? 0 : (settings.compact ? 8 : 10)) {
+            Button {
+                withAnimation(Theme.spring) {
+                    if isCollapsed { collapsed.remove("completed-today") } else { collapsed.insert("completed-today") }
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    Text("COMPLETED TODAY")
+                        .font(.caption.weight(.semibold))
+                        .tracking(Theme.minimal ? 1 : 0.8)
+                        .foregroundStyle(Theme.textMeta)
+                    if !Theme.minimal {
+                        Text("\(completedTodayReminders.count)").font(.caption2.weight(.bold))
+                            .contentTransition(.numericText())
+                            .foregroundStyle(Theme.textMeta)
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(Theme.surfaceAlt, in: Capsule())
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+                        .foregroundStyle(Theme.textMeta.opacity(Theme.minimal ? 0.5 : 1))
+                        .rotationEffect(.degrees(isCollapsed ? -90 : 0))
+                }
+                .padding(.leading, Theme.minimal ? 0 : 2)
+                .padding(.bottom, Theme.minimal ? 8 : 0)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if !isCollapsed {
+                ForEach(completedTodayReminders) { r in
+                    completedTodayRow(r)
+                        .transition(.asymmetric(
+                            insertion: .opacity,
+                            removal: .scale(scale: 0.9).combined(with: .opacity)))
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private func completedTodayRow(_ r: Reminder) -> some View {
+        HStack(spacing: 12) {
+            Button { withAnimation(Theme.spring) { store.toggleComplete(r) } } label: {
+                Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Theme.accent)
+            }
+            .buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(displayTitle(r)).font(.subheadline).foregroundStyle(Theme.textMeta)
+                    .strikethrough(true, color: Theme.textMeta.opacity(0.5))
+                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    if let t = parseDate(r.completedAt) {
+                        Text(t, format: .dateTime.hour().minute()).font(.caption).foregroundStyle(Theme.textMeta)
+                    }
+                    if let l = store.list(for: r.listId)?.name {
+                        Text("· \(l)").font(.caption).foregroundStyle(Theme.textMeta)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(13)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
     }
 
     // MARK: - Overdue tab — reminders due on a PREVIOUS calendar day (today's stay on
