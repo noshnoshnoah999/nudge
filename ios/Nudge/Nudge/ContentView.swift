@@ -677,12 +677,18 @@ struct ContentView: View {
         }
     }
 
-    /// The Home "next up" card. Shows the OLDEST still-open reminder due TODAY — including one
-    /// whose time has already passed, because that's the one being ignored and it belongs on
-    /// screen. It deliberately never reaches into tomorrow: once today is clear the card
-    /// disappears rather than pulling a future item forward (that's what Upcoming is for).
+    /// The Home "next up" card. Prefers the soonest still-open reminder due TODAY that
+    /// hasn't happened yet (isOverdue == false) — so a later item you haven't gotten to
+    /// (e.g. FaceTime Dad at 15:15) shows as "NEXT UP" ahead of an earlier one that's
+    /// already passed. Only once nothing today is still ahead does it fall back to the
+    /// earliest overdue-today item, flagged "STILL DUE" by nextUpCard. It deliberately
+    /// never reaches into tomorrow: once today is fully clear the card disappears rather
+    /// than pulling a future item forward (that's what Upcoming is for).
     /// todayReminders() is already open-only, snooze-aware and sorted earliest-due-first.
-    private var nextUp: Reminder? { store.todayReminders().first }
+    private var nextUp: Reminder? {
+        let today = store.todayReminders()
+        return today.first { !store.isOverdue($0) } ?? today.first
+    }
 
     private func nextUpCard(_ r: Reminder) -> some View {
         HStack(spacing: 14) {
