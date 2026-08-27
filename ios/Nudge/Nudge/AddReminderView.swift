@@ -190,6 +190,10 @@ struct AddReminderView: View {
                             including: titleFocused ? .subviews : .all
                         )
 
+                    // "buy" rule override: the rule fires instantly and picks payday, but a
+                    // cheap purchase doesn't need to wait 20+ days. See `buyDateChips`.
+                    buyDateChips
+
                     // Second door into scanning (the FAB long-press is the first). Only when
                     // creating a new reminder — irrelevant when editing an existing one.
                     if editing == nil {
@@ -394,6 +398,7 @@ struct AddReminderView: View {
                     }
                 }
                 .padding(18)
+                .animation(Theme.spring, value: buyRuleApplied)
                 .animation(Theme.spring, value: hasDue)
                 .animation(Theme.spring, value: hasTime)
                 .animation(Theme.spring, value: repeatFreq)
@@ -411,8 +416,7 @@ struct AddReminderView: View {
                 guard editing == nil else { return }
                 let hasBuy = newValue.range(of: "\\bbuy\\b", options: [.regularExpression, .caseInsensitive]) != nil
                 if hasBuy && !buyRuleApplied {
-                    buyRuleApplied = true
-                    withAnimation(Theme.snappy) { applyBuyRule() }
+                    withAnimation(Theme.snappy) { applyBuyRule() }   // sets buyRuleApplied itself
                 } else if !hasBuy {
                     buyRuleApplied = false
                 }
@@ -965,13 +969,113 @@ struct AddReminderView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
+    // MARK: - "buy" date override
+
+    /// The three days a "buy" reminder can land on. Payday is what the rule picks by
+    /// itself; the other two exist because payday can be 20+ days out and a small
+    /// purchase shouldn't have to wait that long.
+    private enum BuyWhen: String, CaseIterable, Identifiable {
+        case payday, today, tomorrow
+        var id: String { rawValue }
+    }
+
+    /// Which chip reads as selected. Derived from `due` rather than stored in its own
+    /// @State, so editing the date by hand in the "When" section keeps the chips honest
+    /// instead of leaving a stale highlight behind.
+    private var activeBuyWhen: BuyWhen? {
+        guard hasDue else { return nil }
+        let cal = Calendar.current
+        if cal.isDateInToday(due) { return .today }
+        if cal.isDateInTomorrow(due) { return .tomorrow }
+        if cal.isDate(due, inSameDayAs: Payday.next()) { return .payday }
+        return nil
+    }
+
+    private func buyChipLabel(_ w: BuyWhen) -> String {
+        switch w {
+        case .payday:
+            let f = DateFormatter(); f.dateFormat = "d MMM"
+            return "Payday · " + f.string(from: Payday.next())
+        case .today:    return "Today"
+        case .tomorrow: return "Tomorrow"
+        }
+    }
+
+    /// Move the reminder to the chosen day. It stays in Shopping either way — "buy" still
+    /// means shopping, only the date is in question. Payday and Tomorrow both use 09:00,
+    /// the time the rule has always used. Today can't: 09:00 is usually already past, so
+    /// it rolls to the next hour (capped at 22:00) and then through `nextFreeSlot` so it
+    /// doesn't land on top of something already booked.
+    private func setBuyWhen(_ w: BuyWhen) {
+        let cal = Calendar.current
+        let now = Date()
+        var target: Date
+        switch w {
+        case .payday:
+            target = Payday.next()
+        case .today, .tomorrow:
+            let day = (w == .today) ? now : (cal.date(byAdding: .day, value: 1, to: now) ?? now)
+            var c = cal.dateComponents([.year, .month, .day], from: day)
+            c.hour = 9; c.minute = 0; c.second = 0
+            target = cal.date(from: c) ?? day
+            if w == .today && target < now {
+                c.hour = min(cal.component(.hour, from: now) + 1, 22); c.minute = 0
+                target = cal.date(from: c) ?? now.addingTimeInterval(3600)
+            }
+            target = store.nextFreeSlot(target, excluding: editing?.id)
+        }
+        withAnimation(Theme.snappy) {
+            hasDue = true; hasTime = true; due = target
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// The row under the title box. New reminders only, and only once the "buy" rule has
+    /// actually fired — it disappears again if the word is deleted.
+    @ViewBuilder private var buyDateChips: some View {
+        if editing == nil && buyRuleApplied {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Filed under Shopping — when do you want to buy it?")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textMeta)
+                HStack(spacing: 8) {
+                    ForEach(BuyWhen.allCases) { w in
+                        let on = (activeBuyWhen == w)
+                        Button { setBuyWhen(w) } label: {
+                            Text(buyChipLabel(w))
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(on ? Theme.accent : Theme.textMain)
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .background(on ? Theme.accentSoft : Theme.surface, in: Capsule())
+                                .overlay(Capsule().stroke(on ? Theme.accent.opacity(0.35) : Theme.cardStroke,
+                                                          lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .transition(.opacity)
+        }
+    }
+
     /// Buy-keyword rule: a NEW reminder whose title contains "buy" goes to the Shopping
     /// list, due the next payday at 09:00 — this month's 15th (or the Friday before, if
     /// it's a weekend) if it hasn't passed, otherwise next month's.
+    ///
+    /// The DATE half runs once only. `save()` calls this again as a safety net for titles
+    /// that arrive prefilled (where `.onChange(of: title)` never fires), but it must not
+    /// overwrite what's on screen — by then the date is either the payday this rule set, a
+    /// Today/Tomorrow chip the user tapped, or a date they picked by hand. Without the
+    /// `buyRuleApplied` guard, choosing Today and hitting Save silently reverted to payday.
+    /// The list half still runs every time; that part was never in dispute.
     private func applyBuyRule() {
         guard editing == nil else { return }
         guard title.range(of: "\\bbuy\\b", options: [.regularExpression, .caseInsensitive]) != nil else { return }
         if store.lists.contains(where: { $0.id == "shopping" }) { listId = "shopping" }
+        guard !buyRuleApplied else { return }
+        buyRuleApplied = true
         hasDue = true; hasTime = true
         due = Payday.next()
     }
