@@ -83,12 +83,29 @@ rm -rf "$PROF_BK"   # fresh build succeeded; the old profiles aren't needed
 # NEWEST build by mtime — never an old DerivedData dir (which would install a stale app).
 APP=$(ls -td "$HOME/Library/Developer/Xcode/DerivedData/Nudge-"*/Build/Products/Debug-iphoneos/Nudge.app 2>/dev/null | head -1)
 [ -z "$APP" ] && { notify "Nudge reinstall failed" "No iPhone build output." "Basso"; exit 1; }
-OUT=$(xcrun devicectl device install app --device "$DEV" "$APP" 2>&1); echo "$OUT" | tail -2
-if echo "$OUT" | grep -qiE "installed|databaseUUID"; then
+# Judge the install by its EXIT CODE, never by grepping its prose. The old check was
+# `grep -qiE "installed|databaseUUID"`, which matches devicectl's FAILURE text too —
+# "This app cannot be installed" contains "installed". A signing failure therefore read
+# as success: the script launched the OLD app, printed "iPhone reinstalled", carried on
+# to the Mac and finished with a ✅. That is how an app stayed a week stale on the phone
+# while every run reported success. Also treat any "ERROR:" line as failure, in case
+# devicectl ever exits 0 on a partial failure.
+OUT=$(xcrun devicectl device install app --device "$DEV" "$APP" 2>&1); RC=$?
+if [ $RC -eq 0 ] && ! echo "$OUT" | grep -q "^ERROR:"; then
   xcrun devicectl device process launch --terminate-existing --device "$DEV" uk.flouty.Nudge >/dev/null 2>&1
   echo "iPhone reinstalled."
 else
-  notify "Nudge reinstall failed" "Install failed — unlock & reconnect your iPhone, then click again." "Basso"; exit 1
+  echo "$OUT" | tail -25
+  # Name the actual cause. "Unlock and reconnect" is wrong advice for a signing failure
+  # and sends you round the same loop.
+  REASON="Install failed — see the Terminal output for the reason."
+  if echo "$OUT" | grep -q "0xe8008012\|ApplicationVerificationFailed"; then
+    REASON="Signing problem: the provisioning profile does not cover this iPhone. Open Xcode, choose the Nudge scheme with your iPhone as the destination, and press Run to repair signing."
+  elif echo "$OUT" | grep -qi "storage\|space"; then
+    REASON="Not enough free space on the iPhone."
+  fi
+  report "Nudge reinstall failed" "$REASON"
+  exit 1
 fi
 
 # ---------- Mac (Catalyst) ----------
