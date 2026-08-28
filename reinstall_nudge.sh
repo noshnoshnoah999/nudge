@@ -109,6 +109,7 @@ else
 fi
 
 # ---------- Mac (Catalyst) ----------
+MAC_OK=0   # only the success path below sets this; the final notify honours it
 # Build PROPERLY SIGNED (not ad-hoc): macOS silently refuses notification registration for
 # an ad-hoc-signed app, so the notifications toggle could never turn on. Real Apple
 # Development signing fixes that. Trade-off: the Mac app now also carries the free-team
@@ -136,6 +137,7 @@ if ( set -o pipefail; xcodebuild -project Nudge.xcodeproj -scheme Nudge -destina
         rm -rf "$OLD"
         /usr/bin/open /Applications/Nudge.app
         echo "Mac reinstalled to /Applications."
+        MAC_OK=1
       else
         # Swap failed — put the working copy back rather than leaving no app at all.
         [ -d "$OLD" ] && mv "$OLD" /Applications/Nudge.app
@@ -150,5 +152,13 @@ if ( set -o pipefail; xcodebuild -project Nudge.xcodeproj -scheme Nudge -destina
 else
   notify "Nudge Mac refresh failed" "The Mac app couldn't rebuild." "Basso"
 fi
-notify "Nudge" "✅ Reinstalled on iPhone + Mac — 7-day clock reset." "Glass"
+# Don't claim both when only one landed. The Mac block notifies its own failures but
+# does not exit, so this line used to fire a ✅ straight after a failure notification —
+# the same "reported success while it actually failed" trap the iPhone install had.
+if [ "$MAC_OK" = "1" ]; then
+  notify "Nudge" "✅ Reinstalled on iPhone + Mac — 7-day clock reset." "Glass"
+else
+  # Reaching here means the iPhone half succeeded (it exits on failure) but the Mac didn't.
+  notify "Nudge" "iPhone reinstalled — the Mac app did NOT update. See the failure above." "Basso"
+fi
 echo "[$(date '+%H:%M')] Done."
