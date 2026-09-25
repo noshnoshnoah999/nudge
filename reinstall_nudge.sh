@@ -3,7 +3,7 @@
 # Runs a readiness/connectivity check first. Pass --interactive for modal dialogs
 # (the Dock button); without it, failures come as notifications (the auto-job).
 PROJ="/Users/noahflouty/Claude/nudge/ios/Nudge"
-DEV="73562BAB-DA59-5AB0-A722-8AACE1D8820C"
+DEV="00008150-0014658C0103401C"
 INTERACTIVE=0; [ "$1" = "--interactive" ] && INTERACTIVE=1
 
 notify()  { /usr/bin/osascript -e "display notification \"$2\" with title \"$1\" sound name \"$3\"" >/dev/null 2>&1; }
