@@ -23,6 +23,19 @@
 //   been one-off tasks. Never trust that comment's successor: if a rule lives in NudgeStore,
 //   it must live in Shared/ or it does not apply here.
 //
+// RUNS IN THE APP'S PROCESS (2026-10-07):
+//   The intent conforms to LiveActivityIntent (iOS only, see the extension at the bottom of
+//   this file). Apple: "if the intent conforms to ... LiveActivityIntent ... the system performs
+//   the app intent in the app's process" — launching Nudge in the background if it isn't
+//   running. That matters because only the APP's UNUserNotificationCenter / AlarmManager hold
+//   the reminder's pending notification and urgent alarm. Before this, completing early from
+//   the widget left the notification scheduled until Nudge was next opened, so it still fired.
+//   After a SUCCESSFUL completion write, WidgetLocalAlerts.clear() removes that occurrence's
+//   pending + delivered notifications (due-time and early alerts) and cancels its alarm, and
+//   records it in WidgetCompletionLedger so a reschedule from a not-yet-refreshed store can't
+//   put the notification straight back. If the write fails, nothing is cancelled — the
+//   reminder is still open, so its alert must still fire.
+//
 // TWO THINGS THE WIDGET STILL CANNOT DO, both self-healing on next app launch:
 //   • Schedule the new occurrence's local notification. An extension's UNUserNotificationCenter
 //     is its own, not the app's. NotificationManager.reschedule() rebuilds everything from the
@@ -46,6 +59,12 @@
 
 import AppIntents
 import Foundation
+#if canImport(UserNotifications)
+import UserNotifications
+#endif
+#if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+import AlarmKit
+#endif
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
@@ -88,7 +107,10 @@ struct CompleteReminderWidgetIntent: AppIntent {
         if let pending = WidgetPendingCompletionStore.current(), pending.id == reminderId {
             // Confirmed — this exact row was armed and the window hasn't lapsed.
             WidgetPendingCompletionStore.clear()
-            await WidgetCompletion.complete(id: reminderId)
+            if let done = await WidgetCompletion.complete(id: reminderId) {
+                // Only after the completion is saved — see "RUNS IN THE APP'S PROCESS" above.
+                await WidgetLocalAlerts.clear(reminderId: reminderId, completedDue: done.originalDue)
+            }
         } else {
             // First tap on this row (or the armed row was a different one / had expired).
             // Arm it and re-render so the row visibly asks for a second tap. Nothing is written
@@ -116,18 +138,27 @@ enum WidgetCompletion {
     /// Silently no-ops on any failure (no session, network, row not found) — the widget then
     /// simply refreshes from the server and still shows the item, rather than pretending it
     /// completed.
-    static func complete(id: String) async {
+    /// What a successful completion reports back: the due date of the occurrence that was
+    /// completed, as it was BEFORE the write (a routine keeps its id and moves its date, so the
+    /// ledger has to know which date was done).
+    struct Done { let originalDue: String? }
+
+    /// Returns nil when nothing was saved (no session, network, row not found, write failed).
+    @discardableResult
+    static func complete(id: String) async -> Done? {
         // Refresh the token first if it's stale. Previously this read the Keychain directly, so a
         // tap made with an expired access token silently no-op'd: the row fetch 401'd, the guard
         // below returned, and the reminder just stayed put with no explanation. Same root cause as
         // the widget's "Can't sync" — see SessionRefresh.
-        guard case .token(let token) = await SessionRefresh.accessToken() else { return }
+        guard case .token(let token) = await SessionRefresh.accessToken() else { return nil }
         let now = Date()
         let nowStamp = stamp.string(from: now)
 
         // Read the row's FULL data payload (all keys, not just the widget subset) so we can
         // write everything back and change only what completing it should change.
-        guard var row = await fetchRow(id: id, token: token) else { return }
+        guard var row = await fetchRow(id: id, token: token) else { return nil }
+        let originalDue = row["dueDate"]?.stringValue
+        var saved = false
 
         let rule = engineRule(from: row["recurrence"])
         let isRoutine = (row["routine"]?.boolValue ?? false)
@@ -159,7 +190,7 @@ enum WidgetCompletion {
             snap["updatedAt"] = .string(nowStamp)
             // Fail safe: if history can't be written, leave the routine completely untouched
             // rather than advancing it with no record that it was done.
-            guard await upsert(id: snapId, data: snap, updatedAt: nowStamp, token: token) else { return }
+            guard await upsert(id: snapId, data: snap, updatedAt: nowStamp, token: token) else { return nil }
 
             // 2) Roll the routine forward. Stays open; completedAt is nil because the
             //    snapshot above is now the completion record (no double-count in Done-today).
@@ -173,7 +204,7 @@ enum WidgetCompletion {
             row["completedAt"] = .null
             row["snoozedUntil"] = .null
             row["updatedAt"] = .string(nowStamp)
-            _ = await upsert(id: id, data: row, updatedAt: nowStamp, token: token)
+            saved = await upsert(id: id, data: row, updatedAt: nowStamp, token: token)
 
         // ── Plain repeating reminder ────────────────────────────────────────────────────
         // Mirrors NudgeStore.toggleComplete: this occurrence completes and becomes history,
@@ -194,32 +225,34 @@ enum WidgetCompletion {
                 copy["updatedAt"] = .string(nowStamp)
                 // Fail safe: no successor written → do not complete this one, or the series
                 // ends here. That is exactly the bug this whole change exists to fix.
-                guard await upsert(id: copyId, data: copy, updatedAt: nowStamp, token: token) else { return }
+                guard await upsert(id: copyId, data: copy, updatedAt: nowStamp, token: token) else { return nil }
             }
             // No `next` means the series has passed its end-repeat date — completing it
             // outright is correct, and is what the app does too.
-            await markCompleted(id: id, row: &row, nowStamp: nowStamp, token: token)
+            saved = await markCompleted(id: id, row: &row, nowStamp: nowStamp, token: token)
 
         // ── Ordinary one-off ────────────────────────────────────────────────────────────
         case .oneOff:
-            await markCompleted(id: id, row: &row, nowStamp: nowStamp, token: token)
+            saved = await markCompleted(id: id, row: &row, nowStamp: nowStamp, token: token)
         }
 
         // Rebuild the timeline so the item drops off (or reappears at its new date) at once.
         WidgetReload.today()
+        return saved ? Done(originalDue: originalDue) : nil
     }
 
     /// Flip a row's completion fields and upsert it back with a fresh `updated_at`, so the
     /// app's last-write-wins sync treats this completion as the newest state.
+    @discardableResult
     private static func markCompleted(id: String, row: inout [String: JSONVal],
-                                      nowStamp: String, token: String) async {
+                                      nowStamp: String, token: String) async -> Bool {
         row["completed"] = .bool(true)
         row["completedAt"] = .string(nowStamp)
         // Clear any snooze so a completed item doesn't reappear when the snooze lapses.
         row["snoozedUntil"] = .null
         // Advance the item's own edit stamp too (kept in sync with the row's updated_at).
         row["updatedAt"] = .string(nowStamp)
-        _ = await upsert(id: id, data: row, updatedAt: nowStamp, token: token)
+        return await upsert(id: id, data: row, updatedAt: nowStamp, token: token)
     }
 
     /// Same id shape the app generates (NudgeStore uses "r" + 12 UUID chars).
@@ -296,6 +329,75 @@ enum WidgetCompletion {
     }
 }
 
+// MARK: - Local alerts (notification + alarm) for a widget-completed reminder
+
+/// Clears the local alerts of an occurrence the widget just completed. Runs in the APP's
+/// process (LiveActivityIntent), so `UNUserNotificationCenter.current()` and
+/// `AlarmManager.shared` are the app's own — the ones that actually hold Nudge's alerts.
+///
+/// Identifier scheme must match NotificationManager.reschedule(): the due-time alert is
+/// `nudge-<id>`, each early alert is `nudge-<id>~e<minutes>`. Only that occurrence's alerts are
+/// touched; a repeating reminder's NEXT occurrence has its own id and is left alone.
+nonisolated enum WidgetLocalAlerts {
+    static func clear(reminderId: String, completedDue: String?) async {
+        WidgetCompletionLedger.record(id: reminderId, due: completedDue)
+
+        #if canImport(UserNotifications)
+        let center = UNUserNotificationCenter.current()
+        let base = "nudge-\(reminderId)"
+        func matches(_ nid: String) -> Bool { nid == base || nid.hasPrefix(base + "~") }
+        let pending = await center.pendingNotificationRequests().map(\.identifier).filter(matches)
+        if !pending.isEmpty { center.removePendingNotificationRequests(withIdentifiers: pending) }
+        let delivered = await center.deliveredNotifications().map(\.request.identifier).filter(matches)
+        if !delivered.isEmpty { center.removeDeliveredNotifications(withIdentifiers: delivered) }
+        #endif
+
+        #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+        if #available(iOS 26.0, *) {
+            try? AlarmManager.shared.cancel(id: NudgeAlarmID.uuid(for: reminderId))
+        }
+        #endif
+
+        // If the app is already running, pull now so the in-memory store learns about the
+        // completion (and a repeating reminder's next occurrence gets its notification)
+        // without waiting for the next poll. Observed by NudgeStore.
+        await MainActor.run {
+            NotificationCenter.default.post(name: Notification.Name("nudgeWidgetCompleted"), object: nil)
+        }
+    }
+}
+
+/// Short-lived record of occurrences completed from the widget, keyed by id + the due date
+/// that was completed. NotificationManager.reschedule() skips a reminder whose CURRENT due
+/// date is still the completed one — i.e. the store hasn't pulled the completion yet — so a
+/// stale reschedule can't re-add the notification that was just cleared. Once the store
+/// pulls, the reminder is completed (or, for a routine, has moved to a new date) and the
+/// entry no longer matches anything. Entries expire after 3 days regardless.
+///
+/// UserDefaults.standard is correct here: this is only written and read inside the app's
+/// process (the intent runs there — see the top of this file).
+nonisolated enum WidgetCompletionLedger {
+    private static let key = "widgetCompletedOccurrences"
+    private static let ttl: TimeInterval = 3 * 24 * 3600
+
+    /// key "<id>|<due or empty>" → completion time (seconds since 1970)
+    private static func load() -> [String: Double] {
+        let raw = UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
+        let cutoff = Date().timeIntervalSince1970 - ttl
+        return raw.filter { $0.value >= cutoff }
+    }
+
+    static func record(id: String, due: String?) {
+        var d = load()
+        d["\(id)|\(due ?? "")"] = Date().timeIntervalSince1970
+        UserDefaults.standard.set(d, forKey: key)
+    }
+
+    static func isCompleted(id: String, due: String?) -> Bool {
+        load()["\(id)|\(due ?? "")"] != nil
+    }
+}
+
 /// A minimal JSON value so we can round-trip a reminder's full `data` object without a
 /// full Codable model in the widget target — we only need to flip a few keys and write it
 /// back unchanged. Preserves all keys the widget doesn't understand.
@@ -341,3 +443,9 @@ enum JSONVal: Codable {
     /// Ints arrive as JSON numbers; `interval` and `everyDays` are always whole.
     var intValue: Int? { if case .number(let n) = self { return Int(n) }; return nil }
 }
+
+// Run in the app's process (see "RUNS IN THE APP'S PROCESS" at the top). iOS only: AlarmKit
+// and the iPhone widget are iOS features, and Noah only uses the iPhone widget.
+#if os(iOS) && !targetEnvironment(macCatalyst)
+extension CompleteReminderWidgetIntent: LiveActivityIntent {}
+#endif

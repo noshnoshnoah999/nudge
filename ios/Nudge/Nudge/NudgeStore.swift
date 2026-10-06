@@ -51,7 +51,22 @@ final class NudgeStore: ObservableObject {
         nudgeSupportDirectory().appendingPathComponent("nudge_cache.json")
     }
 
-    init() { loadCache() }
+    init() {
+        loadCache()
+        // A widget completion (CompleteReminderWidgetIntent, run in this process) wrote straight
+        // to Supabase. Pull it now so the UI, notifications and a repeating reminder's next
+        // occurrence catch up immediately instead of on the next poll/foreground.
+        NotificationCenter.default.addObserver(forName: Notification.Name("nudgeWidgetCompleted"),
+                                               object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refresh()
+                // A pull doesn't post .nudgeDataChanged, so reschedule explicitly: this is what
+                // gives a repeating reminder's newly spawned next occurrence its notification.
+                // No-op if notifications are off or the manager isn't attached yet.
+                await NotificationManager.shared.reschedule()
+            }
+        }
+    }
 
     // MARK: - Local cache
 

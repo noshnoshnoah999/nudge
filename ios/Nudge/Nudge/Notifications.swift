@@ -137,6 +137,9 @@ final class NotificationManager: NSObject, ObservableObject {
         for r in nudge.reminders {
             if (r.completed ?? false) || (r.dismissed ?? false) { continue }
             if r.listIdOrDefault == "shopping" { continue }   // covered by the single pay-day summary
+            // Completed from the widget but this store hasn't pulled it yet — don't re-add the
+            // alert the widget just cleared. See WidgetCompletionLedger (Shared/).
+            if WidgetCompletionLedger.isCompleted(id: r.id, due: r.dueDate) { continue }
             guard let due = parseDate(r.dueDate) else { continue }
             // Due-time alert (respect a snooze that lands later).
             var mainFire = due

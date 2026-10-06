@@ -58,9 +58,7 @@ enum NudgeAlarms {
     /// Stable UUID for a Nudge reminder id (which isn't itself a UUID) so schedule + cancel
     /// target the same alarm.
     private static func alarmID(_ reminderId: String) -> UUID {
-        let d = Insecure.MD5.hash(data: Data(reminderId.utf8))
-        var bytes = Array(d)
-        return NSUUID(uuidBytes: &bytes) as UUID
+        NudgeAlarmID.uuid(for: reminderId)   // Shared/NudgeAlarm.swift — one derivation for app + widget path
     }
 }
 #endif

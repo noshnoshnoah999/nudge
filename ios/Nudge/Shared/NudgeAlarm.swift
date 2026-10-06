@@ -6,6 +6,8 @@
 
 #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
 import AlarmKit
+import CryptoKit
+import Foundation
 
 @available(iOS 26.0, *)
 struct NudgeAlarmMetadata: AlarmMetadata {
@@ -15,4 +17,16 @@ struct NudgeAlarmMetadata: AlarmMetadata {
 
 @available(iOS 26.0, *)
 typealias NudgeAlarmAttributes = AlarmAttributes<NudgeAlarmMetadata>
+
+/// Stable alarm UUID for a Nudge reminder id (which isn't itself a UUID). Shared so the app's
+/// AlarmService (schedule/cancel) and the widget-completion path (cancel) derive the SAME id.
+/// Moved here from AlarmService.alarmID on 2026-10-07 — the derivation is unchanged (MD5 of
+/// the id's UTF-8 bytes), so alarms scheduled by older builds still cancel correctly.
+nonisolated enum NudgeAlarmID {
+    static func uuid(for reminderId: String) -> UUID {
+        let d = Insecure.MD5.hash(data: Data(reminderId.utf8))
+        var bytes = Array(d)
+        return NSUUID(uuidBytes: &bytes) as UUID
+    }
+}
 #endif
