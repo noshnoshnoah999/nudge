@@ -107,7 +107,9 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             if let d = store.recentlyDeleted { undoToast(d) }
             else if let msg = notionToast { simpleToast(msg) }
-            else if selectMode && !selectedIds.isEmpty { selectionBar }
+            // Shown for the whole of select mode (not only once something is ticked) so
+            // Select All is reachable from an empty selection.
+            else if selectMode { selectionBar }
         }
         .animation(Theme.spring, value: store.recentlyDeleted)
         .animation(Theme.spring, value: selectedIds)
@@ -399,7 +401,23 @@ struct ContentView: View {
     private var selectionBar: some View {
         HStack(spacing: 12) {
             Text("\(selectedIds.count) selected").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain)
-            Spacer(minLength: 12)
+                .contentTransition(.numericText())
+                .lineLimit(1).minimumScaleFactor(0.75)
+            Spacer(minLength: 8)
+            // Select All / Deselect All — covers every reminder on the CURRENT tab only,
+            // including members of collapsed AI groups.
+            let all = selectableIdsOnCurrentTab
+            let allSelected = !all.isEmpty && all.isSubset(of: selectedIds)
+            Button {
+                UISelectionFeedbackGenerator().selectionChanged()
+                withAnimation(Theme.spring) {
+                    if allSelected { selectedIds.subtract(all) } else { selectedIds.formUnion(all) }
+                }
+            } label: {
+                Text(allSelected ? "Deselect All" : "Select All")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain)
+            }
+            .disabled(all.isEmpty)
             Button {
                 withAnimation(Theme.spring) { selectMode = false; selectedIds.removeAll() }
             } label: {
@@ -410,12 +428,15 @@ struct ContentView: View {
                     .padding(.horizontal, 14).padding(.vertical, 7)
                     .background(Theme.accent, in: Capsule())
             }
+            .disabled(selectedIds.isEmpty)
+            .opacity(selectedIds.isEmpty ? 0.45 : 1)
         }
         .padding(.horizontal, 18).padding(.vertical, 13)
         .background(Theme.textMain.opacity(0.94), in: Capsule())
         .overlay(Capsule().stroke(Theme.onTextMain.opacity(0.1), lineWidth: 1))
         .cardElevation(14, y: 5, opacity: 0.2)
-        .padding(.horizontal, 24).padding(.bottom, 100)
+        // 16 not 24: the bar now carries Select All as well, and must fit an iPhone width.
+        .padding(.horizontal, 16).padding(.bottom, 100)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
@@ -1348,6 +1369,16 @@ struct ContentView: View {
                               onEdit: { editingReminder = $0 })
                     .popIn(base + i)
             }
+        }
+    }
+
+    /// Every reminder the current tab shows as selectable — the same lists todayTab /
+    /// overdueTab hand to groupedRows(), so Select All can never pick something off-screen.
+    private var selectableIdsOnCurrentTab: Set<String> {
+        switch tab {
+        case 1: return Set(store.todayReminders().map(\.id))
+        case 2: return Set(store.pastDayOverdue().map(\.id))
+        default: return []
         }
     }
 
