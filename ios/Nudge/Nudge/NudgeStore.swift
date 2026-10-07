@@ -20,7 +20,13 @@ final class NudgeStore: ObservableObject {
     @Published var smartLists: [SmartList] = []
     @Published var syncState: String = "Local"
 
-    private var settings: [String: JSONValue]? = nil
+    /// The synced settings row. `folders` is derived from it on every assignment, so a cloud
+    /// pull, cache load or local edit all keep the published folder list current.
+    private var settings: [String: JSONValue]? = nil {
+        didSet { folders = Self.decodeFolders(settings?[Self.kFolders]) }
+    }
+    /// User-made folders, in display order. Read-only outside; change via the folder API below.
+    @Published private(set) var folders: [Folder] = []
     private var settingsStamp: String = epochStamp
     private var settingsPushedStamp: String? = nil
     /// Invoked after pullAll adopts a NEWER cloud settings row, so AppSettings can apply the
@@ -478,6 +484,126 @@ final class NudgeStore: ObservableObject {
         settings = dict
         settingsStamp = syncStamp()
         persist(notify: false)
+    }
+
+    // MARK: - Folders (2026-10-07)
+    //
+    // The folder LIST (id, name, icon, order) is stored under "folders" in the synced settings
+    // row — no new table, no new RLS. Membership is `Reminder.folderIds`, synced per reminder
+    // like any other field. The settings row is last-write-wins as a whole, so two devices
+    // editing folders in the same few seconds can lose one edit; membership is per-reminder
+    // and doesn't have that problem.
+
+    private static let kFolders = "folders"
+
+    static func decodeFolders(_ v: JSONValue?) -> [Folder] {
+        guard case .array(let arr)? = v else { return [] }
+        return arr.compactMap { item in
+            guard case .object(let o) = item,
+                  case .string(let id)? = o["id"], !id.isEmpty,
+                  case .string(let name)? = o["name"] else { return nil }
+            var icon = "folder"
+            if case .string(let s)? = o["icon"], !s.isEmpty { icon = s }
+            return Folder(id: id, name: name, icon: icon)
+        }
+    }
+
+    private func writeFolders(_ list: [Folder]) {
+        var dict = settings ?? [:]
+        dict[Self.kFolders] = .array(list.map {
+            .object(["id": .string($0.id), "name": .string($0.name), "icon": .string($0.icon)])
+        })
+        settings = dict                       // didSet republishes `folders`
+        settingsStamp = syncStamp()           // most-recent-wins: this device's change is newest
+        persist(notify: false)                // debounced push uploads the dirty settings row
+    }
+
+    @discardableResult
+    func createFolder(name: String, icon: String) -> Folder {
+        let f = Folder(id: "f" + String(UUID().uuidString.prefix(12)),
+                       name: name.trimmingCharacters(in: .whitespacesAndNewlines), icon: icon)
+        writeFolders(folders + [f])
+        return f
+    }
+
+    func updateFolder(_ id: String, name: String, icon: String) {
+        var list = folders
+        guard let i = list.firstIndex(where: { $0.id == id }) else { return }
+        list[i].name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        list[i].icon = icon
+        writeFolders(list)
+    }
+
+    /// Deletes the folder only. Every reminder stays exactly where it is — the folder id is
+    /// just removed from their `folderIds`.
+    func deleteFolder(_ id: String) {
+        let now = iso(Date())
+        for i in reminders.indices where reminders[i].folderIds?.contains(id) == true {
+            let rest = (reminders[i].folderIds ?? []).filter { $0 != id }
+            reminders[i].folderIds = rest.isEmpty ? nil : rest
+            reminders[i].updatedAt = now
+        }
+        writeFolders(folders.filter { $0.id != id })   // persists the reminder edits too
+    }
+
+    func reorderFolders(fromOffsets: IndexSet, toOffset: Int) {
+        var list = folders
+        list.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        writeFolders(list)
+    }
+
+    /// Drag-and-drop reorder: put `id` where `targetId` is. Dragging down lands after the
+    /// target, dragging up lands before it — so every position is reachable.
+    func moveFolder(_ id: String, onto targetId: String) {
+        guard id != targetId,
+              let from = folders.firstIndex(where: { $0.id == id }),
+              let to = folders.firstIndex(where: { $0.id == targetId }) else { return }
+        reorderFolders(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+    }
+
+    /// The reminder's folders that still exist, in folder display order.
+    func memberFolders(of r: Reminder) -> [Folder] {
+        let ids = Set(r.folderIds ?? [])
+        return folders.filter { ids.contains($0.id) }
+    }
+
+    func setFolderIds(_ reminderId: String, _ ids: [String]) {
+        guard let i = reminders.firstIndex(where: { $0.id == reminderId }) else { return }
+        var seen = Set<String>()
+        let clean = ids.filter { seen.insert($0).inserted }   // de-duplicate, keep order
+        let new: [String]? = clean.isEmpty ? nil : clean
+        guard (reminders[i].folderIds ?? []) != (new ?? []) else { return }
+        reminders[i].folderIds = new
+        reminders[i].updatedAt = iso(Date())
+        persist()
+    }
+
+    func addReminders(_ ids: [String], toFolder fid: String) {
+        let set = Set(ids)
+        var changed = false
+        let now = iso(Date())
+        for i in reminders.indices where set.contains(reminders[i].id) {
+            var f = reminders[i].folderIds ?? []
+            guard !f.contains(fid) else { continue }
+            f.append(fid)
+            reminders[i].folderIds = f
+            reminders[i].updatedAt = now
+            changed = true
+        }
+        if changed { persist() }
+    }
+
+    func removeReminders(_ ids: [String], fromFolder fid: String) {
+        let set = Set(ids)
+        var changed = false
+        let now = iso(Date())
+        for i in reminders.indices where set.contains(reminders[i].id) && reminders[i].folderIds?.contains(fid) == true {
+            let rest = (reminders[i].folderIds ?? []).filter { $0 != fid }
+            reminders[i].folderIds = rest.isEmpty ? nil : rest
+            reminders[i].updatedAt = now
+            changed = true
+        }
+        if changed { persist() }
     }
 
     /// Read the synced appearance values out of the settings dict, for the cloud→AppSettings

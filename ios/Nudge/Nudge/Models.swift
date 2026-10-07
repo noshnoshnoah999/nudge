@@ -159,6 +159,10 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
     // so a push that fails partway never falsely marks an item as synced.
     var pushToNotion: Bool? = nil
     var notionSyncedAt: String? = nil
+    // Folders (2026-10-07): user-made folders this reminder is filed under. A reminder can be
+    // in several. Ids refer to NudgeStore.folders (stored in the synced settings row); an id
+    // whose folder no longer exists is simply ignored. nil/empty = not in any folder.
+    var folderIds: [String]? = nil
 
     var isCompleted: Bool { completed ?? false }
     var isGrouped: Bool { (groupId?.isEmpty == false) }
@@ -182,6 +186,14 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
         if let r = recurrence, r.freq != "none" { return true }
         return false
     }
+}
+
+/// A user-made folder (2026-10-07). Lives in the synced settings row as an ordered array —
+/// array order IS the display order. Membership lives on each Reminder (`folderIds`).
+struct Folder: Identifiable, Hashable {
+    var id: String
+    var name: String
+    var icon: String   // SF Symbol name
 }
 
 struct ReminderList: Codable, Identifiable, Hashable, SyncItem {

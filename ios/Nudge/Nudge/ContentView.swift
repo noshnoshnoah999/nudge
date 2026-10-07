@@ -53,6 +53,11 @@ struct ContentView: View {
     @State private var selectMode = false
     @State private var selectedIds: Set<String> = []
     @State private var showBulkMove = false
+    // Folders (2026-10-07)
+    @State private var showFolderPickerForSelection = false
+    @State private var showFoldersManager = false
+    @State private var showNewFolder = false
+    @State private var openFolder: Folder?
 
     // Manual Notion push (Study list + per-reminder "Push to Notion" toggle only — see
     // NotionSyncService.swift for exactly what is and isn't in scope).
@@ -153,6 +158,14 @@ struct ContentView: View {
         }) {
             BulkMoveView(reminders: store.reminders.filter { selectedIds.contains($0.id) })
                 .environmentObject(store)
+        }
+        .sheet(isPresented: $showFolderPickerForSelection) {
+            FolderPickerSheet(reminderIds: Array(selectedIds)).environmentObject(store)
+        }
+        .sheet(isPresented: $showFoldersManager) { FoldersManagerView().environmentObject(store) }
+        .sheet(isPresented: $showNewFolder) { FolderEditorSheet(editing: nil).environmentObject(store) }
+        .sheet(item: $openFolder) { f in
+            FolderContentsView(folder: f).environmentObject(store).environmentObject(settings)
         }
         .sheet(isPresented: $showRoutineCheckin) {
             RoutineCheckInView(lapsed: routineLapsed, stepUps: routineStepUps).environmentObject(store)
@@ -418,11 +431,19 @@ struct ContentView: View {
                     .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain)
             }
             .disabled(all.isEmpty)
+            // Cancel is an icon (was text) so the bar fits Select All + Folder on an iPhone.
             Button {
                 withAnimation(Theme.spring) { selectMode = false; selectedIds.removeAll() }
             } label: {
-                Text("Cancel").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain.opacity(0.85))
+                Image(systemName: "xmark").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onTextMain.opacity(0.85))
             }
+            .accessibilityLabel("Cancel")
+            Button { showFolderPickerForSelection = true } label: {
+                Image(systemName: "folder.badge.plus").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.onTextMain)
+            }
+            .accessibilityLabel("Add to folder")
+            .disabled(selectedIds.isEmpty)
+            .opacity(selectedIds.isEmpty ? 0.45 : 1)
             Button { showBulkMove = true } label: {
                 Text("Move").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
                     .padding(.horizontal, 14).padding(.vertical, 7)
@@ -831,7 +852,7 @@ struct ContentView: View {
         if items.isEmpty {
             emptyCard("checkmark.circle.fill", "Nothing due today", "You're on top of it.")
         } else {
-            groupedRows(items)
+            groupedRows(items, scope: "today")
         }
         if !completedTodayReminders.isEmpty {
             completedTodaySection
@@ -925,7 +946,7 @@ struct ContentView: View {
                       "Reminders from before today land here. Anything due today stays on the Today tab until midnight.")
         } else {
             smartRescheduleButton   // AI-first (with heuristic fallback) — see runSmartReschedule
-            groupedRows(items)
+            groupedRows(items, scope: "overdue")
         }
     }
 
@@ -1024,7 +1045,34 @@ struct ContentView: View {
             }
         }
 
-        listHeader("YOUR LISTS").padding(.top, collections.isEmpty ? 0 : 6)
+        // Folders (2026-10-07) — user-made, any reminder can be in several.
+        HStack {
+            listHeader("FOLDERS")
+            if !store.folders.isEmpty {
+                Button("Manage") { showFoldersManager = true }
+                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+            }
+        }
+        .padding(.top, collections.isEmpty ? 0 : 6)
+        LazyVGrid(columns: listGrid, spacing: 12) {
+            ForEach(store.folders) { f in
+                Button { openFolder = f } label: { folderCard(f) }
+                    .buttonStyle(PressableStyle(scale: 0.97))
+            }
+            Button { showNewFolder = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "folder.badge.plus")
+                    Text("New Folder").font(.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(Theme.accent)
+                .frame(maxWidth: .infinity, minHeight: 44).padding(14)
+                .background(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous)
+                    .strokeBorder(Theme.cardStroke, style: StrokeStyle(lineWidth: 1.5, dash: [6])))
+            }
+            .buttonStyle(PressableStyle(scale: 0.97))
+        }
+
+        listHeader("YOUR LISTS").padding(.top, 6)
         LazyVGrid(columns: listGrid, spacing: 12) {
             ForEach(Array(store.lists.enumerated()), id: \.element.id) { i, l in
                 Button { listFilter = l } label: { listCard(l) }
@@ -1050,6 +1098,22 @@ struct ContentView: View {
     private func listHeader(_ t: String) -> some View {
         Text(t).font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.textMeta)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 2)
+    }
+
+    private func folderCard(_ f: Folder) -> some View {
+        let n = store.open().filter { $0.folderIds?.contains(f.id) == true }.count
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                Image(systemName: f.icon).font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.accent)
+                    .frame(width: 34, height: 34).background(Theme.surfaceAlt, in: Circle())
+                Spacer()
+                Text("\(n)").font(.system(size: 26, weight: .heavy)).foregroundStyle(Theme.textMain)
+            }
+            Text(f.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMain).lineLimit(1)
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
     }
 
     private func collectionCard(_ c: SmartCollection, count: Int) -> some View {
@@ -1158,7 +1222,8 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             if !isCollapsed {
-                ForEach(store.listItems(section.items)) { item in
+              FolderedSections(items: section.items, scope: "upcoming-\(section.id)") { subset in
+                ForEach(store.listItems(subset)) { item in
                     switch item {
                     case .single(let r):
                         ReminderCardView(reminder: r) { editingReminder = r }
@@ -1172,6 +1237,7 @@ struct ContentView: View {
                                 removal: .scale(scale: 0.9).combined(with: .opacity)))
                     }
                 }
+              }
             }
         }
     }
@@ -1352,7 +1418,15 @@ struct ContentView: View {
 
     /// Render a flat reminder list with grouped members collapsed into group cards.
     /// `base` offsets the pop-in stagger so it lines up with any rows shown above.
-    @ViewBuilder private func groupedRows(_ items: [Reminder], base: Int = 0) -> some View {
+    /// Folder sections (FolderedSections) on top of the flat AI-grouped rows. `scope` keys
+    /// which folders are collapsed on this page.
+    @ViewBuilder private func groupedRows(_ items: [Reminder], base: Int = 0, scope: String) -> some View {
+        FolderedSections(items: items, scope: scope) { subset in
+            flatGroupedRows(subset, base: base)
+        }
+    }
+
+    @ViewBuilder private func flatGroupedRows(_ items: [Reminder], base: Int = 0) -> some View {
         ForEach(Array(store.listItems(items).enumerated()), id: \.element.id) { i, item in
             switch item {
             case .single(let r):
@@ -1538,8 +1612,10 @@ struct SmartCollectionView: View {
                         Text("Nothing here right now.").font(.subheadline).foregroundStyle(Theme.textMeta)
                             .frame(maxWidth: .infinity).padding(.top, 40)
                     } else {
-                        ForEach(Array(items.enumerated()), id: \.element.id) { i, r in
-                            ReminderCardView(reminder: r) { editingReminder = r }.popIn(i)
+                        FolderedSections(items: items, scope: "smart-\(collection.id)") { subset in
+                            ForEach(Array(subset.enumerated()), id: \.element.id) { i, r in
+                                ReminderCardView(reminder: r) { editingReminder = r }.popIn(i)
+                            }
                         }
                     }
                 }

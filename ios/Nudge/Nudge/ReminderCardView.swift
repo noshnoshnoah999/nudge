@@ -21,6 +21,7 @@ struct ReminderCardView: View {
     @State private var claudeURL: IdentifiableURL?
     @State private var isPolishing = false
     @State private var showReschedule = false
+    @State private var showFolders = false   // Folders… long-press item (2026-10-07)
     // Completion flair: a gold border traces the card, then it slides off to the left and the
     // list springs to bunch up (the removal animation lives on the parent list).
     @State private var trace: CGFloat = 0
@@ -37,6 +38,7 @@ struct ReminderCardView: View {
         cardBody
             .sheet(item: $claudeURL) { SafariView(url: $0.url) }
         .sheet(isPresented: $showReschedule) { RescheduleOptionsView(reminder: reminder).environmentObject(store) }
+        .sheet(isPresented: $showFolders) { FolderPickerSheet(reminderIds: [reminder.id]).environmentObject(store) }
         .contextMenu {
             // Suppressed while selecting — long-press actions (delete, reschedule, etc.)
             // don't make sense mid-bulk-selection and would be an easy way to fat-finger
@@ -46,6 +48,7 @@ struct ReminderCardView: View {
                 Button { store.snooze(reminder, minutes: 30) } label: { Label("Snooze 30 min", systemImage: "moon.zzz") }
                 Button { store.snooze(reminder, minutes: 60) } label: { Label("Snooze 1 hour", systemImage: "moon.zzz") }
                 Button { showReschedule = true } label: { Label("Reschedule…", systemImage: "calendar.badge.clock") }
+                Button { showFolders = true } label: { Label("Folders…", systemImage: "folder") }
                 Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
                 Button(role: .destructive) {
                     if reminder.recurrence != nil {

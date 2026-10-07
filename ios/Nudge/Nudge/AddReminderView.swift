@@ -74,6 +74,7 @@ struct AddReminderView: View {
     enum SchedExpand { case none, date, time }   // which inline picker is open (accordion)
     @State private var schedExpand: SchedExpand = .none
     @State private var listId = "reminders"
+    @State private var folderIds: [String] = []   // Folders (2026-10-07); written after save
     @State private var priority = "normal"
     @State private var pinned = false
     @State private var urgent = false
@@ -283,6 +284,10 @@ struct AddReminderView: View {
                             Picker("List", selection: $listId) {
                                 ForEach(store.lists) { l in Text(l.name).tag(l.id) }
                             }.labelsHidden().tint(Theme.controlTint)
+                        }
+                        divider
+                        menuRow("Folders", "folder") {
+                            FolderMembershipMenu(folderIds: $folderIds)
                         }
                         divider
                         menuRow("Priority", "flag") {
@@ -650,6 +655,7 @@ struct AddReminderView: View {
         pinned = r.pinned ?? false
         urgent = r.urgent ?? false
         pushToNotion = r.pushToNotion ?? false
+        folderIds = r.folderIds ?? []
         if let rec = r.recurrence, rec.freq != "none" {
             repeatFreq = rec.freq
             repeatInterval = max(1, rec.interval ?? 1)
@@ -1125,6 +1131,7 @@ struct AddReminderView: View {
             pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
             routine: routine, escalation: escalation, reviewFrequency: askToReview,
             urgent: urgent, pushToNotion: pushToNotion)
+        store.setFolderIds(reminderId, folderIds)   // the edited occurrence keeps this id
         dismiss()
     }
 
@@ -1149,6 +1156,9 @@ struct AddReminderView: View {
                            routine: routine, escalation: escalation, reviewFrequency: askToReview,
                            urgent: urgent, pushToNotion: pushToNotion,
                            idForNew: editing == nil ? draftId : nil)
+        // Folder membership is written separately (saveReminder's signature is already long);
+        // reminderId is the edited id, or draftId — the id a new reminder was just saved under.
+        store.setFolderIds(reminderId, folderIds)
         if editing == nil, let p = ClaudeLink.prompt(from: title) {
             AppRouter.shared.pendingClaudePrompt = p
         }
