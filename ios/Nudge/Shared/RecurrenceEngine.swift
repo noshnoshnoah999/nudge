@@ -27,6 +27,7 @@
 //     and so a single completion computes every date against one consistent instant.
 
 import Foundation
+import CryptoKit
 
 nonisolated enum RecurrenceEngine {
 
@@ -111,6 +112,29 @@ nonisolated enum RecurrenceEngine {
         // Respect an "end repeat" date.
         if let u = parse(rule.until), next > u { return nil }
         return stamp(next)
+    }
+
+    // MARK: - Successor identity
+
+    /// The id of the occurrence that completing `parentId` spawns.
+    ///
+    /// DETERMINISTIC ON PURPOSE (2026-10-18). It used to be a fresh random id at every spawn
+    /// site — the app's toggleComplete, the widget intent, and RemindersSync — so the same
+    /// completion arriving twice (a double tap, an untick + re-tick, a stale widget row, the
+    /// widget AND the app) created two "next" reminders with different ids, and per-item sync
+    /// faithfully kept both. Noah saw reminders repeated 2–5 times.
+    ///
+    /// Deriving the id from the parent means every path names the SAME successor, so a repeat
+    /// lands on one row and sync merges it instead of multiplying it. Each occurrence spawns
+    /// at most one successor, so the parent id alone is enough — the next DATE is deliberately
+    /// not part of the key, because `nextOccurrence` depends on "now" and two devices
+    /// completing either side of midnight would otherwise disagree.
+    ///
+    /// Shape: "r" + 12 upper-case hex chars. Legacy random ids are "r" + a UUID prefix, which
+    /// always contains a "-" at position 9, so the two can never collide.
+    static func successorId(of parentId: String) -> String {
+        let digest = SHA256.hash(data: Data("nudge-next|\(parentId)".utf8))
+        return "r" + digest.prefix(6).map { String(format: "%02X", $0) }.joined()
     }
 
     // MARK: - Nightly routines

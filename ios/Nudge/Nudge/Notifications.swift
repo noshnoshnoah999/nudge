@@ -390,6 +390,9 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         guard let i = store.reminders.firstIndex(where: { $0.id == rid }) else { return }
         switch action {
         case Self.completeAction:
+            // Complete, never toggle: if it was already completed elsewhere (the other device,
+            // the widget) a toggle here would UN-complete it from a notification button.
+            guard !store.reminders[i].isCompleted else { return }
             store.toggleComplete(store.reminders[i]); await store.persistNow()
         case Self.snoozeAction:
             store.snooze(store.reminders[i], minutes: 60); await store.persistNow()

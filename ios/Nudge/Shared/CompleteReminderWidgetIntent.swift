@@ -157,6 +157,13 @@ enum WidgetCompletion {
         // Read the row's FULL data payload (all keys, not just the widget subset) so we can
         // write everything back and change only what completing it should change.
         guard var row = await fetchRow(id: id, token: token) else { return nil }
+        // Already completed (in the app, on the Mac, or by an earlier tap) — the widget was
+        // just showing a stale row. Completing it again used to spawn a SECOND next occurrence
+        // for a repeating reminder. Do nothing; the reload shows the real state.
+        if row["completed"]?.boolValue == true {
+            WidgetReload.today()
+            return nil
+        }
         let originalDue = row["dueDate"]?.stringValue
         var saved = false
 
@@ -214,18 +221,29 @@ enum WidgetCompletion {
                let next = RecurrenceEngine.nextOccurrence(afterDue: row["dueDate"]?.stringValue,
                                                           rule: rule,
                                                           now: now) {
-                let copyId = newReminderId()
-                var copy = row
-                copy["id"] = .string(copyId)
-                copy["completed"] = .bool(false)
-                copy["completedAt"] = .null
-                copy["snoozedUntil"] = .null
-                copy["dueDate"] = .string(next)
-                copy["createdAt"] = .string(nowStamp)
-                copy["updatedAt"] = .string(nowStamp)
-                // Fail safe: no successor written → do not complete this one, or the series
-                // ends here. That is exactly the bug this whole change exists to fix.
-                guard await upsert(id: copyId, data: copy, updatedAt: nowStamp, token: token) else { return nil }
+                // Same successor id the app uses (RecurrenceEngine.successorId), so the app and
+                // the widget can never both create a "next" for one completion.
+                let copyId = RecurrenceEngine.successorId(of: id)
+                switch await rowState(id: copyId, token: token) {
+                case nil:
+                    return nil       // couldn't check — fail safe, leave the reminder open
+                case .live?:
+                    break            // already spawned (app or another device) — don't overwrite it
+                case .absent?, .deleted?:
+                    var copy = row
+                    copy["id"] = .string(copyId)
+                    copy["completed"] = .bool(false)
+                    copy["completedAt"] = .null
+                    copy["snoozedUntil"] = .null
+                    copy["dueDate"] = .string(next)
+                    copy["createdAt"] = .string(nowStamp)
+                    copy["updatedAt"] = .string(nowStamp)
+                    // Fail safe: no successor written → do not complete this one, or the series
+                    // ends here. That is exactly the bug this whole change exists to fix.
+                    // `revive`: if an untick in the app tombstoned this id, bring it back.
+                    guard await upsert(id: copyId, data: copy, updatedAt: nowStamp, token: token,
+                                       revive: true) else { return nil }
+                }
             }
             // No `next` means the series has passed its end-repeat date — completing it
             // outright is correct, and is what the app does too.
@@ -299,12 +317,31 @@ enum WidgetCompletion {
         return first.data
     }
 
+    enum RowState { case live, deleted, absent }
+
+    /// Whether a row exists live, as a tombstone, or not at all. Nil when the check itself
+    /// failed (network / auth) — callers must treat that as "don't know" and fail safe.
+    private static func rowState(id: String, token: String) async -> RowState? {
+        let path = "reminders?select=id,deleted_at&id=eq.\(id)&limit=1"
+        guard let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/\(path)") else { return nil }
+        var req = URLRequest(url: u)
+        req.setValue(Secrets.supabaseAnon, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0),
+              let arr = try? JSONDecoder().decode([StateWrap].self, from: data) else { return nil }
+        guard let first = arr.first else { return .absent }
+        return first.deleted_at == nil ? .live : .deleted
+    }
+
     /// Returns true only on a 2xx. Callers chain writes on this: a completion is never sent
     /// when the row that keeps the series alive failed to go up. `user_id` is deliberately
     /// not sent — the column defaults to auth.uid() and RLS pins it, so a row inserted here
     /// lands on the signed-in user exactly as one written by the app does.
     @discardableResult
-    private static func upsert(id: String, data: [String: JSONVal], updatedAt: String, token: String) async -> Bool {
+    private static func upsert(id: String, data: [String: JSONVal], updatedAt: String, token: String,
+                               revive: Bool = false) async -> Bool {
         guard let u = URL(string: "\(Secrets.supabaseURL)/rest/v1/reminders?on_conflict=user_id,id") else { return false }
         var req = URLRequest(url: u)
         req.httpMethod = "POST"
@@ -313,7 +350,7 @@ enum WidgetCompletion {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // merge-duplicates = update the existing row in place; return=minimal = no body back.
         req.setValue("resolution=merge-duplicates,return=minimal", forHTTPHeaderField: "Prefer")
-        let body = UpsertRow(id: id, data: data, updated_at: updatedAt)
+        let body = UpsertRow(id: id, data: data, updated_at: updatedAt, revive: revive)
         guard let payload = try? JSONEncoder().encode([body]) else { return false }
         req.httpBody = payload
         guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return false }
@@ -322,10 +359,25 @@ enum WidgetCompletion {
 
     // Row shapes.
     private struct RowWrap: Decodable { let data: [String: JSONVal] }
+    private struct StateWrap: Decodable { let deleted_at: String? }
     private struct UpsertRow: Encodable {
         let id: String
         let data: [String: JSONVal]
         let updated_at: String
+        /// When true, send `deleted_at: null` explicitly. merge-duplicates leaves any column
+        /// that is NOT sent untouched, so without this a write onto a tombstoned row would
+        /// update `data` and stay deleted. Only the successor write sets it: an ordinary
+        /// completion must never revive a reminder deleted between the fetch and the write.
+        let revive: Bool
+
+        private enum CodingKeys: String, CodingKey { case id, data, updated_at, deleted_at }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id)
+            try c.encode(data, forKey: .data)
+            try c.encode(updated_at, forKey: .updated_at)
+            if revive { try c.encodeNil(forKey: .deleted_at) }
+        }
     }
 }
 

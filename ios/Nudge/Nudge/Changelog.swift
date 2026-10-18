@@ -16,6 +16,19 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.31", title: "No more duplicate reminders", date: "18 Oct 2026",
+            added: [],
+            changed: [
+                "Apple Reminders sync is switched off. Running it on both the iPhone and the Mac made each device import the other's Apple copies as new reminders — the cause of reminders appearing 2–5 times and the day's count jumping after an edit on the other device. The old \"Nudge\" list in Apple Reminders is now just a leftover copy you can delete",
+                "Completing a repeating reminder can only ever create ONE next occurrence — a double tap, the widget, or the other device can no longer add a second",
+                "Unticking a repeating reminder takes back the next occurrence it created (as long as you haven't changed it); ticking it again brings it back",
+                "The widget ignores a reminder that's already been completed instead of completing it again",
+                "A notification's Complete button no longer un-completes a reminder you'd already finished elsewhere",
+                "Removing a link from a reminder now sticks",
+                "An edit made while Nudge was still uploading a previous change could be lost and later reverted — fixed",
+                "Ticking several reminders in a row is smoother: Nudge no longer re-processes every reminder on each tick"
+            ]),
+        ChangelogEntry(
             version: "2.30", title: "Minimal design & dark mode", date: "31 Jul 2026",
             added: [
                 "New \"Minimal design\" switch in Settings → Appearance. It swaps Nudge's rounded cards for a flat list — a circle, the title, and the time on the right, separated by thin lines, like the built-in Reminders app",

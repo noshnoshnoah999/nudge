@@ -30,6 +30,23 @@ struct DuplicateGroup: Identifiable {
 
 @MainActor
 final class RemindersSync: ObservableObject {
+    /// SWITCHED OFF 2026-10-18 (Noah's decision). Do not flip this back on casually.
+    ///
+    /// With the mirror running on BOTH the iPhone and the Mac, each device kept its own
+    /// private link file (nudge_sync_links.json), so neither knew about the Apple copies the
+    /// other had made. Every reminder ended up with an Apple twin per device; each device then
+    /// saw the other's twin as an unknown Apple item and imported it as a brand-new reminder
+    /// (step 3 of `reconcile`) whenever its title/time didn't match exactly — which is most
+    /// of the time right after an edit, a completion, a carry-over or a bulk move, because
+    /// iCloud delivers the Apple copies more slowly than Supabase delivers the edit. Those
+    /// imports were the 2–5× duplicates, and the reason the day's count rose on the other
+    /// device after every change. It also made a link impossible to remove.
+    ///
+    /// Noah doesn't capture through Siri / Apple Reminders, so the mirror is pure risk. The
+    /// code stays (not deleted) so this is reversible; if it is ever re-enabled it must run on
+    /// ONE device only, with links shared through the synced data, not a local file.
+    static let isAvailable = false
+
     enum Status: Equatable {
         case idle, syncing, ok(String), denied, error(String)
     }
@@ -52,7 +69,10 @@ final class RemindersSync: ObservableObject {
     }
 
     init() {
-        enabled = UserDefaults.standard.bool(forKey: Keys.enabled)
+        enabled = Self.isAvailable && UserDefaults.standard.bool(forKey: Keys.enabled)
+        // Persist the off state too, so re-enabling the feature in code later can't silently
+        // resume against a links file that is months stale.
+        if !Self.isAvailable { UserDefaults.standard.set(false, forKey: Keys.enabled) }
         if let t = UserDefaults.standard.object(forKey: Keys.lastSync) as? Date { lastSync = t }
     }
 
@@ -82,6 +102,7 @@ final class RemindersSync: ObservableObject {
 
     /// Turn sync on: request access, then run an initial sync.
     func enable() async {
+        guard Self.isAvailable else { enabled = false; status = .idle; return }
         let granted = hasAccess ? true : (await requestAccess())
         guard granted else { enabled = false; status = .denied; return }
         enabled = true
@@ -95,7 +116,7 @@ final class RemindersSync: ObservableObject {
 
     /// Run a full reconciliation. Safe to call repeatedly; no-ops while in flight.
     func syncNow() async {
-        guard enabled, !syncing, let nudge else { return }
+        guard Self.isAvailable, enabled, !syncing, let nudge else { return }
         syncing = true
         defer { syncing = false }
         status = .syncing
@@ -394,11 +415,13 @@ final class RemindersSync: ObservableObject {
                         // toggleComplete, so without this the series silently ends here.
                         // The completed one stays as history.
                         var spawnedNext: Reminder?
+                        let nextId = RecurrenceEngine.successorId(of: rr.id)
                         if !(rr.routine ?? false), rr.completed ?? false, !(cur.completed ?? false),
+                           !nudge.reminders.contains(where: { $0.id == nextId }),
                            let rec = rr.recurrence, rec.freq != "none",
                            let next = nudge.nextOccurrence(after: rr.dueDate, rec: rec) {
                             var copy = rr
-                            copy.id = "r" + String(UUID().uuidString.prefix(12))
+                            copy.id = nextId
                             copy.completed = false
                             copy.completedAt = nil
                             copy.snoozedUntil = nil
@@ -569,8 +592,10 @@ final class RemindersSync: ObservableObject {
         // same repeat in parallel and we'd get duplicate occurrences. Repeats authored
         // in Apple are imported once via backfill/ekToRecurrence, then flattened here.
         e.recurrenceRules = nil
-        // Link is two-way; only set when Nudge has one, never clear Apple's.
-        if let u = r.url, !u.isEmpty, let url = URL(string: u) { e.url = url }
+        // Link mirrors Nudge exactly, INCLUDING its removal. "Never clear Apple's" (the old
+        // rule) meant a link deleted in Nudge stayed on the Apple copy, read as an Apple-side
+        // change on the next pass, and was copied straight back into Nudge (2026-10-18).
+        if let u = r.url, !u.isEmpty, let url = URL(string: u) { e.url = url } else { e.url = nil }
     }
 
     /// Copy a repeat rule / link from Apple into a Nudge reminder *only when Nudge
@@ -582,9 +607,8 @@ final class RemindersSync: ObservableObject {
         if (r.recurrence == nil || r.recurrence?.freq == "none"), let rec = ekToRecurrence(e) {
             r.recurrence = rec; changed = true
         }
-        if (r.url?.isEmpty ?? true), let u = e.url?.absoluteString, !u.isEmpty {
-            r.url = u; changed = true
-        }
+        // (No link backfill any more: an empty link in Nudge is a real value — the user may
+        // have removed it — and filling it from Apple resurrected deleted links.)
         // Deliberately do NOT bump updatedAt — backfill is a cosmetic fill, and a
         // bumped timestamp would skew Nudge-vs-Apple conflict resolution.
         return changed
@@ -615,8 +639,9 @@ final class RemindersSync: ObservableObject {
             r.dueDate = nil
             r.hasTime = nil
         }
-        // Import a link added/changed in Apple; fill-only, never clears a Nudge link.
-        if let u = e.url?.absoluteString, !u.isEmpty { r.url = u }
+        // Only reached when Apple genuinely changed and is newer (see reconcile), so Apple's
+        // link — present OR removed — is the truth.
+        if let u = e.url?.absoluteString, !u.isEmpty { r.url = u } else { r.url = nil }
         if e.isCompleted {
             // Don't re-stamp "now" each sync when Apple has no completion date —
             // that was inflating "Done today" and the widget's all-done reading.

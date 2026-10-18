@@ -26,6 +26,8 @@ struct ReminderCardView: View {
     // list springs to bunch up (the removal animation lives on the parent list).
     @State private var trace: CGFloat = 0
     @State private var slideOff = false
+    /// Last time the tick circle was acted on — see the double-tap guard in completeWithFlair.
+    @State private var lastTickAt: Date? = nil
     @State private var showRecurDeleteDialog = false   // "Delete this event / all future" for recurring reminders
 
     private var radius: CGFloat { settings.compact ? 14 : 18 }
@@ -348,6 +350,14 @@ struct ReminderCardView: View {
     /// list springs to bunch up. Un-ticking and nightly routines skip the slide (routines roll
     /// forward in place rather than leaving the list).
     private func completeWithFlair(_ r: Reminder) {
+        // Double-tap guard (2026-10-18). The flair path commits the completion 0.76 s after the
+        // tap, and nothing stopped a second tap inside that window: two delayed toggles then
+        // completed AND un-completed the reminder. A routine's tick is immediate, so a double
+        // tap rolled it forward two nights. Ignore a repeat tap on the same row within 0.8 s.
+        let tapAt = Date()
+        if let last = lastTickAt, tapAt.timeIntervalSince(last) < 0.8 { return }
+        lastTickAt = tapAt
+
         // Minimal: no flair at all. No gold trace, no slide-off, no haptic, no chime —
         // just tick it and move on, the way Apple Reminders does. Completing a task should
         // not be a reward event in a design whose whole purpose is to be unstimulating.
@@ -368,7 +378,10 @@ struct ReminderCardView: View {
             withAnimation(.easeIn(duration: 0.32)) { slideOff = true }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.76) {
-            withAnimation(Theme.spring) { store.toggleComplete(r) }
+            // Complete, never toggle: if it got completed meanwhile (another device, the
+            // widget), a blind toggle here would UN-complete it.
+            guard let cur = store.reminders.first(where: { $0.id == r.id }), !cur.isCompleted else { return }
+            withAnimation(Theme.spring) { store.toggleComplete(cur) }
         }
     }
 

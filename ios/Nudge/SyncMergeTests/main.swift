@@ -175,5 +175,58 @@ do {
           syncStamp(after: at(10_000), at: t0) > at(10_000))
 }
 
+// ---------------------------------------------------------------------------
+print("\n10. SIGNATURE MEMO (2026-10-18): reuse is never allowed to hide an edit.")
+do {
+    var items = [mk("r1", "a", updatedAt: at(0)), mk("r2", "b", updatedAt: at(0))]
+    var meta = seedMigratedMeta(items)
+    refreshSignatures(items, meta: &meta, now: t0.addingTimeInterval(1))
+    check("unchanged items stay clean after a memoised refresh", dirtyIds(meta).isEmpty)
+    items[0].title = "a edited"
+    refreshSignatures(items, meta: &meta, now: t0.addingTimeInterval(2))
+    check("an edit after a memoised refresh is still detected", dirtyIds(meta) == ["r1"])
+    markPushed(signaturesBeingPushed(dirtyIds(meta), meta: meta), meta: &meta)
+    items[0].url = "https://example.com"
+    refreshSignatures(items, meta: &meta, now: t0.addingTimeInterval(3))
+    markPushed(signaturesBeingPushed(dirtyIds(meta), meta: meta), meta: &meta)
+    check("clean again after pushing the link", dirtyIds(meta).isEmpty)
+    items[0].url = nil
+    refreshSignatures(items, meta: &meta, now: t0.addingTimeInterval(4))
+    check("removing a field (link) is detected, not masked by the memo", dirtyIds(meta) == ["r1"])
+    let enc = try! JSONEncoder().encode(meta)
+    let json = String(data: enc, encoding: .utf8)!
+    check("the memo is never written to the cache", !json.contains("memo"))
+    let back = try! JSONDecoder().decode(SyncMeta.self, from: enc)
+    check("a cached meta still decodes (memo starts empty)", back.memo.isEmpty && back.sig == meta.sig)
+}
+
+// ---------------------------------------------------------------------------
+print("\n11. PUSH RACE (2026-10-18): an edit made while a push is in flight must stay dirty.")
+do {
+    var items = [mk("r1", "doubled text doubled text", updatedAt: at(0))]
+    var meta = SyncMeta()
+    refreshSignatures(items, meta: &meta, now: t0)
+    let ids = dirtyIds(meta)
+    let sent = signaturesBeingPushed(ids, meta: meta)          // captured before the await
+    // ...network await; meanwhile the user fixes the title and persist() runs:
+    items[0].title = "fixed text"
+    refreshSignatures(items, meta: &meta, now: t0.addingTimeInterval(1))
+    markPushed(sent, meta: &meta)                               // the push returns 200
+    check("the fix made during the upload is still dirty and will go up", dirtyIds(meta) == ["r1"])
+}
+
+// ---------------------------------------------------------------------------
+print("\n12. SUCCESSOR IDS (2026-10-18): one completion can only ever name one next occurrence.")
+do {
+    let a = RecurrenceEngine.successorId(of: "r1A2B3C4D-5E6")
+    let b = RecurrenceEngine.successorId(of: "r1A2B3C4D-5E6")
+    let c = RecurrenceEngine.successorId(of: "r1A2B3C4D-5E7")
+    check("same parent → same successor id (app, widget, double tap all agree)", a == b)
+    check("different parents → different successor ids", a != c)
+    check("shape is r + 12 hex, no dash (cannot collide with legacy UUID-prefix ids)",
+          a.count == 13 && a.hasPrefix("r") && !a.contains("-"))
+    check("a chain stays unique", RecurrenceEngine.successorId(of: a) != a)
+}
+
 print("\n\(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")")
 exit(failures == 0 ? 0 : 1)

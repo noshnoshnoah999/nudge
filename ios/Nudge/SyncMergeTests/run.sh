@@ -17,6 +17,9 @@ cp "$src/Models.swift" "$work/"
 # Everything from "MARK: - REST" down needs the app target; the merge logic above it doesn't.
 awk '/^\/\/ MARK: - REST/{exit} {print}' "$src/CloudSync.swift" > "$work/CloudSync.swift"
 cp "$here/main.swift" "$work/"
+# Models.swift bridges to RecurrenceEngine (Shared/), so it has to come along — without it
+# this script stopped compiling on 2026-08-05.
+cp "$here/../Shared/RecurrenceEngine.swift" "$work/"
 
-swiftc -o "$work/mergetest" "$work/Models.swift" "$work/CloudSync.swift" "$work/main.swift"
+swiftc -o "$work/mergetest" "$work/Models.swift" "$work/RecurrenceEngine.swift" "$work/CloudSync.swift" "$work/main.swift"
 "$work/mergetest"

@@ -132,13 +132,22 @@ final class NudgeStore: ObservableObject {
         writeCache()
     }
 
+    /// Serial, so cache writes land in the order they were made — an older snapshot can never
+    /// overwrite a newer one.
+    private let cacheWriteQueue = DispatchQueue(label: "uk.flouty.Nudge.cacheWrite", qos: .utility)
+
     private func writeCache() {
         let c = CacheFile(version: 2, reminders: fullReminders(), lists: lists, smartLists: smartLists,
                           settings: settings, settingsStamp: settingsStamp,
                           settingsPushedStamp: settingsPushedStamp,
                           remindersMeta: remindersMeta, listsMeta: listsMeta,
                           smartListsMeta: smartListsMeta, pulledOnce: pulledOnce)
-        if let d = try? JSONEncoder().encode(c) { try? d.write(to: cacheURL) }
+        guard let d = try? JSONEncoder().encode(c) else { return }
+        // The disk write runs off the main thread (it ran on every tap, mid-animation), and is
+        // atomic: a write interrupted by the app being killed used to be able to leave a
+        // truncated cache behind.
+        let url = cacheURL
+        cacheWriteQueue.async { try? d.write(to: url, options: .atomic) }
     }
 
     /// Drop tombstones older than the server's 90-day retention. Keeping them past that
@@ -255,20 +264,26 @@ final class NudgeStore: ObservableObject {
         refreshSignatures(lists, meta: &listsMeta)
         refreshSignatures(smartLists, meta: &smartListsMeta)
 
+        // Each table: capture the signatures of exactly what goes up BEFORE awaiting the
+        // network, and mark only those as pushed. An edit made during the await keeps its
+        // newer signature, stays dirty, and goes up on the next push. See CloudSync.markPushed.
         let rIds = dirtyIds(remindersMeta)
+        let rSent = signaturesBeingPushed(rIds, meta: remindersMeta)
         let code = await CloudAPI.push(.reminders, rows: dirtyRows(rIds, items: fullReminders(), meta: remindersMeta))
         guard (200..<300).contains(code) else { return code }
-        markPushed(rIds, &remindersMeta)
+        markPushed(rSent, meta: &remindersMeta)
 
         let lIds = dirtyIds(listsMeta)
+        let lSent = signaturesBeingPushed(lIds, meta: listsMeta)
         let lCode = await CloudAPI.push(.lists, rows: dirtyRows(lIds, items: lists, meta: listsMeta))
         guard (200..<300).contains(lCode) else { return lCode }
-        markPushed(lIds, &listsMeta)
+        markPushed(lSent, meta: &listsMeta)
 
         let sIds = dirtyIds(smartListsMeta)
+        let sSent = signaturesBeingPushed(sIds, meta: smartListsMeta)
         let sCode = await CloudAPI.push(.smart_lists, rows: dirtyRows(sIds, items: smartLists, meta: smartListsMeta))
         guard (200..<300).contains(sCode) else { return sCode }
-        markPushed(sIds, &smartListsMeta)
+        markPushed(sSent, meta: &smartListsMeta)
 
         if settingsStamp != settingsPushedStamp {
             let setCode = await CloudAPI.pushSettings(SettingsRow(data: settings, updated_at: settingsStamp))
@@ -276,10 +291,6 @@ final class NudgeStore: ObservableObject {
             settingsPushedStamp = settingsStamp
         }
         return 200
-    }
-
-    private func markPushed(_ ids: [String], _ meta: inout SyncMeta) {
-        for id in ids { meta.pushedSig[id] = meta.sig[id] }
     }
 
     /// Publish syncState only when it actually changes — otherwise the 15s background
@@ -662,25 +673,50 @@ final class NudgeStore: ObservableObject {
             return
         }
         let nowComplete = !(reminders[i].completed ?? false)
+        let now = iso(Date())
         reminders[i].completed = nowComplete
-        reminders[i].completedAt = nowComplete ? iso(Date()) : nil
+        reminders[i].completedAt = nowComplete ? now : nil
         reminders[i].snoozedUntil = nil
-        reminders[i].updatedAt = iso(Date())
+        reminders[i].updatedAt = now
         if nowComplete { clearNotifications(for: r.id) }   // drop any delivered/pending alert
         #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
         if nowComplete, #available(iOS 26.0, *) { NudgeAlarms.cancel(reminderId: r.id) }   // stop the urgent alarm
         #endif
-        // Completing a repeating reminder spawns its next occurrence.
-        if nowComplete, let rec = reminders[i].recurrence, rec.freq != "none",
-           let next = nextOccurrence(after: reminders[i].dueDate, rec: rec) {
-            var copy = reminders[i]
-            copy.id = "r" + String(UUID().uuidString.prefix(12))
-            copy.completed = false
-            copy.completedAt = nil
-            copy.dueDate = next
-            copy.createdAt = iso(Date())
-            copy.updatedAt = iso(Date())
-            reminders.insert(copy, at: 0)
+        if let rec = reminders[i].recurrence, rec.freq != "none" {
+            // The next occurrence always has the SAME id for a given parent (see
+            // RecurrenceEngine.successorId), so ticking twice, untick + re-tick, the widget
+            // and the other device can never create a second one.
+            let nextId = RecurrenceEngine.successorId(of: r.id)
+            if nowComplete {
+                // Completing a repeating reminder spawns its next occurrence — once.
+                if !reminders.contains(where: { $0.id == nextId }),
+                   let next = nextOccurrence(after: reminders[i].dueDate, rec: rec) {
+                    var copy = reminders[i]
+                    copy.id = nextId
+                    copy.completed = false
+                    copy.completedAt = nil
+                    copy.dueDate = next
+                    // Identical on purpose: createdAt == updatedAt is how an untick recognises
+                    // a successor nobody has touched yet (below).
+                    copy.createdAt = now
+                    copy.updatedAt = now
+                    // Ticking again after an untick revives the same id. Clearing its
+                    // tombstone lets refreshSignatures stamp it strictly past the delete,
+                    // exactly as undoDelete does, so the revival wins on the other device.
+                    remindersMeta.tombstone.removeValue(forKey: nextId)
+                    reminders.insert(copy, at: 0)
+                }
+            } else if let c = reminders.firstIndex(where: { $0.id == nextId }),
+                      !(reminders[c].completed ?? false),
+                      reminders[c].updatedAt == reminders[c].createdAt {
+                // Unticking takes back the next occurrence this tick created — but only while
+                // it is untouched. One the user has edited, snoozed or completed is kept.
+                clearNotifications(for: nextId)
+                #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+                if #available(iOS 26.0, *) { NudgeAlarms.cancel(reminderId: nextId) }
+                #endif
+                tombstoneReminders([nextId])
+            }
         }
         persist()
     }
@@ -1413,7 +1449,9 @@ final class NudgeStore: ObservableObject {
         let hasPlace = (cleanLoc?.isEmpty == false) && lat != nil && lng != nil
         let geoOn = hasPlace && geofenceEnabled
         let rec = (recurrence?.freq == "none") ? nil : recurrence
-        if let existing = editing, let i = reminders.firstIndex(where: { $0.id == existing.id }) {
+        // Keyed on targetId, not just `editing`: a double-tapped Save on a NEW reminder used to
+        // run this twice with the same draft id and insert two copies of it.
+        if let i = reminders.firstIndex(where: { $0.id == targetId }) {
             reminders[i].title = cleanTitle
             reminders[i].notes = notes
             reminders[i].dueDate = dueStr
@@ -1533,8 +1571,11 @@ final class NudgeStore: ObservableObject {
         //    original value so every field (prep links, groups, alerts, tz…) is preserved,
         //    then override only what a fresh next occurrence needs.
         guard let nextDue else { return }
+        let contId = RecurrenceEngine.successorId(of: orig.id)
+        guard !reminders.contains(where: { $0.id == contId }) else { return }   // already continued
+        remindersMeta.tombstone.removeValue(forKey: contId)
         var cont = orig
-        cont.id = "r" + String(UUID().uuidString.prefix(12))
+        cont.id = contId
         cont.dueDate = nextDue
         cont.recurrence = origRec        // freq / interval / until preserved
         cont.completed = false

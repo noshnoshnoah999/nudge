@@ -378,6 +378,9 @@ struct SyncSettingsView: View {
                 .listRowBackground(Theme.surface)
 
                 // MARK: Apple Reminders sync
+                // Hidden while the mirror is switched off (2026-10-18) — see
+                // RemindersSync.isAvailable for why it was the source of the duplicates.
+                if RemindersSync.isAvailable {
                 Section {
                     Toggle("Sync with Apple Reminders", isOn: Binding(
                         get: { sync.enabled },
@@ -410,6 +413,7 @@ struct SyncSettingsView: View {
                     Text("Mirrors a dedicated **Nudge** list in Apple Reminders. Your other lists are never touched. Anything you capture in either place — Siri, Control Center, Apple Watch, or here — stays in sync.")
                 }
                 .listRowBackground(Theme.surface)
+                }
 
                 // MARK: Backups
                 Section {

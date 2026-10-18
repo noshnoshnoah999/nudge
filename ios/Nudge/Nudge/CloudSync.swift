@@ -111,6 +111,26 @@ struct SyncMeta: Codable {
 
     /// High-water mark of `updated_at` across every row we have pulled.
     var cursor: String? = nil
+
+    /// IN MEMORY ONLY — never written to the cache (see CodingKeys).
+    /// id → the item's `hashValue` and the signature computed from it last time.
+    ///
+    /// `refreshSignatures` runs on every persist and every push, and it used to JSON-encode
+    /// and SHA-256 EVERY reminder each time, on the main thread. Ticking a reminder therefore
+    /// cost a full re-hash of the whole list (twice — once at the tap, once at the push), which
+    /// landed in the middle of the completion animation as a visible stutter (2026-10-18).
+    /// An unchanged item has an unchanged `hashValue`, so its signature can be reused; only
+    /// items whose content actually changed are re-encoded. Hasher is seeded per process,
+    /// which is exactly why this must never be persisted.
+    var memo: [String: SigMemo] = [:]
+
+    private enum CodingKeys: String, CodingKey { case stamp, tombstone, pushedSig, sig, cursor }
+}
+
+/// One memoised signature: the content hash it was computed for, and the signature itself.
+struct SigMemo {
+    let hash: Int
+    let sig: String
 }
 
 /// Signature of a live item: a hash of the exact bytes we would upload.
@@ -143,7 +163,18 @@ func refreshSignatures<T: SyncItem>(_ items: [T], meta: inout SyncMeta, now: Dat
     for i in items { live[i.id] = i }
 
     var fresh: [String: String] = [:]
-    for (id, item) in live { fresh[id] = liveSignature(item) }
+    for (id, item) in live {
+        // Reuse the last signature when the content hash hasn't moved; see SyncMeta.memo.
+        let h = item.hashValue
+        if let m = meta.memo[id], m.hash == h {
+            fresh[id] = m.sig
+        } else {
+            let s = liveSignature(item)
+            fresh[id] = s
+            meta.memo[id] = SigMemo(hash: h, sig: s)
+        }
+    }
+    meta.memo = meta.memo.filter { live[$0.key] != nil }
     for (id, deletedAt) in meta.tombstone { fresh[id] = tombSignature(deletedAt) }
 
     for (id, s) in fresh where meta.sig[id] != s {
@@ -193,6 +224,25 @@ func seedMigratedMeta<T: SyncItem>(_ items: [T]) -> SyncMeta {
 /// Ids whose bytes differ from what we last pushed.
 func dirtyIds(_ meta: SyncMeta) -> [String] {
     meta.sig.compactMap { (id, s) in meta.pushedSig[id] == s ? nil : id }
+}
+
+/// The signatures of exactly what is about to be uploaded. Capture this BEFORE the network
+/// call and hand it to `markPushed(_:meta:)` afterwards.
+func signaturesBeingPushed(_ ids: [String], meta: SyncMeta) -> [String: String] {
+    var out: [String: String] = [:]
+    for id in ids { if let s = meta.sig[id] { out[id] = s } }
+    return out
+}
+
+/// Record a successful upload of the bytes whose signatures were captured before it.
+///
+/// It used to record `meta.sig[id]` as it stood AFTER the upload returned. The push awaits the
+/// network on the main actor, and anything can persist during that await — an edit, a
+/// completion. That later change advanced `meta.sig`, so it was marked as pushed although only
+/// the OLDER bytes ever left the device. The other device never received it, and its next
+/// edit of that reminder overwrote this one: "I fixed it and it came back" (2026-10-18).
+func markPushed(_ sent: [String: String], meta: inout SyncMeta) {
+    for (id, s) in sent { meta.pushedSig[id] = s }
 }
 
 /// The rows to upload for `ids`.
