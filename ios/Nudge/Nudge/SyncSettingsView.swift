@@ -191,7 +191,7 @@ struct SyncSettingsView: View {
                 } header: {
                     Text("AI features")
                 } footer: {
-                    Text("Add your Anthropic API key (console.anthropic.com). Smart Reschedule and the end-of-day carry-over both run on Claude Sonnet — a good balance of quality and cost (never the pricier Opus). Stored only on this device; used only to call Anthropic. Without a key, Smart Reschedule uses the built-in planner.")
+                    Text("Add your Anthropic API key (console.anthropic.com). Smart Reschedule and the AI move-over both run on Claude Sonnet — a good balance of quality and cost (never the pricier Opus). Stored only on this device; used only to call Anthropic. Without a key, Smart Reschedule uses the built-in planner.")
                 }
                 .listRowBackground(Theme.surface)
 
@@ -219,9 +219,9 @@ struct SyncSettingsView: View {
                             .foregroundStyle(Theme.textMain)
                     }
                 } header: {
-                    Text("End-of-day Carry-Over")
+                    Text("AI Move-Over")
                 } footer: {
-                    Text("Each night at 23:50, Claude reviews the reminders you didn't finish and carries over only the important ones to the next day. Nightly and repeating routines are never moved. See the last month of runs here.")
+                    Text("Never automatic. The first time you open Nudge each morning, on whichever device you open first, a banner asks whether Claude should move yesterday's important leftovers to today, or skip it for the day. The other device won't ask. Repeating reminders and routines are never moved. See the last month of runs here.")
                 }
                 .listRowBackground(Theme.surface)
 
@@ -308,7 +308,7 @@ struct SyncSettingsView: View {
                 } header: {
                     Text("Overdue")
                 } footer: {
-                    Text("Smart Reschedule runs only when you tap it — from the Today tab or inside Triage. It spreads overdue reminders across the coming week (weekends carry more, important ones first). Every run is logged here and can be undone.")
+                    Text("Smart Reschedule runs only when you tap it — from the Today tab or inside Triage. It spreads overdue reminders across the coming week (weekends carry more, important ones first). Repeating reminders and routines are never moved — they keep their set time. Every run is logged here and can be undone.")
                 }
                 .listRowBackground(Theme.surface)
 

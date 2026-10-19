@@ -20,6 +20,8 @@ struct ScanReminderView: View {
 
     private enum Phase { case pick, working, review }
     @State private var phase: Phase = .pick
+    /// One save per sheet: a double-tapped "Add N" used to add every item twice (2026-10-18).
+    @State private var didSave = false
     @State private var pickerItem: PhotosPickerItem?
     @State private var showCamera = false
     @State private var items: [ScannedItem] = []
@@ -206,6 +208,8 @@ struct ScanReminderView: View {
     }
 
     private func saveAll() {
+        guard !didSave else { return }
+        didSave = true
         for item in items {
             let hasDue = item.dateTime != nil
             store.saveReminder(

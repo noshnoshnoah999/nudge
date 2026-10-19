@@ -26,6 +26,9 @@ struct BulkMoveView: View {
     @EnvironmentObject var store: NudgeStore
     @Environment(\.dismiss) private var dismiss
     let reminders: [Reminder]
+    /// Repeating / routine reminders that were selected but left out — they keep their set
+    /// time no matter what (Noah, 2026-10-18). Only used for the note at the top.
+    var skippedRepeating: Int = 0
 
     enum TimeMode: String, CaseIterable, Identifiable {
         case keep = "Keep times", one = "One time", each = "Set each"
@@ -62,6 +65,10 @@ struct BulkMoveView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Moving \(reminders.count) reminder\(reminders.count == 1 ? "" : "s")")
                         .font(.subheadline).foregroundStyle(Theme.textMeta)
+                    if skippedRepeating > 0 {
+                        Text("\(skippedRepeating) repeating reminder\(skippedRepeating == 1 ? "" : "s") left out — repeating reminders keep their set time.")
+                            .font(.caption).foregroundStyle(Theme.textMeta)
+                    }
 
                     // Move-all-to-this-day picker — applies to every row that hasn't been
                     // individually overridden below.

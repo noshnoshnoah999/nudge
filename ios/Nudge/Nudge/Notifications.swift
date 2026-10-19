@@ -83,7 +83,10 @@ final class NotificationManager: NSObject, ObservableObject {
         var stale: [String] = []
         for n in delivered {
             let id = n.request.identifier
-            guard id.hasPrefix("nudge-"), id != "nudge-payday" else { continue }
+            // Birthday heads-ups ("nudge-bday-…") aren't reminders: without this they matched no
+            // reminder id, counted as "deleted", and were wiped from Notification Centre within
+            // ~15 s while Nudge was open (2026-10-18).
+            guard id.hasPrefix("nudge-"), id != "nudge-payday", !id.hasPrefix("nudge-bday-") else { continue }
             let raw = String(id.dropFirst("nudge-".count))
             let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
             if let r = nudge.reminders.first(where: { $0.id == rid }) {

@@ -228,5 +228,28 @@ do {
     check("a chain stays unique", RecurrenceEngine.successorId(of: a) != a)
 }
 
+// ---------------------------------------------------------------------------
+print("\n13. HEAL (2026-10-18): server holding an older copy than ours gets ours back.")
+do {
+    var items = [mk("r1", "newer, already uploaded", updatedAt: at(100))]
+    var meta = SyncMeta()
+    refreshSignatures(items, meta: &meta, now: t0.addingTimeInterval(100))
+    markPushed(signaturesBeingPushed(dirtyIds(meta), meta: meta), meta: &meta)
+    check("clean after our upload", dirtyIds(meta).isEmpty)
+    // Another device's stale upload overwrote the server row with an older stamp.
+    let stale = [CloudRow(id: "r1", data: mk("r1", "older", updatedAt: at(50)), updated_at: at(50), deleted_at: nil)]
+    let out = mergeRows(stale, into: &items, meta: &meta)
+    check("our newer copy is kept locally", items.first?.title == "newer, already uploaded")
+    check("and marked dirty so the next push repairs the server", dirtyIds(meta) == ["r1"] && out.healedCount == 1)
+    // An equal stamp (the server has exactly what we sent) is NOT a heal.
+    var items2 = [mk("r2", "same", updatedAt: at(10))]
+    var meta2 = SyncMeta()
+    refreshSignatures(items2, meta: &meta2, now: t0.addingTimeInterval(10))
+    markPushed(signaturesBeingPushed(dirtyIds(meta2), meta: meta2), meta: &meta2)
+    let echo = [CloudRow(id: "r2", data: items2[0], updated_at: meta2.stamp["r2"]!, deleted_at: nil)]
+    let out2 = mergeRows(echo, into: &items2, meta: &meta2)
+    check("our own row echoed back is not treated as stale", out2.healedCount == 0 && dirtyIds(meta2).isEmpty)
+}
+
 print("\n\(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")")
 exit(failures == 0 ? 0 : 1)

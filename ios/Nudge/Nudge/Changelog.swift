@@ -16,6 +16,21 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.32", title: "Birthdays & AI move-over on your terms", date: "19 Oct 2026",
+            added: [
+                "Birthday banner on Home: \"Say happy birthday to …!\" on the day, and a heads-up in the 3 days before. Tap ✕ to hide one for the day",
+                "AI move-over now asks first: the first time you open Nudge each morning, on whichever device you open first, a banner offers \"Run AI move-over\" or \"Skip today\". The other device doesn't ask"
+            ],
+            changed: [
+                "The AI move-over (formerly end-of-day carry-over) no longer runs by itself — not at 23:50, not overnight, and not once per device",
+                "Repeating reminders keep their set time no matter what: Bulk Move and Smart Reschedule leave them out, and snoozing one no longer shifts every later occurrence",
+                "Quick Catch and Scan can no longer add the same reminder twice from a double tap",
+                "Birthday notifications stay in Notification Centre instead of disappearing while Nudge is open",
+                "Sync: an older copy uploaded late by one device can no longer overwrite a newer edit from the other, and a device that spots the server holding an older copy puts the newer one back",
+                "Sync: a fresh install now downloads every reminder, in pages, instead of stopping at the server's per-request limit",
+                "Location reminders are only re-armed when they actually change, instead of on every tap"
+            ]),
+        ChangelogEntry(
             version: "2.31", title: "No more duplicate reminders", date: "18 Oct 2026",
             added: [],
             changed: [

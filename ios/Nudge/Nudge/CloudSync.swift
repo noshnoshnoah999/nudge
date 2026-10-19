@@ -267,6 +267,9 @@ struct MergeOutcome {
     /// Anything at all changed locally.
     var changed: Bool { !deletedIds.isEmpty || appliedCount > 0 }
     var appliedCount: Int = 0
+    /// Rows where the server turned out to hold an OLDER copy than ours; ours was marked
+    /// dirty again so the next push repairs the server. See mergeRows.
+    var healedCount: Int = 0
 }
 
 /// Merge a delta pull into local state. Pure w.r.t. the network; mutates `items`/`meta`.
@@ -305,7 +308,19 @@ func mergeRows<T: SyncItem>(_ rows: [CloudRow<T>], into items: inout [T], meta: 
         } else {
             incomingWins = true          // never seen it; nothing to lose
         }
-        guard incomingWins else { continue }
+        guard incomingWins else {
+            // HEAL (2026-10-18). The server holds an OLDER copy than the one we already
+            // uploaded — another device's stale upload landed after ours (the server took the
+            // last write, not the newest). Before this, we just skipped it: we kept our newer
+            // copy, the server and the other device kept the old one, and nothing ever
+            // reconciled them. Re-dirty ours so the next push puts the newer copy back.
+            // (Server side, 06_reject_older_writes.sql now refuses such stale writes too.)
+            if let local, row.updated_at < local, let pushed = meta.pushedSig[k], pushed == meta.sig[k] {
+                meta.pushedSig.removeValue(forKey: k)
+                out.healedCount += 1
+            }
+            continue
+        }
 
         if let deletedAt = row.deleted_at {
             if index[k] != nil { removals.insert(k); out.deletedIds.append(k) }
@@ -356,19 +371,39 @@ enum CloudAPI {
     /// NTP-synced but not identical, and a row written a few hundred ms "in the past"
     /// relative to our cursor would otherwise never be seen again. Re-pulling a handful of
     /// rows is free — `mergeRows` is idempotent (an equal stamp on a live row is a no-op).
+    ///
+    /// PAGED (2026-10-18). Supabase caps a single response (1000 rows by default), and this
+    /// used to ask for everything in one request with no order. Tombstones stay in the table,
+    /// so a fresh install / cleared cache could silently receive only part of the rows — and
+    /// with the cursor set from that partial set, never fetch the rest. Pages are ordered by
+    /// `id` (stable: an edit never moves a row) and fetched until an EMPTY page, rather than a
+    /// short one, so a server cap smaller than our page size can't end the loop early either.
     static func pull<T: SyncItem>(_ table: SyncTable, since cursor: String?, as: T.Type) async -> (rows: [CloudRow<T>]?, status: Int) {
-        var path = "\(table.rawValue)?select=id,data,updated_at,deleted_at"
+        var base = "\(table.rawValue)?select=id,data,updated_at,deleted_at&order=id.asc"
         if let c = cursor, let rewound = rewind(c) {
-            path += "&updated_at=gt.\(rewound)"
+            base += "&updated_at=gt.\(rewound)"
         }
-        guard let req = request(path) else { return (nil, -1) }
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            guard (200..<300).contains(code) else { return (nil, code) }
-            return (try JSONDecoder().decode([CloudRow<T>].self, from: data), code)
-        } catch { return (nil, -1) }
+        var all: [CloudRow<T>] = []
+        var offset = 0
+        var lastCode = 200
+        while true {
+            guard let req = request(base + "&limit=\(pageSize)&offset=\(offset)") else { return (nil, -1) }
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                guard (200..<300).contains(code) else { return (nil, code) }
+                lastCode = code
+                let page = try JSONDecoder().decode([CloudRow<T>].self, from: data)
+                if page.isEmpty { return (all, lastCode) }
+                all += page
+                offset += page.count
+                if offset >= maxRows { return (all, lastCode) }   // runaway guard
+            } catch { return (nil, -1) }
+        }
     }
+
+    private static let pageSize = 1000
+    private static let maxRows = 200_000
 
     /// Batch upsert. One request per table, not one per row.
     static func push<T: SyncItem>(_ table: SyncTable, rows: [CloudRow<T>]) async -> Int {

@@ -51,7 +51,8 @@ enum CarryOverBGTask {
         let work = Task { @MainActor in
             let store = NudgeStore()
             await store.refresh()                 // pull the latest blob first
-            await store.maybeRunDailyCarryOver()  // runs once/day, no-ops if already done
+            // The AI move-over no longer runs on its own (2026-10-18) — it is offered as a
+            // banner on the first device opened each morning. See NudgeStore.checkMoveOverOffer.
             await store.maybeRunDailyGrouping()   // overnight AI grouping, runs once/day
             task.setTaskCompleted(success: true)
         }

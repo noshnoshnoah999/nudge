@@ -15,6 +15,8 @@ struct QuickCatchView: View {
 
     private enum Phase { case chooser, input, thinking, confirm }
     @State private var phase: Phase = .chooser
+    /// One save per sheet: a double-tapped Save used to add the reminder twice (2026-10-18).
+    @State private var didSave = false
     @State private var thought = ""
     @FocusState private var focused: Bool
 
@@ -240,7 +242,8 @@ struct QuickCatchView: View {
 
     private func save() {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
+        guard !t.isEmpty, !didSave else { return }
+        didSave = true
         store.saveReminder(editing: nil, title: t, notes: "",
                            hasDue: true, due: when, hasTime: hasTime,
                            listId: "reminders", priority: priority)

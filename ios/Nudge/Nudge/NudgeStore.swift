@@ -192,8 +192,14 @@ final class NudgeStore: ObservableObject {
         if (200..<300).contains(code) { pulledOnce = true; setSync("Synced") } else { setSync("Offline") }
         writeCache()
         releaseSyncLock()
+        // The pull found the server holding older copies than ours (see mergeRows' heal):
+        // schedule the push that puts ours back, rather than waiting for the next local edit.
+        if needsHealPush { needsHealPush = false; persist(notify: false) }
         syncPrepReminders()   // keep linked "prep" reminders (e.g. buy ginger ingredients) aligned
     }
+
+    /// Set by pullAll when mergeRows re-dirtied rows the server held an older copy of.
+    private var needsHealPush = false
 
     /// Delta-pull every table and merge per item. Returns the HTTP status of the first
     /// failure so the caller can retry once after refreshing the token.
@@ -226,8 +232,9 @@ final class NudgeStore: ObservableObject {
         var newLists = lists
         var newSmart = smartLists
         let outcome = mergeRows(rRows, into: &all, meta: &remindersMeta)
-        mergeRows(lRows, into: &newLists, meta: &listsMeta)
-        mergeRows(sRows, into: &newSmart, meta: &smartListsMeta)
+        let lOutcome = mergeRows(lRows, into: &newLists, meta: &listsMeta)
+        let sOutcome = mergeRows(sRows, into: &newSmart, meta: &smartListsMeta)
+        if outcome.healedCount + lOutcome.healedCount + sOutcome.healedCount > 0 { needsHealPush = true }
 
         // A reminder deleted on another device must take its alerts down with it, exactly as
         // a local delete does. Its photos are left alone: the delete may yet be undone on the
@@ -1034,10 +1041,13 @@ final class NudgeStore: ObservableObject {
     func snooze(_ r: Reminder, minutes: Int) {
         guard let i = reminders.firstIndex(where: { $0.id == r.id }) else { return }
         let when = Date().addingTimeInterval(Double(minutes) * 60)
-        // Routines derive their evening time from dueDate — moving it would permanently
-        // shift the schedule, so only set snoozedUntil (notifications fire at the later
-        // of due-based and snoozedUntil).
-        if !(reminders[i].routine ?? false) {
+        // Routines AND repeating reminders derive their future dates from dueDate — moving it
+        // would permanently shift the schedule (snooze "FaceTime Dad" 16:15 by an hour and
+        // every later week became 17:15 — fixed 2026-10-18). So for those only set
+        // snoozedUntil: notifications fire at the later of due-based and snoozedUntil, and the
+        // lists already treat a pending snooze as "later".
+        let repeats = (reminders[i].recurrence.map { $0.freq != "none" } ?? false)
+        if !(reminders[i].routine ?? false) && !repeats {
             reminders[i].dueDate = iso(when)
             reminders[i].hasTime = true
             reminders[i].tz = nil
@@ -1142,7 +1152,9 @@ final class NudgeStore: ObservableObject {
     /// Propose new slots for all overdue (non-routine) reminders WITHOUT applying — the
     /// preview sheet shows these and the user confirms. Routines have their own check-in.
     func planSmartReschedule() -> [RescheduleChange] {
-        let overdue = reminders.filter { isOverdue($0) && !($0.routine ?? false) }
+        // Repeating / routine / escalating reminders keep their set time no matter what
+        // (Noah, 2026-10-18) — they are never part of a smart reschedule.
+        let overdue = reminders.filter { isOverdue($0) && !$0.isProtectedFromAI }
         CalendarService.shared.refresh()   // freshest events so we avoid your busy times
         return SmartScheduler.plan(overdue, busy: CalendarService.shared.busyIntervals())
     }
@@ -1151,7 +1163,7 @@ final class NudgeStore: ObservableObject {
     /// overdue pile intelligently (avoiding calendar events); otherwise — or on any failure —
     /// fall back to the built-in heuristic planner. Both return a preview to confirm.
     func planSmartRescheduleAI() async -> [RescheduleChange] {
-        let overdue = reminders.filter { isOverdue($0) && !($0.routine ?? false) }
+        let overdue = reminders.filter { isOverdue($0) && !$0.isProtectedFromAI }   // see planSmartReschedule
         guard !overdue.isEmpty else { return [] }
         CalendarService.shared.refresh()
         let busy = CalendarService.shared.busyIntervals()
@@ -1171,7 +1183,8 @@ final class NudgeStore: ObservableObject {
     func applyReschedule(_ changes: [RescheduleChange], auto: Bool = false) -> [RescheduleChange] {
         guard !changes.isEmpty else { return [] }
         for c in changes {
-            guard let i = reminders.firstIndex(where: { $0.id == c.id }) else { continue }
+            guard let i = reminders.firstIndex(where: { $0.id == c.id }),
+                  !reminders[i].isProtectedFromAI else { continue }   // never move a repeating series
             reminders[i].dueDate = c.newDue
             reminders[i].hasTime = true
             reminders[i].tz = nil
@@ -1183,50 +1196,153 @@ final class NudgeStore: ObservableObject {
         return changes
     }
 
-    // MARK: - End-of-day AI carry-over (23:50)
+    // MARK: - AI move-over, on demand (2026-10-18)
+    //
+    // Replaces the automatic 23:50 carry-over. It used to run by itself on whichever device
+    // opened first after 23:50 — and then AGAIN on the other device, because the run-once
+    // guard (CarryOverLog.lastProcessedDay) was per device. Noah wanted it to run only when
+    // he says so, and to be asked on ONE device only:
+    //   • The first device to open Nudge on a new calendar day CLAIMS the day in the synced
+    //     settings row ("moveOverOffer": day / device / state) and shows the banner.
+    //   • Any other device sees the claim and shows nothing that day — even if the banner is
+    //     ignored on the first device (Noah's explicit choice).
+    //   • "Run" asks Claude (same rules as before: one-off reminders only, recurring / routine /
+    //     escalating never) and moves yesterday's chosen leftovers by one day. "Skip" just
+    //     records the decision.
+    // The claim needs a successful pull first, so an offline open never claims. Two devices
+    // opened within about a second of each other can both claim; the settings row is
+    // last-write-wins and the later claim hides the earlier banner on its next check.
 
-    /// Day key (yyyy-MM-dd) for the carry-over to process: today once 23:50 has passed,
-    /// otherwise yesterday (whose 23:50 cutoff is already in the past).
-    private func carryOverTargetDay(now: Date = Date()) -> (key: String, dayStart: Date) {
-        let cal = Calendar.current
-        var cutoff = cal.dateComponents([.year, .month, .day], from: now)
-        cutoff.hour = 23; cutoff.minute = 50
-        let cutoffDate = cal.date(from: cutoff) ?? now
-        let day = now >= cutoffDate ? now : (cal.date(byAdding: .day, value: -1, to: now) ?? now)
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
-        return (f.string(from: day), cal.startOfDay(for: day))
+    struct MoveOverOffer: Equatable {
+        let day: String        // yyyy-MM-dd of the leftovers (yesterday)
+        let dayStart: Date
+        let count: Int         // how many leftovers it would look at
     }
 
-    /// Run the carry-over for the target day if it hasn't run yet. Safe to call on every launch —
-    /// it no-ops until 23:50 has passed and only ever runs once per day. Requires an API key.
-    func maybeRunDailyCarryOver() async {
-        let target = carryOverTargetDay()
-        guard CarryOverLog.shared.lastProcessedDay != target.key else { return }
+    /// Non-nil while this device owns today's offer and it hasn't been answered.
+    @Published private(set) var moveOverOffer: MoveOverOffer? = nil
+    @Published private(set) var moveOverRunning = false
+    @Published private(set) var moveOverError: String? = nil
 
-        let key = APIKeyStore.load()
-        guard !key.isEmpty else { return }   // no AI without a key; try again next launch
-        let model = AIScheduler.defaultModel   // Sonnet — never Opus/Haiku
+    private static let kMoveOver = "moveOverOffer"
 
-        // Candidates: incomplete, not dismissed, due ON the target day, and NOT protected
-        // (recurring / nightly / escalating reminders are excluded here so the AI never sees them).
+    /// A stable, random id for THIS install — only used to tell which device claimed the
+    /// day's offer. Not tied to the hardware or the user.
+    static var deviceId: String {
+        let key = "nudgeDeviceId"
+        if let id = UserDefaults.standard.string(forKey: key), !id.isEmpty { return id }
+        let id = UUID().uuidString
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }
+
+    private struct MoveOverRecord { let day: String; let device: String; let state: String }
+
+    private func moveOverRecord() -> MoveOverRecord? {
+        guard case .object(let o)? = settings?[Self.kMoveOver],
+              case .string(let day)? = o["day"],
+              case .string(let device)? = o["device"],
+              case .string(let state)? = o["state"] else { return nil }
+        return MoveOverRecord(day: day, device: device, state: state)
+    }
+
+    private func writeMoveOver(day: String, state: String) {
+        var dict = settings ?? [:]
+        dict[Self.kMoveOver] = .object(["day": .string(day),
+                                        "device": .string(Self.deviceId),
+                                        "state": .string(state)])
+        settings = dict
+        settingsStamp = syncStamp()
+        persist(notify: false)
+    }
+
+    /// Yesterday — the day whose leftovers the move-over looks at.
+    private func moveOverTarget(now: Date = Date()) -> (key: String, dayStart: Date) {
         let cal = Calendar.current
-        let leftovers = reminders.filter { r in
-            guard !(r.completed ?? false), !(r.dismissed ?? false) else { return false }
-            guard !r.isProtectedFromAI else { return false }
-            guard let due = parseDate(r.dueDate) else { return false }
-            return cal.isDate(due, inSameDayAs: target.dayStart)
+        let today = cal.startOfDay(for: now)
+        let day = cal.date(byAdding: .day, value: -1, to: today) ?? today
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        return (f.string(from: day), day)
+    }
+
+    /// Open one-off reminders due on `dayStart`. Recurring / routine / escalating ones are
+    /// never eligible (Reminder.isProtectedFromAI).
+    private func moveOverLeftovers(on dayStart: Date) -> [Reminder] {
+        let cal = Calendar.current
+        return reminders.filter { r in
+            guard !(r.completed ?? false), !(r.dismissed ?? false), !r.isProtectedFromAI,
+                  let due = parseDate(r.dueDate) else { return false }
+            return cal.isDate(due, inSameDayAs: dayStart)
+        }
+    }
+
+    /// Call after a refresh on launch / foreground. Decides whether THIS device shows the
+    /// banner today, claiming the day first if nobody has.
+    func checkMoveOverOffer() async {
+        guard syncState == "Synced" else { return }             // claims need a fresh pull
+        guard !APIKeyStore.load().isEmpty else { moveOverOffer = nil; return }   // can't run without a key
+        let target = moveOverTarget()
+
+        if let rec = moveOverRecord(), rec.day == target.key {
+            // Already claimed today — by us (show until answered) or by the other device (never).
+            if rec.device == Self.deviceId, rec.state == "offered" {
+                let n = moveOverLeftovers(on: target.dayStart).count
+                moveOverOffer = n > 0 ? MoveOverOffer(day: target.key, dayStart: target.dayStart, count: n) : nil
+            } else {
+                moveOverOffer = nil
+            }
+            return
         }
 
-        guard !leftovers.isEmpty else { CarryOverLog.shared.markProcessed(target.key); return }
+        let leftovers = moveOverLeftovers(on: target.dayStart)
+        guard !leftovers.isEmpty else { moveOverOffer = nil; return }
+
+        // Claim, upload the claim, then re-read: if the other device claimed in the meantime
+        // its newer row wins and we stay quiet.
+        writeMoveOver(day: target.key, state: "offered")
+        await persistNow()
+        await refresh()
+        if let rec = moveOverRecord(), rec.day == target.key,
+           rec.device == Self.deviceId, rec.state == "offered" {
+            moveOverOffer = MoveOverOffer(day: target.key, dayStart: target.dayStart, count: leftovers.count)
+        } else {
+            moveOverOffer = nil
+        }
+    }
+
+    /// "Skip today" on the banner.
+    func skipMoveOver() {
+        guard let offer = moveOverOffer else { return }
+        writeMoveOver(day: offer.day, state: "skipped")
+        moveOverOffer = nil
+        moveOverError = nil
+    }
+
+    /// "Run AI move-over" on the banner. On failure the banner stays, with the error.
+    func runMoveOver() async {
+        guard let offer = moveOverOffer, !moveOverRunning else { return }
+        moveOverRunning = true
+        moveOverError = nil
+        defer { moveOverRunning = false }
+
+        let key = APIKeyStore.load()
+        guard !key.isEmpty else { moveOverError = "Add your Anthropic API key in Settings first."; return }
+        let model = AIScheduler.defaultModel   // Sonnet — never Opus/Haiku
+
+        let leftovers = moveOverLeftovers(on: offer.dayStart)
+        guard !leftovers.isEmpty else {
+            writeMoveOver(day: offer.day, state: "ran"); moveOverOffer = nil; return
+        }
 
         let decisions: [String: (carry: Bool, reason: String)]
         do {
             decisions = try await AICarryOver.decide(leftovers: leftovers, now: Date(), apiKey: key, model: model)
         } catch {
-            return   // network/API failure — leave unprocessed so it retries next launch
+            moveOverError = "Couldn't reach Claude. Check your connection and try again."
+            return
         }
-        guard !decisions.isEmpty else { CarryOverLog.shared.markProcessed(target.key); return }
 
+        let cal = Calendar.current
         var moved: [CarryItem] = []
         var kept: [CarryItem] = []
         for r in leftovers {
@@ -1234,7 +1350,9 @@ final class NudgeStore: ObservableObject {
             guard !r.isProtectedFromAI else { continue }
             let d = decisions[r.id] ?? (false, "Left in place.")
             if d.carry, let i = reminders.firstIndex(where: { $0.id == r.id }),
-               let old = parseDate(r.dueDate) {
+               !(reminders[i].completed ?? false),          // ticked off while Claude was thinking
+               let old = parseDate(reminders[i].dueDate),
+               cal.isDate(old, inSameDayAs: offer.dayStart) {  // and not already moved elsewhere
                 let newDate = cal.date(byAdding: .day, value: 1, to: old) ?? old
                 reminders[i].dueDate = iso(newDate)
                 reminders[i].snoozedUntil = nil
@@ -1247,14 +1365,26 @@ final class NudgeStore: ObservableObject {
             }
         }
 
-        if !moved.isEmpty { persist() }
-        await MainActor.run {
-            CarryOverLog.shared.record(CarryOverEntry(id: target.key, ranAt: iso(Date()),
-                                                      moved: moved, kept: kept))
-        }
+        writeMoveOver(day: offer.day, state: "ran")   // persists the moves too
+        moveOverOffer = nil
+        CarryOverLog.shared.record(CarryOverEntry(id: offer.day, ranAt: iso(Date()),
+                                                  moved: moved, kept: kept))
     }
 
     // MARK: - Group reminders (AI clustering to clear clutter)
+
+    /// Day key (yyyy-MM-dd) for the nightly AI grouping to process: today once 23:50 has passed,
+    /// otherwise yesterday (whose 23:50 cutoff is already in the past).
+    private func carryOverTargetDay(now: Date = Date()) -> (key: String, dayStart: Date) {
+        let cal = Calendar.current
+        var cutoff = cal.dateComponents([.year, .month, .day], from: now)
+        cutoff.hour = 23; cutoff.minute = 50
+        let cutoffDate = cal.date(from: cutoff) ?? now
+        let day = now >= cutoffDate ? now : (cal.date(byAdding: .day, value: -1, to: now) ?? now)
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        return (f.string(from: day), cal.startOfDay(for: day))
+    }
+
 
     /// Reminders eligible to be grouped. Deliberately conservative so grouping never HIDES an
     /// actionable item inside a collapsed card:

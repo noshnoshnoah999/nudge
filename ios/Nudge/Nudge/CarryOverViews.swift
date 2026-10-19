@@ -80,7 +80,7 @@ struct CarryOverHistoryView: View {
             if log.entries.isEmpty {
                 ContentUnavailableView("No carry-overs yet",
                     systemImage: "sparkles",
-                    description: Text("Each night at 23:50, Claude reviews your unfinished reminders and carries over the important ones. Runs will appear here."))
+                    description: Text("When you open Nudge each morning, one device asks whether Claude should move yesterday's important leftovers to today. Runs you start will appear here."))
             } else {
                 List(log.entries) { e in
                     Button { selected = e } label: {

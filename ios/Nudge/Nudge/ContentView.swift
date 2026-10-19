@@ -44,6 +44,7 @@ struct ContentView: View {
     @State private var routineLapsed: [Reminder] = []
     @State private var routineStepUps: [Reminder] = []
     @ObservedObject private var carryLog = CarryOverLog.shared
+    @ObservedObject private var birthdays = BirthdayBanners.shared
     @State private var showCarryReview: CarryOverEntry?
     @ObservedObject private var groupLog = GroupLog.shared
     @State private var showGroupReview: GroupRunEntry?
@@ -74,6 +75,7 @@ struct ContentView: View {
             Theme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                if let offer = store.moveOverOffer { moveOverOfferBanner(offer) }
                 if carryLog.unseenEntry != nil { carryOverBanner }
                 if groupLog.unseenEntry != nil { groupBanner }
                 header
@@ -156,7 +158,11 @@ struct ContentView: View {
             selectMode = false
             selectedIds.removeAll()
         }) {
-            BulkMoveView(reminders: store.reminders.filter { selectedIds.contains($0.id) })
+            // Repeating / routine reminders keep their set time no matter what (Noah,
+            // 2026-10-18): they are left out of a bulk move, and the sheet says how many.
+            let picked = store.reminders.filter { selectedIds.contains($0.id) }
+            BulkMoveView(reminders: picked.filter { !$0.isProtectedFromAI },
+                         skippedRepeating: picked.filter { $0.isProtectedFromAI }.count)
                 .environmentObject(store)
         }
         .sheet(isPresented: $showFolderPickerForSelection) {
@@ -191,8 +197,9 @@ struct ContentView: View {
             stuckCount = store.stuckCount()
             await sync.syncNow(); await notifier.reschedule()
             await CalendarService.shared.requestAccessIfNeeded()   // for event-conflict checks
+            birthdays.reload()                     // Home birthday banner (needs Calendar access)
             maybeRoutineCheckin()
-            await store.maybeRunDailyCarryOver()   // end-of-day AI carry-over (23:50), runs once/day
+            await store.checkMoveOverOffer()       // AI move-over banner — asked on ONE device, never automatic
             await store.maybeRunDailyGrouping()    // end-of-day AI grouping (23:50), runs once/day
             processPendingNotification()   // a tap that cold-launched the app, now that it's live
         }
@@ -264,8 +271,9 @@ struct ContentView: View {
                            stuckCount = store.stuckCount()
                            await sync.syncNow(); await notifier.reschedule()
                            CalendarService.shared.refresh()
+                           birthdays.reload()
                            maybeRoutineCheckin()
-                           await store.maybeRunDailyCarryOver()   // also run on foreground, not just cold launch
+                           await store.checkMoveOverOffer()       // also on foreground, not just cold launch
                            await store.maybeRunDailyGrouping() }
                 }
             @unknown default: break
@@ -590,6 +598,12 @@ struct ContentView: View {
     // MARK: - Home dashboard
 
     @ViewBuilder private var dashboardTab: some View {
+        // Birthday banners first: "Say happy birthday to X!" on the day, a heads-up up to 3
+        // days before. Each ✕ hides that banner for the rest of the day (BirthdayBanner.swift).
+        ForEach(birthdays.visible) { b in
+            BirthdayBannerRow(item: b) { withAnimation(Theme.spring) { birthdays.dismiss(b) } }
+                .popIn(0)
+        }
         // The hero is a filled card wrapping a big number and a progress ring — the single
         // most decorative thing on Home. Minimal drops it entirely; the header above already
         // says the date and the status line already says how many are left, so no information
@@ -1340,7 +1354,7 @@ struct ContentView: View {
             HStack(spacing: 10) {
                 Image(systemName: "sparkles").foregroundStyle(fg)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("AI tidied up last night").font(.subheadline.weight(.bold)).foregroundStyle(fg)
+                    Text("AI move-over done").font(.subheadline.weight(.bold)).foregroundStyle(fg)
                     Text("Moved \(e?.moved.count ?? 0) to today · left \(e?.kept.count ?? 0). Tap to review.")
                         .font(.caption).foregroundStyle(fg.opacity(0.95))
                 }
@@ -1370,6 +1384,62 @@ struct ContentView: View {
             guard !Theme.minimal else { return }
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { carryGlow = true }
         }
+    }
+
+    // "Run AI move-over / Skip today" — shown only on the device that claimed today's offer.
+    // See NudgeStore.checkMoveOverOffer. Plain styling on purpose: it asks a question, it
+    // isn't an alert.
+    private func moveOverOfferBanner(_ offer: NudgeStore.MoveOverOffer) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles").foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(offer.count) reminder\(offer.count == 1 ? "" : "s") left from yesterday")
+                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.textMain)
+                    Text("Let Claude move the important ones to today?")
+                        .font(.caption).foregroundStyle(Theme.textMeta)
+                }
+                Spacer()
+            }
+            if let err = store.moveOverError {
+                Text(err).font(.caption).foregroundStyle(Theme.coral)
+            }
+            HStack(spacing: 10) {
+                Button {
+                    Task { await store.runMoveOver() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if store.moveOverRunning { ProgressView().controlSize(.small) }
+                        Text(store.moveOverRunning ? "Moving…" : "Run AI move-over")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent).tint(Theme.accent)
+                .disabled(store.moveOverRunning)
+
+                Button {
+                    withAnimation(Theme.spring) { store.skipMoveOver() }
+                } label: {
+                    Text("Skip today").font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .disabled(store.moveOverRunning)
+            }
+        }
+        .padding(12)
+        .background {
+            if Theme.minimal {
+                Rectangle().fill(Theme.surface)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+            } else {
+                RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous).fill(Theme.surface)
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 1))
+            }
+        }
+        .padding(.horizontal, Theme.minimal ? 0 : 18).padding(.top, 8).padding(.bottom, 4)
     }
 
     // Orange banner on the first open after an overnight AI grouping ran.

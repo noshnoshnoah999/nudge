@@ -27,6 +27,8 @@ final class LocationMonitor: NSObject, ObservableObject {
     @Published private(set) var capped = false
 
     private let manager = CLLocationManager()
+    /// What the monitored regions were last built from — see the early return in `sync`.
+    private var lastAppliedSignature: String?
 
     private override init() {
         super.init()
@@ -68,8 +70,6 @@ final class LocationMonitor: NSObject, ObservableObject {
         #if !targetEnvironment(macCatalyst)
         guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else { return }
 
-        for region in manager.monitoredRegions { manager.stopMonitoring(for: region) }
-
         var eligible = reminders.filter {
             ($0.geofenceEnabled ?? false)
                 && !($0.completed ?? false) && !($0.dismissed ?? false)
@@ -82,6 +82,20 @@ final class LocationMonitor: NSObject, ObservableObject {
             eligible.sort { distance(from: $0, to: here) < distance(from: $1, to: here) }
         }
         eligible = Array(eligible.prefix(Self.maxRegions))
+
+        // Only rebuild when the geofence set actually changed (2026-10-18). This runs at the
+        // persist choke point — every tick, edit and snooze — and used to stop and restart
+        // EVERY region each time: wasted main-thread work mid-animation, and a crossing that
+        // happened during the gap could be missed. The region count check catches iOS having
+        // dropped regions on its own (e.g. after a reboot).
+        let signature = eligible.map { (r: Reminder) -> String in
+            [r.id, "\(r.lat ?? 0)", "\(r.lng ?? 0)", "\(r.geofenceRadius ?? Self.defaultRadius)",
+             r.geofenceTrigger ?? "arrive", r.title, r.location ?? ""].joined(separator: "|")
+        }.joined(separator: "\n")
+        if signature == lastAppliedSignature, manager.monitoredRegions.count == eligible.count { return }
+        lastAppliedSignature = signature
+
+        for region in manager.monitoredRegions { manager.stopMonitoring(for: region) }
 
         for r in eligible {
             guard let lat = r.lat, let lng = r.lng else { continue }
