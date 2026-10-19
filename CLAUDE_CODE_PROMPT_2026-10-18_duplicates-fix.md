@@ -18,7 +18,9 @@ files.** If the tree has changes other than those listed below, stop and report.
 Committed locally, NOT pushed, written without a compiler (no Swift toolchain was available):
 
 - `708b056` Fix duplicate reminders, reverting edits/links, and completion lag
-- one docs commit with the handoff and this prompt
+- `b2dc728` docs (handoff + this prompt)
+- `a498386` Audit fixes, birthday banner, and ask-first AI move-over
+- one more docs commit updating the handoff and this prompt
 
 Expected dirty / untracked — **leave all of these exactly as they are, do not commit them**:
 - `ios/Nudge/Nudge.xcodeproj/project.pbxproj` — the old one-line RecurrenceEngine file-reference reorder. Noah asked for it to stay uncommitted.
@@ -30,7 +32,7 @@ Expected dirty / untracked — **leave all of these exactly as they are, do not 
    ```bash
    ./ios/Nudge/SyncMergeTests/run.sh
    ```
-   It must end with `ALL PASSED`. `run.sh` now also compiles `Shared/RecurrenceEngine.swift` (it had
+   It must end with `ALL PASSED` (13 groups now, including the new heal case). `run.sh` now also compiles `Shared/RecurrenceEngine.swift` (it had
    been failing to compile since 2026-08-05 because Models.swift bridges to RecurrenceEngine).
 2. Build the iOS app scheme (includes the NudgeWidgets extension) and Mac Catalyst with
    `xcodebuild`, the same way `reinstall_nudge.sh` builds.
@@ -46,6 +48,11 @@ Expected dirty / untracked — **leave all of these exactly as they are, do not 
    - `ios/Nudge/Shared/CompleteReminderWidgetIntent.swift`
    - `ios/Nudge/Shared/RecurrenceEngine.swift`
    - `ios/Nudge/SyncMergeTests/main.swift`, `ios/Nudge/SyncMergeTests/run.sh`
+   - `ios/Nudge/Nudge/ContentView.swift`, `BulkMoveView.swift`, `LocationMonitor.swift`,
+     `QuickCatchView.swift`, `ScanReminderView.swift`, `BackgroundTasks.swift`,
+     `CarryOverViews.swift`, and the NEW `ios/Nudge/Nudge/BirthdayBanner.swift`
+     (Nudge/ is a synchronized folder group, so the new file needs no pbxproj edit — if Xcode
+     somehow doesn't pick it up, report it rather than hand-editing the pbxproj)
 
    Most likely to need attention (project uses `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`):
    - `SyncMeta` now has an in-memory `memo` and a `private enum CodingKeys` that excludes it.
@@ -57,12 +64,23 @@ Expected dirty / untracked — **leave all of these exactly as they are, do not 
    - `CompleteReminderWidgetIntent.swift`: `switch await rowState(...)` with `case nil / .live? /
      .absent?, .deleted?`, new `StateWrap`, and `UpsertRow` with a custom `encode(to:)`.
    - The global `markPushed(_:meta:)` in CloudSync replaced NudgeStore's private `markPushed`.
+   - `MergeOutcome.healedCount` + `NudgeStore.needsHealPush` (heal re-push after a pull).
+   - `CloudAPI.pull` now loops pages (`order=id.asc&limit=1000&offset=…` until an empty page).
+   - `NudgeStore` AI move-over block: `MoveOverOffer`, `moveOverOffer/Running/Error`,
+     `checkMoveOverOffer()`, `runMoveOver()`, `skipMoveOver()`, `deviceId`. The old
+     `maybeRunDailyCarryOver()` is GONE on purpose — do not reintroduce automatic runs.
+     `carryOverTargetDay()` is still used by `maybeRunDailyGrouping()`.
+   - `ContentView`: `moveOverOfferBanner(_:)`, the birthday `ForEach` at the top of
+     `dashboardTab`, and a `let picked = …` inside the BulkMoveView sheet builder.
+   - `BulkMoveView` gained `var skippedRepeating: Int = 0` (memberwise init param).
 
    **Hard rules:**
    - Do NOT set `RemindersSync.isAvailable` back to `true` or re-show the Apple Reminders toggle
      to make anything compile. Noah decided to switch Apple Reminders sync off; it was the
      source of the duplicates.
    - Do NOT replace `RecurrenceEngine.successorId(of:)` with a random id anywhere.
+   - Do NOT run or edit `supabase/d1/06_reject_older_writes.sql` — Noah runs it himself in
+     the Supabase dashboard. You have no database access and need none.
 4. Run `./reinstall_nudge.sh` to install on iPhone + Mac, and report its real result (exit
    codes, not grepped text). BOTH devices must get the new build — an old build on either
    device keeps the Apple mirror running and keeps creating duplicates.

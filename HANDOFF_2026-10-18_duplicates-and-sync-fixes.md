@@ -1,6 +1,7 @@
 # Handoff — 2026-10-18: duplicate reminders, reverting edits/links, completion lag
 
-Code commit: `708b056` (local, unbuilt at time of writing). Build/push prompt:
+Code commits: `708b056` (duplicate fixes) and `a498386` (audit fixes + features), both local
+and unbuilt at time of writing. Build/push prompt:
 `CLAUDE_CODE_PROMPT_2026-10-18_duplicates-fix.md`.
 
 ## What Noah reported
@@ -87,3 +88,64 @@ multi-line title. If it recurs with Apple sync off, it's the text input.
 - Remove a link from a recurring reminder (future events) → still gone after a minute and on Mac.
 - Edit on iPhone, open Mac → count unchanged (and vice versa).
 - Tick 5 in a row → smoother than before.
+
+---
+
+# Part 2 — whole-app audit (2026-10-19, commit `a498386`)
+
+Noah asked for a full bug check after the duplicate fixes, then said "fix all", plus two features.
+
+## Fixed
+- **H1 — server kept the LAST upload, not the newest.** Blind `merge-duplicates` upserts let a
+  stale upload (offline edit, slow request) overwrite a newer row; the newer device then skipped
+  the older incoming row forever → permanent divergence. Client: `mergeRows` re-dirties our copy
+  when the server holds an older one (`healedCount`), and `refresh()` schedules the push.
+  Server: `supabase/d1/06_reject_older_writes.sql` — **Noah must run it in the Supabase SQL
+  editor** (trigger skips strictly older updates on reminders/lists/smart_lists/settings; also
+  revokes API execute on `purge_nudge_tombstones()` if that function exists).
+- **H2 — fresh install could get only part of the data.** `CloudAPI.pull` asked for every row in
+  one unordered request; Supabase caps responses (1000 by default) and tombstones accumulate.
+  Now paged by `id` until an empty page.
+- **M1** snoozing a repeating reminder shifted the series → only `snoozedUntil` now.
+- **M2** Quick Catch Save / Scan "Add N" double tap → duplicates → one save per sheet.
+- **M3** Smart Reschedule + Bulk Move moved repeating reminders' series → they're excluded
+  (Noah: "keep its set time, no matter what"); bulk-move sheet shows how many were skipped.
+- **L1** birthday notifications wiped from Notification Centre by `clearStaleDelivered`.
+- **L3** LocationMonitor rebuilt every geofence on every persist → only when the set changes.
+- **L6** deleted `config.js`, `fix_strange_times.py`, `make_shortcut.py`,
+  `Nudge Morning Digest.shortcut` (retired; anon keys only, still in git history — harmless
+  under RLS).
+
+## Features
+- **AI move-over, ask-first** (replaces the automatic 23:50 carry-over; also fixes L2, the
+  per-device double runs). First device opened each calendar day claims the day in the synced
+  settings row (`moveOverOffer` = day/device/state) after a successful pull, then re-pulls to
+  confirm; only the claimer shows "N reminders left from yesterday — Run AI move-over / Skip
+  today". Other device: nothing that day, even if ignored (Noah's choice). Needs an API key;
+  offline → no claim. Two devices opened within ~1 s can both claim (settings row is
+  last-write-wins). BG task no longer runs it. Result still logged in CarryOverLog ("AI
+  move-over done" banner).
+- **Birthday banner** on Home (`BirthdayBanner.swift`): on the day "Say happy birthday to X!",
+  and 1–3 days before a heads-up; ✕ hides it for that day (per device).
+
+## Not fixed (info only)
+- L4: iOS schedules at most ~60 pending alerts; long absences can miss later ones.
+- L5: Siri intents / BG task / notification fallback create extra NudgeStore instances in the
+  same process; self-heals on next pull.
+- Nightly AI grouping (`maybeRunDailyGrouping`) still auto-runs per device if its toggle is on —
+  same double-run shape as the old carry-over. Not raised by Noah; flag if he wants it ask-first too.
+
+## Noah's to-do (in order)
+1. Hand Claude Code the prompt; install on BOTH devices.
+2. Supabase dashboard → SQL editor → paste and run `supabase/d1/06_reject_older_writes.sql`.
+   The last two SELECTs should show 4 trigger rows and the row/tombstone counts.
+3. iPhone → Settings → Maintenance → Remove duplicates (review, confirm).
+4. Optional: delete the leftover "Nudge" list in Apple Reminders.
+
+## Extra test checklist
+- Snooze "FaceTime Dad" an hour → next week still 16:15.
+- Select a mix incl. a repeating reminder → Bulk Move → note says 1 left out; it doesn't move.
+- Smart Reschedule never lists repeating reminders.
+- Double-tap Quick Catch Save → one reminder.
+- First open tomorrow morning on one device → move-over banner; open the other → no banner.
+- A birthday within 3 days → Home banner; ✕ hides it until tomorrow.
