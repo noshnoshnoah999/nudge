@@ -75,7 +75,7 @@ struct ContentView: View {
             Theme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                if let offer = store.moveOverOffer { moveOverOfferBanner(offer) }
+                if let offer = store.moveOverOffer { MoveOverOfferBanner(offer: offer) }
                 if carryLog.unseenEntry != nil { carryOverBanner }
                 if groupLog.unseenEntry != nil { groupBanner }
                 header
@@ -85,14 +85,7 @@ struct ContentView: View {
                     // are no cards or boxes to do it. Rows inside a section butt together and
                     // are separated by hairlines — that spacing lives in `sectionView`.
                     VStack(alignment: .leading, spacing: Theme.minimal ? Theme.sectionSpacing : (settings.compact ? 14 : 20)) {
-                        switch tab {
-                        case 0: dashboardTab
-                        case 1: todayTab
-                        case 2: overdueTab
-                        case 3: upcomingTab
-                        case 4: listsTab
-                        default: searchTab
-                        }
+                        tabContent
                     }
                     .padding(.horizontal, Theme.rowInset)
                     .padding(.top, 6)
@@ -596,6 +589,34 @@ struct ContentView: View {
     }
 
     // MARK: - Home dashboard
+
+    /// The current tab's content, type-erased (2026-10-19).
+    ///
+    /// ContentView.body had grown so large that evaluating it in a Debug build overflowed the
+    /// iPhone's small main-thread stack — EXC_BAD_ACCESS (code=2) at `case 0: dashboardTab`
+    /// the moment the app launched. The Mac has a much bigger main-thread stack, which is why
+    /// the same build ran fine there. Building the tab in this separate getter and boxing it
+    /// in AnyView keeps the six tabs' large view values out of body's own stack frame.
+    /// If a launch crash like that comes back after body grows again, split more of body out
+    /// the same way rather than trimming features.
+    private var tabContent: AnyView {
+        // One small function per tab, so only the tab actually shown is ever materialised in
+        // a stack frame (an unoptimised Debug build reserves a slot for every branch's value).
+        switch tab {
+        case 0: return erasedDashboardTab()
+        case 1: return erasedTodayTab()
+        case 2: return erasedOverdueTab()
+        case 3: return erasedUpcomingTab()
+        case 4: return erasedListsTab()
+        default: return erasedSearchTab()
+        }
+    }
+    private func erasedDashboardTab() -> AnyView { AnyView(dashboardTab) }
+    private func erasedTodayTab() -> AnyView { AnyView(todayTab) }
+    private func erasedOverdueTab() -> AnyView { AnyView(overdueTab) }
+    private func erasedUpcomingTab() -> AnyView { AnyView(upcomingTab) }
+    private func erasedListsTab() -> AnyView { AnyView(listsTab) }
+    private func erasedSearchTab() -> AnyView { AnyView(searchTab) }
 
     @ViewBuilder private var dashboardTab: some View {
         // Birthday banners first: "Say happy birthday to X!" on the day, a heads-up up to 3
@@ -1384,62 +1405,6 @@ struct ContentView: View {
             guard !Theme.minimal else { return }
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { carryGlow = true }
         }
-    }
-
-    // "Run AI move-over / Skip today" — shown only on the device that claimed today's offer.
-    // See NudgeStore.checkMoveOverOffer. Plain styling on purpose: it asks a question, it
-    // isn't an alert.
-    private func moveOverOfferBanner(_ offer: NudgeStore.MoveOverOffer) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles").foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("\(offer.count) reminder\(offer.count == 1 ? "" : "s") left from yesterday")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.textMain)
-                    Text("Let Claude move the important ones to today?")
-                        .font(.caption).foregroundStyle(Theme.textMeta)
-                }
-                Spacer()
-            }
-            if let err = store.moveOverError {
-                Text(err).font(.caption).foregroundStyle(Theme.coral)
-            }
-            HStack(spacing: 10) {
-                Button {
-                    Task { await store.runMoveOver() }
-                } label: {
-                    HStack(spacing: 6) {
-                        if store.moveOverRunning { ProgressView().controlSize(.small) }
-                        Text(store.moveOverRunning ? "Moving…" : "Run AI move-over")
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 8)
-                }
-                .buttonStyle(.borderedProminent).tint(Theme.accent)
-                .disabled(store.moveOverRunning)
-
-                Button {
-                    withAnimation(Theme.spring) { store.skipMoveOver() }
-                } label: {
-                    Text("Skip today").font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                }
-                .buttonStyle(.bordered)
-                .disabled(store.moveOverRunning)
-            }
-        }
-        .padding(12)
-        .background {
-            if Theme.minimal {
-                Rectangle().fill(Theme.surface)
-                    .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
-            } else {
-                RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous).fill(Theme.surface)
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius(12), style: .continuous)
-                        .stroke(Theme.hairline, lineWidth: 1))
-            }
-        }
-        .padding(.horizontal, Theme.minimal ? 0 : 18).padding(.top, 8).padding(.bottom, 4)
     }
 
     // Orange banner on the first open after an overnight AI grouping ran.
