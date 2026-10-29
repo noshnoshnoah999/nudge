@@ -312,6 +312,20 @@ struct SyncSettingsView: View {
                 }
                 .listRowBackground(Theme.surface)
 
+                // MARK: Tsuji plan
+                Section {
+                    NavigationLink {
+                        TsujiIDCheckView()
+                    } label: {
+                        Label("Calendar ID check", systemImage: "checklist")
+                    }
+                } header: {
+                    Text("Tsuji plan")
+                } footer: {
+                    Text("Read-only. Checks that Nudge can find the 13 Tsuji action events in your Tsuji Plan calendar. Nothing in Calendar is changed.")
+                }
+                .listRowBackground(Theme.surface)
+
                 // MARK: Privacy
                 if BiometricLock.available {
                     Section {
