@@ -199,6 +199,7 @@ final class NotificationManager: NSObject, ObservableObject {
         }
         await schedulePayday(nudge: nudge, center: center)
         await scheduleBirthdays(center: center)
+        await TsujiNotifications.schedule(center: center)   // Tsuji plan: only the slots left over
         await clearStaleDelivered()   // drop delivered alerts for now-completed reminders
         scheduledCount = min(pending.count, 60)
     }

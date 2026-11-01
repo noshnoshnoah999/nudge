@@ -191,6 +191,7 @@ struct ContentView: View {
             await sync.syncNow(); await notifier.reschedule()
             await CalendarService.shared.requestAccessIfNeeded()   // for event-conflict checks
             birthdays.reload()                     // Home birthday banner (needs Calendar access)
+            TsujiStore.shared.reload()             // Tsuji plan banner (needs Calendar access)
             maybeRoutineCheckin()
             await store.checkMoveOverOffer()       // AI move-over banner — asked on ONE device, never automatic
             await store.maybeRunDailyGrouping()    // end-of-day AI grouping (23:50), runs once/day
@@ -265,6 +266,7 @@ struct ContentView: View {
                            await sync.syncNow(); await notifier.reschedule()
                            CalendarService.shared.refresh()
                            birthdays.reload()
+                           TsujiStore.shared.reload()
                            maybeRoutineCheckin()
                            await store.checkMoveOverOffer()       // also on foreground, not just cold launch
                            await store.maybeRunDailyGrouping() }
@@ -625,6 +627,9 @@ struct ContentView: View {
             BirthdayBannerRow(item: b) { withAnimation(Theme.spring) { birthdays.dismiss(b) } }
                 .popIn(0)
         }
+        // Tsuji plan banner (TsujiViews.swift): only appears when a Tsuji item is due within
+        // 7 days, overdue, or missing from the Tsuji Plan calendar.
+        TsujiBanner()
         // The hero is a filled card wrapping a big number and a progress ring — the single
         // most decorative thing on Home. Minimal drops it entirely; the header above already
         // says the date and the status line already says how many are left, so no information
@@ -866,6 +871,7 @@ struct ContentView: View {
     // MARK: - Today tab
 
     @ViewBuilder private var todayTab: some View {
+        TsujiBanner()   // Tsuji plan banner, at the very top of Today (Noah, 1 Nov 2026)
         // Today = reminders due on today's calendar day, INCLUDING ones whose time has
         // already passed (they stay here until midnight, then move to the Overdue page).
         let items = store.todayReminders()

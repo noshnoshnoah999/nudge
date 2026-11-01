@@ -32,6 +32,7 @@ struct SyncSettingsView: View {
     // place for it. Seed the fields from the Keychain and write back on every change.
     @State private var notionToken = NotionKeyStore.token
     @State private var notionDatabaseId = NotionKeyStore.databaseId
+    @ObservedObject private var tsuji = TsujiStore.shared   // Tsuji plan section (Test mode toggle)
 
     var body: some View {
         NavigationStack {
@@ -315,14 +316,31 @@ struct SyncSettingsView: View {
                 // MARK: Tsuji plan
                 Section {
                     NavigationLink {
+                        TsujiPlanListView()
+                    } label: {
+                        Label("Plan", systemImage: "list.bullet")
+                    }
+                    NavigationLink {
                         TsujiIDCheckView()
                     } label: {
                         Label("Calendar ID check", systemImage: "checklist")
                     }
+                    // Visible on purpose (Noah, 1 Nov 2026): you can always see whether it's on.
+                    // Removed entirely after step 3.
+                    Toggle("Test mode", isOn: $tsuji.testMode)
+                    if tsuji.testMode {
+                        NavigationLink {
+                            TsujiTestToolsView()
+                        } label: {
+                            Label("Test tools", systemImage: "wrench.and.screwdriver")
+                        }
+                    }
                 } header: {
                     Text("Tsuji plan")
                 } footer: {
-                    Text("Read-only. Checks that Nudge can find the 13 Tsuji action events in your Tsuji Plan calendar. Nothing in Calendar is changed.")
+                    Text(tsuji.testMode
+                         ? "Test mode is ON: the Tsuji banner uses a pretend date. Turn it off when you've finished testing."
+                         : "The 13 action items from your Tsuji Plan calendar. Test mode is only for checking the banner before the real dates arrive.")
                 }
                 .listRowBackground(Theme.surface)
 

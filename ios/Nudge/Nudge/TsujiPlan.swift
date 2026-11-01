@@ -34,4 +34,57 @@ enum TsujiPlan {
         "tsuji-plan-16-20261027@noah.flouty.uk",   // #12  2028-10-15
         "tsuji-plan-17-20261027@noah.flouty.uk",   // #13  2028-11-01
     ]
+
+    // MARK: - Master switch for editing Apple Calendar
+
+    /// STEP 2 (Nov 2026): **false**. Nudge never writes to Calendar: clearing an item is a dry
+    /// run inside Nudge only, and every write path throws before touching the event store
+    /// (TsujiStore.saveToCalendar). Step 3 flips this to true — only after Noah approves.
+    /// While false, Test mode may show the two test entries (a made-up UID and UID 01); while
+    /// true, those entries are impossible (TsujiStore.displayUIDs).
+    static let calendarWritesEnabled = false
+
+    // MARK: - Typed confirmation (spec section 6; approved choices 1 and 5)
+
+    /// The phrase Noah types to clear an item. The clear sheet SHOWS it on screen — it is a
+    /// confirmation, not a memory test (Noah, 29 Oct 2026).
+    static let confirmPhrase = "Confirmed and completed"
+
+    /// Case-sensitive; spaces/newlines at either end are ignored.
+    static func phraseMatches(_ typed: String) -> Bool {
+        typed.trimmingCharacters(in: .whitespacesAndNewlines) == confirmPhrase
+    }
+
+    /// Prefix Nudge adds to a cleared event's title (en dash). Added only if the title doesn't
+    /// already start with "COMPLETED".
+    static let completedPrefix = "COMPLETED – "
+
+    /// Cleared = the title starts with "COMPLETED", case-insensitive, after trimming spaces.
+    static func isCompletedTitle(_ title: String) -> Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).uppercased().hasPrefix("COMPLETED")
+    }
+
+    // MARK: - Guardrails (spec section 6, step 1 of "When he confirms")
+
+    struct GuardInput {
+        let uid: String
+        let inTsujiPlanCalendar: Bool
+        let hasAttendees: Bool
+        let calendarEditable: Bool
+        let repeats: Bool
+    }
+
+    /// Every reason an edit is refused; empty = allowed. A pure function so it can be tested
+    /// with made-up values (Test mode → Safety self-test) without touching any real event.
+    /// "repeats" is an extra rule on top of the spec: the spec never lets Nudge change
+    /// recurrence, and editing one occurrence of a repeating event would split it.
+    static func guardFailures(_ i: GuardInput) -> [String] {
+        var f: [String] = []
+        if !actionUIDs.contains(i.uid) { f.append("It isn't one of the 13 Tsuji action events.") }
+        if !i.inTsujiPlanCalendar { f.append("It isn't in the Tsuji Plan calendar.") }
+        if i.hasAttendees { f.append("It has invitees, so editing it would send them an update.") }
+        if !i.calendarEditable { f.append("Its calendar is read-only.") }
+        if i.repeats { f.append("It's a repeating event.") }
+        return f
+    }
 }
