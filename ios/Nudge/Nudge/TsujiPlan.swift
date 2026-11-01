@@ -14,6 +14,8 @@
 //  • New action events from the Tsuji plan Claude use the same format:
 //    tsuji-plan-NN-YYYYMMDD@noah.flouty.uk
 
+import Foundation
+
 enum TsujiPlan {
     /// The Apple Calendar (iCloud) calendar that holds the plan.
     static let calendarTitle = "Tsuji Plan"
