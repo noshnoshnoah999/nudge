@@ -39,12 +39,15 @@ enum TsujiPlan {
 
     // MARK: - Master switch for editing Apple Calendar
 
-    /// STEP 2 (Nov 2026): **false**. Nudge never writes to Calendar: clearing an item is a dry
-    /// run inside Nudge only, and every write path throws before touching the event store
-    /// (TsujiStore.saveToCalendar). Step 3 flips this to true — only after Noah approves.
-    /// While false, Test mode may show the two test entries (a made-up UID and UID 01); while
-    /// true, those entries are impossible (TsujiStore.displayUIDs).
-    static let calendarWritesEnabled = false
+    /// STEP 3 (2 Nov 2026): **true** — approved by Noah after every step 2 test passed and he
+    /// backed up the Tsuji Plan calendar. Clearing an item now really edits that one Calendar
+    /// event (COMPLETED prefix, a note line, alerts removed), and only after the typed phrase.
+    /// Every write still goes through TsujiStore.saveToCalendar, which re-checks this switch and
+    /// all guardrails on the event itself. Because this is true, the Test-mode entries (the
+    /// made-up UID and UID 01) can no longer appear (TsujiStore.displayUIDs), and any dry-run
+    /// clears from step 2 are forgotten, never written.
+    /// To switch Calendar editing off again, set this back to false.
+    static let calendarWritesEnabled = true
 
     // MARK: - Typed confirmation (spec section 6; approved choices 1 and 5)
 
