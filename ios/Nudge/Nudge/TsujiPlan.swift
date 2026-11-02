@@ -43,10 +43,10 @@ enum TsujiPlan {
     /// backed up the Tsuji Plan calendar. Clearing an item now really edits that one Calendar
     /// event (COMPLETED prefix, a note line, alerts removed), and only after the typed phrase.
     /// Every write still goes through TsujiStore.saveToCalendar, which re-checks this switch and
-    /// all guardrails on the event itself. Because this is true, the Test-mode entries (the
-    /// made-up UID and UID 01) can no longer appear (TsujiStore.displayUIDs), and any dry-run
-    /// clears from step 2 are forgotten, never written.
-    /// To switch Calendar editing off again, set this back to false.
+    /// all guardrails on the event itself.
+    /// EMERGENCY OFF SWITCH (kept on purpose, 2 Nov 2026): set this to false to stop Nudge
+    /// editing Calendar. Clears made while it's false happen inside Nudge only (dry runs) and are
+    /// forgotten, never written, when it's switched back on.
     static let calendarWritesEnabled = true
 
     // MARK: - Typed confirmation (spec section 6; approved choices 1 and 5)

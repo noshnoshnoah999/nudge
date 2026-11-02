@@ -32,7 +32,6 @@ struct SyncSettingsView: View {
     // place for it. Seed the fields from the Keychain and write back on every change.
     @State private var notionToken = NotionKeyStore.token
     @State private var notionDatabaseId = NotionKeyStore.databaseId
-    @ObservedObject private var tsuji = TsujiStore.shared   // Tsuji plan section (Test mode toggle)
 
     var body: some View {
         NavigationStack {
@@ -325,22 +324,10 @@ struct SyncSettingsView: View {
                     } label: {
                         Label("Calendar ID check", systemImage: "checklist")
                     }
-                    // Visible on purpose (Noah, 1 Nov 2026): you can always see whether it's on.
-                    // Removed entirely after step 3.
-                    Toggle("Test mode", isOn: $tsuji.testMode)
-                    if tsuji.testMode {
-                        NavigationLink {
-                            TsujiTestToolsView()
-                        } label: {
-                            Label("Test tools", systemImage: "wrench.and.screwdriver")
-                        }
-                    }
                 } header: {
                     Text("Tsuji plan")
                 } footer: {
-                    Text(tsuji.testMode
-                         ? "Test mode is ON: the Tsuji banner uses a pretend date. Turn it off when you've finished testing."
-                         : "The 13 action items from your Tsuji Plan calendar. Test mode is only for checking the banner before the real dates arrive.")
+                    Text("The 13 action items from your Tsuji Plan calendar. Calendar ID check is a read-only check that Nudge can find them.")
                 }
                 .listRowBackground(Theme.surface)
 

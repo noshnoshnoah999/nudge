@@ -20,7 +20,6 @@ import UserNotifications
 @MainActor
 enum TsujiNotifications {
     static let prefix = "tsuji-"
-    static let testNowID = "tsuji-test-now"
     static let maxPending = 64
     static let daysAhead = 7
 
@@ -30,7 +29,7 @@ enum TsujiNotifications {
         guard TsujiStore.shared.hasLoaded else { return }
 
         let pendingIDs = await center.pendingNotificationRequests().map(\.identifier)
-        let ours = pendingIDs.filter { $0.hasPrefix(prefix) && $0 != testNowID }
+        let ours = pendingIDs.filter { $0.hasPrefix(prefix) }
         if !ours.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ours) }
         await removeDeliveredForClosedItems(center: center)
 
@@ -56,59 +55,12 @@ enum TsujiNotifications {
     private static func removeDeliveredForClosedItems(center: UNUserNotificationCenter) async {
         let delivered = await center.deliveredNotifications()
             .map { $0.request.identifier }
-            .filter { $0.hasPrefix(prefix) && $0 != testNowID }
+            .filter { $0.hasPrefix(prefix) }
         guard !delivered.isEmpty else { return }
         let openPrefixes = TsujiStore.shared.items
-            .filter { $0.isOpen && !$0.isTestEntry }
+            .filter { $0.isOpen }
             .map { "\(prefix)\(TsujiStore.shortID($0.id))-" }
         let stale = delivered.filter { id in !openPrefixes.contains(where: { id.hasPrefix($0) }) }
         if !stale.isEmpty { center.removeDeliveredNotifications(withIdentifiers: stale) }
-    }
-
-    // MARK: - Test mode helpers
-
-    struct PendingInfo: Identifiable {
-        let id: String
-        let title: String
-        let when: String
-    }
-
-    /// The Tsuji notifications currently waiting to fire on this device, soonest first.
-    static func pendingInfo() async -> [PendingInfo] {
-        let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        var rows: [(Date, PendingInfo)] = []
-        for r in requests where r.identifier.hasPrefix(prefix) {
-            let next = (r.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate()
-                ?? (r.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate()
-                ?? .distantFuture
-            rows.append((next, PendingInfo(id: r.identifier, title: r.content.title, when: f.string(from: next))))
-        }
-        return rows.sorted { $0.0 < $1.0 }.map { $0.1 }
-    }
-
-    /// Fire one sample Tsuji notification in 5 seconds, to check how it looks.
-    static func sendTestNow() async -> String {
-        let mgr = NotificationManager.shared
-        guard mgr.enabled, mgr.authStatus == .authorized || mgr.authStatus == .provisional else {
-            return "Nudge notifications are off. Turn them on in Nudge's Settings first."
-        }
-        let first = TsujiStore.shared.nowItems.first { !$0.isTestEntry }
-        let content = UNMutableNotificationContent()
-        let when = first.map { TsujiFormat.relative($0.status) } ?? "due today"
-        content.title = "[TEST] Tsuji: \(first?.title ?? "Example item") — \(when)"
-        content.body = "Sample notification from Test mode."
-        content.sound = .default
-        content.threadIdentifier = "tsuji-plan"
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
-        do {
-            try await UNUserNotificationCenter.current()
-                .add(UNNotificationRequest(identifier: testNowID, content: content, trigger: trigger))
-            return "Sent. It should appear in about 5 seconds."
-        } catch {
-            return "Couldn't schedule it: \(error.localizedDescription)"
-        }
     }
 }

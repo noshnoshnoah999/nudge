@@ -7,7 +7,8 @@
 //  • TsujiItemSheet     — Nudge's own read-only details sheet (Noah, 1 Nov 2026).
 //  • TsujiClearSheet    — the ONLY way to clear: type the phrase, which is shown on screen.
 //  • TsujiPlanListView  — Settings → Tsuji plan → Plan: all 13 with their status.
-//  • TsujiTestToolsView — Settings → Tsuji plan → Test tools (only while Test mode is on).
+//
+// Test mode and its Test tools screen were removed on 2 Nov 2026 after all tests passed.
 //
 // Each is its own View struct, kept out of ContentView.body (see MoveOverBanner.swift for the
 // iPhone main-thread stack overflow that taught us this).
@@ -136,13 +137,6 @@ struct TsujiBanner: View {
                 Text("Tsuji plan").font(.subheadline.weight(.bold)).foregroundStyle(Theme.textMain)
                 Text(summary(nowCount: nowCount)).font(.caption).foregroundStyle(Theme.textMeta)
             }
-            if tsuji.testMode {
-                Text("TEST MODE")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Theme.coral.opacity(0.15), in: Capsule())
-                    .foregroundStyle(Theme.coral)
-            }
             Spacer(minLength: 8)
             Button {
                 withAnimation(Theme.spring) { tsuji.setCollapsed(!tsuji.collapsed) }
@@ -159,8 +153,7 @@ struct TsujiBanner: View {
 
     private func summary(nowCount: Int) -> String {
         if tsuji.problem != nil { return "Needs attention" }
-        let base = nowCount == 1 ? "1 item needs doing" : "\(nowCount) items need doing"
-        return tsuji.testMode ? "\(base) · pretend today: \(TsujiFormat.date(tsuji.effectiveToday))" : base
+        return nowCount == 1 ? "1 item needs doing" : "\(nowCount) items need doing"
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -243,7 +236,7 @@ struct TsujiItemSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bg.ignoresSafeArea())
-            .navigationTitle(item.number > 0 ? "Tsuji #\(item.number)" : "Tsuji test entry")
+            .navigationTitle("Tsuji #\(item.number)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -269,7 +262,6 @@ struct TsujiItemSheet: View {
 
     private var stateNotes: [String] {
         var n: [String] = []
-        if item.isTestEntry { n.append("Test entry — only shown while Test mode is on.") }
         if item.dryRun { n.append("Cleared inside Nudge only. Saving to Calendar is switched off in this build.") }
         if item.calendarNotUpdated { n.append("Calendar not updated yet. Nudge will try again next time it opens.") }
         if item.reopenedWithoutBackup {
@@ -352,7 +344,7 @@ struct TsujiClearSheet: View {
 
                     if !TsujiPlan.calendarWritesEnabled {
                         Section {
-                            Text("Test build: saving to Calendar is switched off, so this only clears the item inside Nudge. Your calendar won't change.")
+                            Text("Calendar editing is switched off in this build, so this only clears the item inside Nudge. Your calendar won't change.")
                                 .font(.footnote)
                                 .foregroundStyle(Theme.textMeta)
                         }
@@ -396,20 +388,13 @@ struct TsujiPlanListView: View {
                 }
                 .listRowBackground(Theme.surface)
             }
-            if tsuji.testMode {
-                Section {
-                    Text("Test mode is on. Nudge is pretending today is \(TsujiFormat.date(tsuji.effectiveToday)).")
-                        .font(.footnote).foregroundStyle(Theme.coral)
-                }
-                .listRowBackground(Theme.surface)
-            }
             Section {
                 ForEach(tsuji.items) { item in
                     Button {
                         detail = item
                     } label: {
                         HStack(alignment: .top, spacing: 10) {
-                            Text(item.number > 0 ? "\(item.number)" : "T")
+                            Text("\(item.number)")
                                 .font(.caption.weight(.bold).monospacedDigit())
                                 .foregroundStyle(Theme.textMeta)
                                 .frame(width: 22, alignment: .trailing)
@@ -439,103 +424,5 @@ struct TsujiPlanListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { tsuji.reload() }
         .sheet(item: $detail) { item in TsujiItemSheet(item: item) }
-    }
-}
-
-// MARK: - Settings → Tsuji plan → Test tools (Test mode only)
-
-struct TsujiTestToolsView: View {
-    @ObservedObject private var tsuji = TsujiStore.shared
-    @State private var selfTest: [String] = []
-    @State private var pending: [TsujiNotifications.PendingInfo] = []
-    @State private var pendingLoaded = false
-    @State private var sendNote: String?
-    @State private var resetDone = false
-
-    private static func day(_ y: Int, _ m: Int, _ d: Int) -> Date {
-        Calendar(identifier: .gregorian).date(from: DateComponents(year: y, month: m, day: d)) ?? Date()
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                DatePicker("Pretend today is", selection: $tsuji.fakeToday, displayedComponents: .date)
-                Button("29 Oct 2026 (Test 1)") { tsuji.fakeToday = Self.day(2026, 10, 29) }
-                Button("3 Jan 2027 (Test 2)") { tsuji.fakeToday = Self.day(2027, 1, 3) }
-                Button("12 Jan 2027 (Test 3)") { tsuji.fakeToday = Self.day(2027, 1, 12) }
-            } header: {
-                Text("Date")
-            } footer: {
-                Text("Only the Tsuji banner, the plan list and Tsuji notifications use this date. Notification times move with it: an alert for the pretend date fires at 09:00 on the real date.")
-            }
-            .listRowBackground(Theme.surface)
-
-            Section {
-                Toggle("Add a made-up missing event (Test 8)", isOn: $tsuji.testMissingEntry)
-                Toggle("Add the open campus event with an invitee (Test 9)", isOn: $tsuji.testInviteeEntry)
-            } header: {
-                Text("Test entries")
-            } footer: {
-                Text(TsujiPlan.calendarWritesEnabled
-                     ? "Not available: saving to Calendar is switched on in this build."
-                     : "Saving to Calendar is switched off in this build, so Nudge can't edit these events even if a check went wrong.")
-            }
-            .disabled(TsujiPlan.calendarWritesEnabled)
-            .listRowBackground(Theme.surface)
-
-            Section {
-                Button("Run safety self-test") { selfTest = TsujiStore.selfTest() }
-                ForEach(Array(selfTest.enumerated()), id: \.offset) { _, line in
-                    Text(line).font(.system(.footnote, design: .monospaced))
-                }
-            } header: {
-                Text("Safety checks")
-            } footer: {
-                Text("Checks the safety rules and the typed phrase with made-up values. It doesn't touch any real event.")
-            }
-            .listRowBackground(Theme.surface)
-
-            Section {
-                Button("Show scheduled Tsuji notifications") {
-                    Task {
-                        pending = await TsujiNotifications.pendingInfo()
-                        pendingLoaded = true
-                    }
-                }
-                if pendingLoaded && pending.isEmpty {
-                    Text("None scheduled on this device.").font(.footnote).foregroundStyle(Theme.textMeta)
-                }
-                ForEach(pending) { p in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(p.title).font(.footnote)
-                        Text(p.when).font(.caption).foregroundStyle(Theme.textMeta)
-                    }
-                }
-                Button("Send a sample notification in 5 seconds") {
-                    Task { sendNote = await TsujiNotifications.sendTestNow() }
-                }
-                if let s = sendNote { Text(s).font(.footnote).foregroundStyle(Theme.textMeta) }
-            } header: {
-                Text("Notifications")
-            } footer: {
-                Text("Nudge's notifications must be switched on in Settings.")
-            }
-            .listRowBackground(Theme.surface)
-
-            Section {
-                Button("Reset test clears", role: .destructive) {
-                    tsuji.resetTestClears()
-                    resetDone = true
-                }
-                if resetDone { Text("Done. Test clears were undone.").font(.footnote).foregroundStyle(Theme.textMeta) }
-            } footer: {
-                Text("Undoes items you cleared while saving to Calendar is switched off. Calendar isn't touched.")
-            }
-            .listRowBackground(Theme.surface)
-        }
-        .scrollContentBackground(.hidden)
-        .background(Theme.bg.ignoresSafeArea())
-        .navigationTitle("Test tools")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }

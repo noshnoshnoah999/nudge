@@ -29,14 +29,8 @@ import Combine
 final class TsujiStore: ObservableObject {
     static let shared = TsujiStore()
 
-    // MARK: - Test-mode-only entries (step 2, tests 8 and 9)
-
-    /// A made-up UID that exists in no calendar → shows the "Missing from calendar" row.
-    static let testMissingUID = "tsuji-plan-99-made-up-test@nudge.invalid"
-    /// UID 01 — the 16 Jan 2027 open campus, which has an invitee (Noah's mum). Shown ONLY in
-    /// Test mode and ONLY while TsujiPlan.calendarWritesEnabled is false, to prove Nudge refuses
-    /// to edit it. It is NOT in TsujiPlan.actionUIDs and must never be added there.
-    static let testInviteeUID = "tsuji-plan-01-20261027@noah.flouty.uk"
+    // Test mode (pretend date, test entries, safety self-test) was removed on 2 Nov 2026 after
+    // steps 1–3 all passed on iPhone and Mac. See HANDOFF_2026-11-02_tsuji-banner-cleanup.md.
 
     // MARK: - Types
 
@@ -51,13 +45,12 @@ final class TsujiStore: ObservableObject {
 
     struct Item: Identifiable, Equatable {
         let id: String              // the UID
-        let number: Int             // 1–13; 0 for test entries
+        let number: Int             // 1–13
         let title: String
         let start: Date?            // start of the due day (all-day event start)
         let end: Date?              // last day, only for multi-day events
         let notes: String
         let status: Status
-        let isTestEntry: Bool
         let calendarNotUpdated: Bool    // cleared in Nudge, Calendar write still owed
         let dryRun: Bool                // cleared while saving to Calendar is switched off
         let reopenedWithoutBackup: Bool // reopened on a device that has no alarm backup
@@ -118,19 +111,6 @@ final class TsujiStore: ObservableObject {
     @Published private(set) var collapsed: Bool
     @Published private(set) var hasLoaded = false
 
-    @Published var testMode: Bool {
-        didSet { defaults.set(testMode, forKey: K.testMode); reload() }
-    }
-    @Published var fakeToday: Date {
-        didSet { defaults.set(fakeToday, forKey: K.fakeToday); reload() }
-    }
-    @Published var testMissingEntry: Bool {
-        didSet { defaults.set(testMissingEntry, forKey: K.testMissing); reload() }
-    }
-    @Published var testInviteeEntry: Bool {
-        didSet { defaults.set(testInviteeEntry, forKey: K.testInvitee); reload() }
-    }
-
     // MARK: - Private state
 
     private enum K {
@@ -138,10 +118,8 @@ final class TsujiStore: ObservableObject {
         static let calendarID = "tsuji.calendarID"
         static let collapsed = "tsuji.collapsed"
         static let collapsedNow = "tsuji.collapsedNow"
-        static let testMode = "tsuji.testMode"
-        static let fakeToday = "tsuji.fakeToday"
-        static let testMissing = "tsuji.testMissing"
-        static let testInvitee = "tsuji.testInvitee"
+        /// Settings left behind by the removed Test mode; deleted once on launch.
+        static let removedTestKeys = ["tsuji.testMode", "tsuji.fakeToday", "tsuji.testMissing", "tsuji.testInvitee"]
     }
 
     private let defaults = UserDefaults.standard
@@ -153,17 +131,11 @@ final class TsujiStore: ObservableObject {
     private var calendarID: String?
     private var collapsedNow: Set<String>
 
-    static let defaultFakeToday: Date =
-        Calendar(identifier: .gregorian).date(from: DateComponents(year: 2027, month: 1, day: 3)) ?? Date()
-
     private init() {
         let d = UserDefaults.standard
+        for key in K.removedTestKeys { d.removeObject(forKey: key) }
         collapsed = d.bool(forKey: K.collapsed)
         collapsedNow = Set(d.stringArray(forKey: K.collapsedNow) ?? [])
-        testMode = d.bool(forKey: K.testMode)
-        fakeToday = (d.object(forKey: K.fakeToday) as? Date) ?? TsujiStore.defaultFakeToday
-        testMissingEntry = d.bool(forKey: K.testMissing)
-        testInviteeEntry = d.bool(forKey: K.testInvitee)
         calendarID = d.string(forKey: K.calendarID)
         if let data = d.data(forKey: K.records),
            let decoded = try? JSONDecoder().decode([String: Record].self, from: data) {
@@ -178,11 +150,6 @@ final class TsujiStore: ObservableObject {
     // MARK: - Dates (calendar dates in the device's time zone — spec section 4)
 
     static var realToday: Date { Calendar.current.startOfDay(for: Date()) }
-
-    /// "Today" for the banner, the plan list and notification wording. Test mode can pretend.
-    var effectiveToday: Date {
-        testMode ? Calendar.current.startOfDay(for: fakeToday) : Self.realToday
-    }
 
     static func days(from a: Date, to b: Date) -> Int {
         Calendar.current.dateComponents([.day], from: a, to: b).day ?? 0
@@ -256,16 +223,6 @@ final class TsujiStore: ObservableObject {
 
     // MARK: - Reading (spec section 3)
 
-    /// The UIDs shown: the 13, plus Test-mode entries only while saving to Calendar is off.
-    private var displayUIDs: [String] {
-        var uids = TsujiPlan.actionUIDs
-        if testMode && !TsujiPlan.calendarWritesEnabled {
-            if testMissingEntry { uids.append(Self.testMissingUID) }
-            if testInviteeEntry { uids.append(Self.testInviteeUID) }
-        }
-        return uids
-    }
-
     /// Re-read the calendar. Call on launch, on foreground, and (automatically) on
     /// EKEventStoreChanged.
     func reload() {
@@ -297,12 +254,11 @@ final class TsujiStore: ObservableObject {
             if let ext { byUID[ext, default: []].append(e) }
         }
 
-        let today = effectiveToday
+        let today = Self.realToday
         let c = Calendar.current
         var out: [Item] = []
-        for (index, uid) in displayUIDs.enumerated() {
-            let isTest = !TsujiPlan.actionUIDs.contains(uid)
-            let number = isTest ? 0 : index + 1
+        for (index, uid) in TsujiPlan.actionUIDs.enumerated() {
+            let number = index + 1
             let matches = byUID[uid] ?? []
             var rec = records[uid] ?? Record()
 
@@ -311,40 +267,35 @@ final class TsujiStore: ObservableObject {
                 out.append(Item(id: uid, number: number,
                                 title: rec.lastTitle.isEmpty ? (matches.first?.title ?? "Tsuji item") : rec.lastTitle,
                                 start: rec.lastDue.flatMap { Self.parseDay($0) }, end: nil, notes: "",
-                                status: .duplicate(matches.count), isTestEntry: isTest,
+                                status: .duplicate(matches.count),
                                 calendarNotUpdated: false, dryRun: false, reopenedWithoutBackup: false))
                 continue
             }
 
             if let e = matches.first {
-                if !isTest { reconcile(event: e, calendar: cal, record: &rec) }
+                reconcile(event: e, calendar: cal, record: &rec)
                 let title = e.title ?? ""
                 let start = c.startOfDay(for: e.startDate ?? Date())
                 let endDay = c.startOfDay(for: e.endDate ?? start)
-                if !isTest {
-                    rec.lastTitle = title
-                    rec.lastDue = Self.dayKey(start)
-                }
-                let cleared = TsujiPlan.isCompletedTitle(title) || (!isTest && rec.cleared)
+                rec.lastTitle = title
+                rec.lastDue = Self.dayKey(start)
+                let cleared = TsujiPlan.isCompletedTitle(title) || rec.cleared
                 out.append(Item(id: uid, number: number, title: title, start: start,
                                 end: endDay > start ? endDay : nil, notes: e.notes ?? "",
                                 status: cleared ? .cleared : Self.status(due: start, today: today),
-                                isTestEntry: isTest,
-                                calendarNotUpdated: !isTest && rec.cleared && rec.write == .pending,
-                                dryRun: !isTest && rec.cleared && rec.write == .dryRun,
-                                reopenedWithoutBackup: !isTest && rec.reopenedWithoutBackup))
+                                calendarNotUpdated: rec.cleared && rec.write == .pending,
+                                dryRun: rec.cleared && rec.write == .dryRun,
+                                reopenedWithoutBackup: rec.reopenedWithoutBackup))
             } else {
-                let title = rec.lastTitle.isEmpty
-                    ? (isTest ? "Made-up test event" : "Unknown event (not seen on this device yet)")
-                    : rec.lastTitle
+                let title = rec.lastTitle.isEmpty ? "Unknown event (not seen on this device yet)" : rec.lastTitle
                 out.append(Item(id: uid, number: number, title: title,
                                 start: rec.lastDue.flatMap { Self.parseDay($0) }, end: nil, notes: "",
-                                status: (!isTest && rec.cleared) ? .cleared : .missing,
-                                isTestEntry: isTest, calendarNotUpdated: false,
-                                dryRun: !isTest && rec.cleared && rec.write == .dryRun,
+                                status: rec.cleared ? .cleared : .missing,
+                                calendarNotUpdated: false,
+                                dryRun: rec.cleared && rec.write == .dryRun,
                                 reopenedWithoutBackup: false))
             }
-            if !isTest { records[uid] = rec }
+            records[uid] = rec
         }
         items = out
         finish()
@@ -401,7 +352,6 @@ final class TsujiStore: ObservableObject {
     }
 
     /// Today − 1 year, for 4 years minus a day (EventKit caps a search at four years).
-    /// Always the REAL date, even in Test mode.
     private func fetchEvents(in cal: EKCalendar) -> [EKEvent] {
         let c = Calendar.current
         let today = Self.realToday
@@ -559,14 +509,6 @@ final class TsujiStore: ObservableObject {
         return .cleared(message)
     }
 
-    /// Test mode: forget every clear made while saving to Calendar was switched off.
-    func resetTestClears() {
-        for (uid, rec) in records where rec.write == .dryRun {
-            records[uid] = Self.forgetClear(rec)
-        }
-        reload()
-    }
-
     private static func forgetClear(_ r: Record) -> Record {
         var r = r
         r.cleared = false
@@ -656,85 +598,27 @@ final class TsujiStore: ObservableObject {
 
     /// 09:00 local on the due date, then every day at 09:00 until cleared, for the next
     /// `daysAhead` days. Soonest first, so trimming drops the furthest-out days first.
-    /// In Test mode the pretend days are moved onto real days (pretend today → real today) and
-    /// titled "[TEST]".
     func notificationPlan(daysAhead: Int) -> [PlannedNotification] {
         guard problem == nil else { return [] }
         let c = Calendar.current
-        let pretendToday = effectiveToday
-        let shift = Self.days(from: pretendToday, to: Self.realToday)
+        let today = Self.realToday
         let now = Date()
         var out: [PlannedNotification] = []
-        for item in items where item.isOpen && !item.isTestEntry {
+        for item in items where item.isOpen {
             guard let due = item.start else { continue }
             for k in 0..<daysAhead {
-                guard let day = c.date(byAdding: .day, value: k, to: pretendToday), day >= due,
-                      let realDay = c.date(byAdding: .day, value: shift, to: day),
-                      let fire = c.date(bySettingHour: 9, minute: 0, second: 0, of: realDay),
+                guard let day = c.date(byAdding: .day, value: k, to: today), day >= due,
+                      let fire = c.date(bySettingHour: 9, minute: 0, second: 0, of: day),
                       fire > now else { continue }
                 let late = Self.days(from: due, to: day)
                 let when = late == 0 ? "due today" : "\(late) day\(late == 1 ? "" : "s") overdue"
                 out.append(PlannedNotification(
                     id: "\(TsujiNotifications.prefix)\(Self.shortID(item.id))-\(Self.dayKey(day))",
                     fire: fire,
-                    title: "\(testMode ? "[TEST] " : "")Tsuji: \(item.title) — \(when)",
+                    title: "Tsuji: \(item.title) — \(when)",
                     body: "Clear it in Nudge when it's done."))
             }
         }
         return out.sorted { $0.fire < $1.fire }
-    }
-
-    // MARK: - Safety self-test (Test mode; fix 2 — made-up values only)
-
-    static func selfTest() -> [String] {
-        struct GuardCase { let name: String; let input: TsujiPlan.GuardInput; let expectAllowed: Bool }
-        let real = TsujiPlan.actionUIDs[0]
-        let cases: [GuardCase] = [
-            GuardCase(name: "Real action event, normal",
-                      input: TsujiPlan.GuardInput(uid: real, inTsujiPlanCalendar: true, hasAttendees: false, calendarEditable: true, repeats: false),
-                      expectAllowed: true),
-            GuardCase(name: "Action event with invitees",
-                      input: TsujiPlan.GuardInput(uid: real, inTsujiPlanCalendar: true, hasAttendees: true, calendarEditable: true, repeats: false),
-                      expectAllowed: false),
-            GuardCase(name: "Open campus UID 01 (not one of the 13, has invitees)",
-                      input: TsujiPlan.GuardInput(uid: testInviteeUID, inTsujiPlanCalendar: true, hasAttendees: true, calendarEditable: true, repeats: false),
-                      expectAllowed: false),
-            GuardCase(name: "Made-up UID",
-                      input: TsujiPlan.GuardInput(uid: testMissingUID, inTsujiPlanCalendar: true, hasAttendees: false, calendarEditable: true, repeats: false),
-                      expectAllowed: false),
-            GuardCase(name: "Action event in another calendar",
-                      input: TsujiPlan.GuardInput(uid: real, inTsujiPlanCalendar: false, hasAttendees: false, calendarEditable: true, repeats: false),
-                      expectAllowed: false),
-            GuardCase(name: "Read-only calendar",
-                      input: TsujiPlan.GuardInput(uid: real, inTsujiPlanCalendar: true, hasAttendees: false, calendarEditable: false, repeats: false),
-                      expectAllowed: false),
-            GuardCase(name: "Repeating event",
-                      input: TsujiPlan.GuardInput(uid: real, inTsujiPlanCalendar: true, hasAttendees: false, calendarEditable: true, repeats: true),
-                      expectAllowed: false),
-        ]
-        let phrases: [(String, Bool)] = [
-            ("Confirmed and completed", true),
-            ("  Confirmed and completed  ", true),
-            ("confirmed and completed", false),
-            ("Confirmed", false),
-            ("", false),
-            ("Confirmed and completed.", false),
-        ]
-        var lines: [String] = []
-        var allOK = true
-        for c in cases {
-            let allowed = TsujiPlan.guardFailures(c.input).isEmpty
-            let ok = allowed == c.expectAllowed
-            allOK = allOK && ok
-            lines.append("\(ok ? "PASS" : "FAIL")  \(c.name): \(allowed ? "allowed" : "refused")")
-        }
-        for (typed, expect) in phrases {
-            let matches = TsujiPlan.phraseMatches(typed)
-            let ok = matches == expect
-            allOK = allOK && ok
-            lines.append("\(ok ? "PASS" : "FAIL")  Phrase \"\(typed)\": \(matches ? "accepted" : "rejected")")
-        }
-        lines.append("INFO  Saving to Calendar is \(TsujiPlan.calendarWritesEnabled ? "ON" : "OFF") in this build")
-        return [allOK ? "ALL CHECKS PASSED" : "SOMETHING FAILED — tell Claude"] + lines
     }
 }
