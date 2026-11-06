@@ -1671,16 +1671,9 @@ final class NudgeStore: ObservableObject {
             reminders[i].pushToNotion = pushToNotion ? true : nil
         }
         persist()
-        #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
-        if #available(iOS 26.0, *) {
-            // Urgent + a future timed due → schedule a ringing AlarmKit alarm; otherwise clear any.
-            if urgent, hasDue, hasTime, let due = parseDate(dueStr), due > Date() {
-                Task { await NudgeAlarms.schedule(reminderId: targetId, title: cleanTitle, at: due) }
-            } else {
-                NudgeAlarms.cancel(reminderId: targetId)
-            }
-        }
-        #endif
+        // Urgent alarm: armed / moved / cancelled right away by the shared reconciler, the same
+        // path every other way of moving a reminder now goes through (2026-11-06).
+        Task { await NotificationManager.shared.reconcileAlarms() }
     }
 
     /// Apple-Calendar "This Event Only" for a recurring reminder.

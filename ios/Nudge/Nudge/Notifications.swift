@@ -151,17 +151,30 @@ final class NotificationManager: NSObject, ObservableObject {
     // MARK: - Scheduling
 
     private func scheduleDebounced() {
-        guard enabled else { return }
         rescheduleTask?.cancel()
         rescheduleTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             if Task.isCancelled { return }
-            await self?.reschedule()
+            guard let self else { return }
+            // Urgent alarms follow data changes even with notifications switched off.
+            if self.enabled { await self.reschedule() } else { await self.reconcileAlarms() }
         }
+    }
+
+    /// Keep urgent-reminder alarms (AlarmKit, iPhone only) matched to each reminder's current
+    /// time. Cheap when nothing changed. See NudgeAlarmReconciler in AlarmService.swift.
+    func reconcileAlarms() async {
+        #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+        guard let nudge else { return }
+        if #available(iOS 26.0, *) {
+            await NudgeAlarmReconciler.reconcile { [weak nudge] in nudge?.reminders ?? [] }
+        }
+        #endif
     }
 
     /// Cancel all pending and reschedule for open, future, non-dismissed reminders.
     func reschedule() async {
+        await reconcileAlarms()   // alarms first: independent of notification permission
         let center = UNUserNotificationCenter.current()
         guard enabled, authStatus == .authorized || authStatus == .provisional, let nudge else {
             center.removeAllPendingNotificationRequests(); scheduledCount = 0; return
