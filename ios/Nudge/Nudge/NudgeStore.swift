@@ -1058,13 +1058,19 @@ final class NudgeStore: ObservableObject {
         persist()
     }
 
-    /// Remove a reminder's notification — both pending (scheduled) and delivered
-    /// (already shown). Fixes lingering alerts after delete / complete / snooze.
-    private func clearNotifications(for id: String) {
-        let key = "nudge-\(id)"
+    /// Remove a reminder's TIME alerts — the due-time one (`nudge-<id>`) and every early
+    /// alert (`nudge-<id>~e<min>`) — both pending (scheduled) and delivered (already shown).
+    /// Used on delete / complete / snooze and whenever a reminder is moved to a new date or
+    /// time, so the old banner goes in the same step as the save (2026-11-06). Location
+    /// (`~geo`) alerts are not time-based and are left alone. `extraOffsets` covers early-alert
+    /// offsets the reminder had before an edit changed them.
+    private func clearNotifications(for id: String, extraOffsets: [Int] = []) {
+        let base = "nudge-\(id)"
+        let offsets = Set((reminders.first(where: { $0.id == id })?.earlyAlerts ?? []) + extraOffsets)
+        let keys = [base] + offsets.map { "\(base)~e\($0)" }
         let c = UNUserNotificationCenter.current()
-        c.removeDeliveredNotifications(withIdentifiers: [key])
-        c.removePendingNotificationRequests(withIdentifiers: [key])
+        c.removeDeliveredNotifications(withIdentifiers: keys)
+        c.removePendingNotificationRequests(withIdentifiers: keys)
     }
 
     /// Find the next minute-slot at/after `desired` that no other timed reminder
@@ -1137,6 +1143,7 @@ final class NudgeStore: ObservableObject {
         reminders[i].snoozedUntil = nil
         reminders[i].tz = nil
         reminders[i].updatedAt = iso(Date())
+        clearNotifications(for: id)   // old alert goes now; reschedule() re-arms the new time
         persist()
     }
 
@@ -1190,6 +1197,7 @@ final class NudgeStore: ObservableObject {
             reminders[i].tz = nil
             reminders[i].snoozedUntil = nil
             reminders[i].updatedAt = iso(Date())
+            clearNotifications(for: c.id)
         }
         persist()
         RescheduleLog.add(RescheduleLogEntry(id: UUID().uuidString, date: Date(), auto: auto, changes: changes))
@@ -1357,6 +1365,7 @@ final class NudgeStore: ObservableObject {
                 reminders[i].dueDate = iso(newDate)
                 reminders[i].snoozedUntil = nil
                 reminders[i].updatedAt = iso(Date())
+                clearNotifications(for: r.id)
                 moved.append(CarryItem(id: r.id, title: displayTitle(r), reason: d.reason,
                                        oldDue: r.dueDate, newDue: iso(newDate)))
             } else {
@@ -1544,6 +1553,7 @@ final class NudgeStore: ObservableObject {
             reminders[i].dueDate = c.oldDue
             reminders[i].hasTime = (parseDate(c.oldDue) != nil) ? reminders[i].hasTime : nil
             reminders[i].updatedAt = iso(Date())
+            clearNotifications(for: c.id)
         }
         persist()
     }
@@ -1582,6 +1592,9 @@ final class NudgeStore: ObservableObject {
         // Keyed on targetId, not just `editing`: a double-tapped Save on a NEW reminder used to
         // run this twice with the same draft id and insert two copies of it.
         if let i = reminders.firstIndex(where: { $0.id == targetId }) {
+            // Captured before the edit so we can tell whether the reminder was MOVED.
+            let oldDue = parseDate(reminders[i].dueDate)
+            let oldOffsets = reminders[i].earlyAlerts
             reminders[i].title = cleanTitle
             reminders[i].notes = notes
             reminders[i].dueDate = dueStr
@@ -1609,6 +1622,22 @@ final class NudgeStore: ObservableObject {
                 }
             } else { reminders[i].escalateAskNext = nil }
             reminders[i].updatedAt = iso(Date())
+            // Moved to a new date/time (or its date removed): drop the old alert now, in the
+            // same step as the save, and clear any old snooze — a pending snooze would hold back
+            // the new time's early alerts. Compared as instants (≥ 60 s apart) so a plain title
+            // edit with an unchanged time never counts as a move.
+            let newDue = parseDate(dueStr)
+            let moved: Bool = {
+                switch (oldDue, newDue) {
+                case (nil, nil): return false
+                case let (a?, b?): return abs(a.timeIntervalSince(b)) >= 60
+                default: return true
+                }
+            }()
+            if moved {
+                reminders[i].snoozedUntil = nil
+                clearNotifications(for: targetId, extraOffsets: oldOffsets)
+            }
         } else {
             let r = Reminder(
                 id: targetId,

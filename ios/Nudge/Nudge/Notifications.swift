@@ -91,11 +91,45 @@ final class NotificationManager: NSObject, ObservableObject {
             let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
             if let r = nudge.reminders.first(where: { $0.id == rid }) {
                 if (r.completed ?? false) || (r.dismissed ?? false) { stale.append(id) }
+                else if Self.movedSinceDelivered(identifier: id, reminder: r, deliveredAt: n.date) {
+                    stale.append(id)   // reminder was moved after this alert fired (here or on the other device)
+                }
             } else {
                 stale.append(id)   // reminder no longer exists
             }
         }
         if !stale.isEmpty { center.removeDeliveredNotifications(withIdentifiers: stale) }
+    }
+
+    /// True when a DELIVERED time alert no longer matches its reminder's current time, i.e.
+    /// the reminder was moved after the alert fired — on this device or on the other one
+    /// (notifications are per-device, so the other device clears its copy here on next sync).
+    /// The same-device move already clears it at save time; this is the backstop. (2026-11-06)
+    /// Never true for: location (`~geo`) alerts or unknown suffixes, and prep reminders —
+    /// syncPrepReminders() rolls those to their next cycle on its own right after they fire,
+    /// which is not the user moving them, and the banner must survive.
+    static func movedSinceDelivered(identifier id: String, reminder r: Reminder, deliveredAt: Date) -> Bool {
+        if r.prepFor != nil { return false }
+        let raw = String(id.dropFirst("nudge-".count))
+        let parts = raw.split(separator: "~", maxSplits: 1)
+        var offset = 0
+        if parts.count == 2 {
+            let suffix = parts[1]
+            guard suffix.hasPrefix("e"), let off = Int(suffix.dropFirst()), off > 0 else { return false }
+            offset = off
+        }
+        // Date removed entirely: a time alert for it is out of date.
+        guard let due = parseDate(r.dueDate) else { return true }
+        let expected: Date
+        if offset > 0 {
+            expected = due.addingTimeInterval(-Double(offset * 60))
+        } else {
+            var f = due
+            if let s = parseDate(r.snoozedUntil), s > f { f = s }
+            expected = f
+        }
+        // Triggers fire on the whole minute (seconds dropped), so allow 2 min of slack.
+        return abs(expected.timeIntervalSince(deliveredAt)) > 120
     }
 
     /// Toggle on: ask the OS, then schedule. Returns to off if denied.
