@@ -24,6 +24,10 @@ struct ContentView: View {
     // is collapsed by default; other section ids join here only once the user collapses them.
     @State private var collapsed: Set<String> = ["completed-today"]
     @State private var search = ""
+    // Search keyboard (2026-11-07): lets a tab switch close the keyboard straight away. Without
+    // it the field kept focus until the spring tab animation had removed it, and only then did
+    // the keyboard start sliding down — a noticeable lag after tapping Home / Overdue etc.
+    @FocusState private var searchFocused: Bool
     @State private var listFilter: ReminderList?
     @State private var autoClaudeURL: IdentifiableURL?
     @State private var preparingClaude = false
@@ -717,6 +721,9 @@ struct ContentView: View {
     }
 
     private func switchTab(_ i: Int) {
+        // Close the search keyboard BEFORE the animated switch so it slides down alongside the
+        // new page instead of after it (see searchFocused).
+        if searchFocused { searchFocused = false }
         withAnimation(Theme.spring) {
             tab = i
             // Selection only makes sense on Today/Overdue — leaving either clears it so a
@@ -1195,6 +1202,7 @@ struct ContentView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(Theme.textMeta)
             TextField("Search reminders", text: $search)
+                .focused($searchFocused)
             if !search.isEmpty { Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textMeta) } }
         }
         .padding(12)
