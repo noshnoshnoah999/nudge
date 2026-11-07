@@ -137,6 +137,17 @@ nonisolated enum RecurrenceEngine {
         return "r" + digest.prefix(6).map { String(format: "%02X", $0) }.joined()
     }
 
+    /// "Pin from" (2026-11-07) for a repeating reminder's next occurrence (or a routine /
+    /// series advanced in place). With a gap ("all future ones"), the pin day is the new due
+    /// day minus `gapDays`; if that day isn't in the future, nil (pinned straight away).
+    /// Without a gap ("this reminder only"), nil — the next occurrence is pinned straight away.
+    static func successorPinFrom(gapDays: Int?, nextDue: String?, now: Date = Date()) -> String? {
+        guard let gap = gapDays, gap >= 0, let due = parse(nextDue) else { return nil }
+        let cal = Calendar.current
+        guard let day = cal.date(byAdding: .day, value: -gap, to: cal.startOfDay(for: due)) else { return nil }
+        return day > cal.startOfDay(for: now) ? stamp(day) : nil
+    }
+
     // MARK: - Nightly routines
 
     /// The routine's current repeat interval in days.

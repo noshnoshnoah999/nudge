@@ -12,6 +12,7 @@ struct RescheduleOptionsView: View {
     @State private var showConflict = false
     @State private var conflictMsg: String?
     @State private var pendingDate: Date?
+    @State private var pendingPinMove: PendingPinMove?   // pin-from question (2026-11-07)
 
     init(reminder: Reminder) {
         self.reminder = reminder
@@ -87,13 +88,14 @@ struct RescheduleOptionsView: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .alert("You're busy then", isPresented: $showConflict) {
                 Button("Reschedule anyway") {
-                    if let d = pendingDate { store.reschedule(reminder.id, to: d); dismiss() }
+                    if let d = pendingDate { commit(d) }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Your calendar has \(conflictMsg ?? "an event") at that time.")
             }
         }
+        .modifier(PinMovePrompt(pending: $pendingPinMove))
         .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
@@ -103,7 +105,20 @@ struct RescheduleOptionsView: View {
         if let clash = CalendarService.shared.conflictDescription(at: date) {
             conflictMsg = clash; pendingDate = date; showConflict = true
         } else {
-            store.reschedule(reminder.id, to: date); dismiss()
+            commit(date)
+        }
+    }
+
+    /// Move it — asking first what to do with a pending "Pin from" date, if the day changes.
+    private func commit(_ date: Date) {
+        let id = reminder.id
+        let current = store.reminders.first(where: { $0.id == id }) ?? reminder
+        if let p = pinMoveNeeded([(current, date)], perform: { choice in
+            store.reschedule(id, to: date, pin: choice); dismiss()
+        }) {
+            pendingPinMove = p
+        } else {
+            store.reschedule(id, to: date); dismiss()
         }
     }
 }

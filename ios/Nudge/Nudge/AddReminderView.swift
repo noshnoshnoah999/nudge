@@ -77,6 +77,17 @@ struct AddReminderView: View {
     @State private var folderIds: [String] = []   // Folders (2026-10-07); written after save
     @State private var priority = "normal"
     @State private var pinned = false
+    // Pin from a date (2026-11-07) — see PinFrom.swift for Noah's rules.
+    @State private var pinFromOn = false
+    @State private var pinFromDate = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+    @State private var pinFromGapDays: Int? = nil       // "all future ones" gap on a repeating reminder
+    @State private var pinFromEdited = false            // user changed the pin-from toggle/date in this sheet
+    @State private var origPinDay: Date? = nil          // the saved, still-pending pin day when the sheet opened
+    @State private var pinMoveResolved = false          // the "due date moved" question was answered
+    @State private var pinPickNeeded = false            // chose "Pick a new date" — waiting on the inline picker
+    @State private var showPinMoveDialog = false
+    @State private var showPinTodayWarning = false
+    @State private var showPinScopeDialog = false
     @State private var urgent = false
     // Notion push: a manual override for reminders outside the "Study" list. Study-list
     // membership alone already puts a reminder in scope (see NotionSyncService.inScope) —
@@ -299,6 +310,10 @@ struct AddReminderView: View {
                         menuRow("Pin to Home", "pin") {
                             Toggle("", isOn: $pinned).labelsHidden().tint(Theme.controlTint)
                         }
+                        if pinned {
+                            divider
+                            pinFromRows
+                        }
                         #if !targetEnvironment(macCatalyst)
                         divider
                         menuRow("Urgent (alarm)", "alarm") {
@@ -455,7 +470,7 @@ struct AddReminderView: View {
                 showEditScope: $showRecurScopeDialog,
                 showDeleteScope: $showRecurDeleteDialog,
                 onSaveThisEvent: { saveThisEventOnly() },
-                onSaveFuture: { save() },
+                onSaveFuture: { saveFuture() },
                 onDeleteThisEvent: {
                     if let e = editing { withAnimation(Theme.spring) { _ = store.deleteThisOccurrence(e) } }
                     dismiss()
@@ -464,6 +479,18 @@ struct AddReminderView: View {
                     if let e = editing { withAnimation(Theme.spring) { store.deleteReminder(e) } }
                     dismiss()
                 }))
+            .modifier(PinFromEditDialogs(
+                showMove: $showPinMoveDialog, showToday: $showPinTodayWarning, showScope: $showPinScopeDialog,
+                moveTitle: origPinDay.map { "This reminder pins to Home from \(pinDayLabel($0))" } ?? "",
+                moveMessage: "You're moving it to \(pinDayLabel(pinDueDay)). What should the pin date do?",
+                keepLabel: (origPinDay.map { $0 <= pinDueDay } ?? false) ? "Keep \(pinDayLabel(origPinDay!))" : nil,
+                shiftLabel: shiftedPinDay.map { "Shift to \(pinDayLabel($0))" } ?? "Shift (pins straight away)",
+                due: due,
+                onKeep: { pinMoveKeep() }, onShift: { pinMoveShift() }, onPick: { pinMovePick() },
+                onTodayDone: { pinTodayDone() },
+                onScopeThis: { pinFromGapDays = nil; save() },
+                onScopeAll: { pinFromGapDays = pinGapFromDates; save() },
+                onDueChange: { clampPinForDueChange() }))
             .onAppear(perform: load)
             .onChange(of: pickerItems) { _, items in
                 Task {
@@ -518,6 +545,118 @@ struct AddReminderView: View {
     }
 
     private var divider: some View { Rectangle().fill(Theme.hairline).frame(height: 1) }
+
+    // MARK: - Pin from a date (2026-11-07)
+
+    private var pinTomorrow: Date {
+        let cal = Calendar.current
+        return cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: Date())) ?? Date()
+    }
+    private var pinDueDay: Date { Calendar.current.startOfDay(for: due) }
+    /// Only for reminders due tomorrow or later (Noah's rule).
+    private var pinFromAvailable: Bool { hasDue && pinDueDay >= pinTomorrow }
+    private var pinFromRange: ClosedRange<Date> { pinTomorrow...max(pinTomorrow, pinDueDay) }
+
+    /// The "Pin from a date" toggle + date-only picker, shown under "Pin to Home".
+    @ViewBuilder private var pinFromRows: some View {
+        menuRow("Pin from a date", "calendar.badge.clock") {
+            Toggle("", isOn: Binding(get: { pinFromOn && pinFromAvailable }, set: { on in
+                pinFromOn = on
+                pinFromEdited = true
+                if on {
+                    pinFromDate = min(max(pinFromDate, pinTomorrow), pinDueDay)
+                } else {
+                    pinFromGapDays = nil
+                    pinPickNeeded = false
+                }
+            }))
+            .labelsHidden().tint(Theme.controlTint)
+            .disabled(!pinFromAvailable)
+        }
+        .opacity(pinFromAvailable ? 1 : 0.45)
+        if !pinFromAvailable {
+            Text(hasDue ? "Only for reminders due tomorrow or later." : "Set a due date (tomorrow or later) to use this.")
+                .font(.caption).foregroundStyle(Theme.textMeta)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 6)
+        } else if pinFromOn && pinMoveUnanswered {
+            // The picker is hidden here on purpose: a DatePicker can write a clamped value back
+            // when its range shrinks, which would silently skip the question.
+            Text("Pins from \(pinDayLabel(origPinDay ?? pinFromDate)). You've moved the due date — Save will ask what to do with the pin date.")
+                .font(.caption).foregroundStyle(Theme.textMeta)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 6)
+        } else if pinFromOn {
+            DatePicker("Pins from", selection: Binding(get: { pinFromDate }, set: { d in
+                pinFromDate = Calendar.current.startOfDay(for: d)
+                pinFromEdited = true
+                pinMoveResolved = true
+                pinPickNeeded = false
+            }), in: pinFromRange, displayedComponents: [.date])
+            .tint(Theme.controlTint)
+            .padding(.vertical, 4)
+            Text(pinPickNeeded ? "Pick the new pin date, then tap Save."
+                               : "Shows in Pinned on Home from \(pinDayLabel(pinFromDate)). Until then it's a normal reminder.")
+                .font(.caption).foregroundStyle(pinPickNeeded ? Theme.coral : Theme.textMeta)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 6)
+        }
+    }
+
+    /// A saved pin date whose reminder has been moved to another day, not yet answered.
+    private var pinMoveUnanswered: Bool {
+        guard origPinDay != nil, !pinMoveResolved, !pinFromEdited, let od = origDueDay else { return false }
+        return od != pinDueDay
+    }
+
+    /// Whole days from the pin day to the due day — the "all future ones" gap.
+    private var pinGapFromDates: Int {
+        max(0, Calendar.current.dateComponents([.day], from: pinFromDate, to: pinDueDay).day ?? 0)
+    }
+
+    /// The due DAY the reminder had when the sheet opened (nil for a new one).
+    private var origDueDay: Date? { parseDate(editing?.dueDate).map { Calendar.current.startOfDay(for: $0) } }
+
+    /// For a not-yet-saved pin, keep the date inside the new range as the due date changes.
+    /// A saved pin is left alone — Save asks what to do with it instead.
+    private func clampPinForDueChange() {
+        guard pinFromOn, origPinDay == nil || pinFromEdited, pinFromAvailable else { return }
+        pinFromDate = min(max(pinFromDate, pinTomorrow), pinDueDay)
+    }
+
+    /// The pin day "Shift by the same amount" would give, or nil = pins straight away.
+    private var shiftedPinDay: Date? {
+        guard let o = origPinDay, let od = origDueDay else { return nil }
+        let cal = Calendar.current
+        let delta = cal.dateComponents([.day], from: od, to: pinDueDay).day ?? 0
+        guard let d = cal.date(byAdding: .day, value: delta, to: o) else { return nil }
+        return d >= pinTomorrow ? d : nil
+    }
+
+    private func pinMoveKeep() {
+        if let o = origPinDay { pinFromDate = o }
+        pinMoveResolved = true
+        continueSaveSoon()
+    }
+    private func pinMoveShift() {
+        if let d = shiftedPinDay { pinFromDate = d } else { pinFromOn = false }
+        pinMoveResolved = true
+        continueSaveSoon()
+    }
+    private func pinMovePick() {
+        pinFromDate = min(max(origPinDay ?? pinTomorrow, pinTomorrow), pinDueDay)
+        pinMoveResolved = true
+        pinPickNeeded = true      // the user picks inline, then taps Save again
+    }
+    private func pinTodayDone() {
+        pinFromOn = false         // goes straight to Pinned
+        pinMoveResolved = true
+        continueSaveSoon()
+    }
+    /// SwiftUI drops a dialog presented in the same instant another one closes.
+    private func continueSaveSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { continueSave() }
+    }
 
     /// The non-all-day event the currently-picked `due` time falls strictly inside
     /// (start <= due < end). All-day events are never a time conflict. Nil = no clash.
@@ -653,6 +792,12 @@ struct AddReminderView: View {
         listId = r.listIdOrDefault
         priority = r.priorityOrNormal
         pinned = r.pinned ?? false
+        pinFromGapDays = r.pinFromGapDays
+        if let pd = r.pendingPinDay {
+            pinFromOn = true
+            pinFromDate = Calendar.current.startOfDay(for: parseDate(r.pinFrom) ?? pd)
+            origPinDay = pinFromDate
+        }
         urgent = r.urgent ?? false
         pushToNotion = r.pushToNotion ?? false
         folderIds = r.folderIds ?? []
@@ -1101,11 +1246,38 @@ struct AddReminderView: View {
     /// reminder that currently recurs, ask how the change should apply first
     /// (This Event / Future Events); else save straight away.
     private func attemptSave() {
+        // Pin from (2026-11-07), checked first.
+        if pinned && pinFromOn && !pinFromAvailable {
+            showPinTodayWarning = true          // moved to today / date removed → warn, then pinned now
+            return
+        }
+        if pinned && pinFromOn && pinMoveUnanswered {
+            showPinMoveDialog = true            // the due day moved → Keep / Shift / Pick
+            return
+        }
+        continueSave()
+    }
+
+    /// Second half of Save: the repeat-scope questions, then save.
+    private func continueSave() {
         if let e = editing, e.recurrence != nil {
-            showRecurScopeDialog = true
+            showRecurScopeDialog = true                         // existing This Event / Future Events
+        } else if repeatFreq != "none" && pinned && pinFromOn && pinFromAvailable {
+            showPinScopeDialog = true                           // new repeating reminder with a pin date
         } else {
             save()
         }
+    }
+
+    /// "Save for Future Events" on a repeating reminder: a pin date set or changed here applies
+    /// to every future occurrence (same gap); an untouched one keeps its existing scope.
+    private func saveFuture() {
+        if pinFromEdited {
+            pinFromGapDays = (pinned && pinFromOn && pinFromAvailable) ? pinGapFromDates : nil
+        } else if pinFromGapDays != nil, pinFromOn, pinFromAvailable {
+            pinFromGapDays = pinGapFromDates
+        }
+        save()
     }
 
     /// Apple-Calendar "This Event Only": detach the edited occurrence as a one-off and
@@ -1130,10 +1302,14 @@ struct AddReminderView: View {
             geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger,
             pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
             routine: routine, escalation: escalation, reviewFrequency: askToReview,
-            urgent: urgent, pushToNotion: pushToNotion)
+            urgent: urgent, pushToNotion: pushToNotion,
+            pinFrom: pinFromArg, pinFromGapDays: nil)
         store.setFolderIds(reminderId, folderIds)   // the edited occurrence keeps this id
         dismiss()
     }
+
+    /// The pin-from day to store, or nil = pinned straight away.
+    private var pinFromArg: Date? { (pinned && pinFromOn && pinFromAvailable) ? pinFromDate : nil }
 
     private func save() {
         for u in removedURLs { ImageStore.delete(u) }
@@ -1155,7 +1331,9 @@ struct AddReminderView: View {
                            pinned: pinned, remindBefores: earlyAlerts, subtasks: subtasks,
                            routine: routine, escalation: escalation, reviewFrequency: askToReview,
                            urgent: urgent, pushToNotion: pushToNotion,
-                           idForNew: editing == nil ? draftId : nil)
+                           idForNew: editing == nil ? draftId : nil,
+                           pinFrom: pinFromArg,
+                           pinFromGapDays: repeatFreq == "none" ? nil : pinFromGapDays)
         // Folder membership is written separately (saveReminder's signature is already long);
         // reminderId is the edited id, or draftId — the id a new reminder was just saved under.
         store.setFolderIds(reminderId, folderIds)
@@ -1191,6 +1369,52 @@ private struct RecurringScopeDialogs: ViewModifier {
                 Button("Delete All Future Events", role: .destructive) { onDeleteFuture() }
                 Button("Cancel", role: .cancel) {}
             }
+    }
+}
+
+/// The pin-from questions on the edit screen (2026-11-07), kept out of `body` for the
+/// type-checker like RecurringScopeDialogs.
+private struct PinFromEditDialogs: ViewModifier {
+    @Binding var showMove: Bool
+    @Binding var showToday: Bool
+    @Binding var showScope: Bool
+    let moveTitle: String
+    let moveMessage: String
+    let keepLabel: String?           // nil = Keep isn't possible (pin day after the new due day)
+    let shiftLabel: String
+    let due: Date
+    let onKeep: () -> Void
+    let onShift: () -> Void
+    let onPick: () -> Void
+    let onTodayDone: () -> Void
+    let onScopeThis: () -> Void
+    let onScopeAll: () -> Void
+    let onDueChange: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(moveTitle, isPresented: $showMove, titleVisibility: .visible) {
+                if let k = keepLabel { Button(k) { onKeep() } }
+                Button(shiftLabel) { onShift() }
+                Button("Pick a new date") { onPick() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(keepLabel == nil ? moveMessage + " Keeping it isn't possible — it would be after the new due date." : moveMessage)
+            }
+            .alert("Moved to today", isPresented: $showToday) {
+                Button("Done") { onTodayDone() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The \"Pin from\" date won't happen anymore — this reminder will go straight to Pinned after you tap Done.")
+            }
+            .confirmationDialog("Pin date for this repeating reminder", isPresented: $showScope, titleVisibility: .visible) {
+                Button("This reminder only") { onScopeThis() }
+                Button("All future ones too") { onScopeAll() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("\"All future ones\" pins each next one the same number of days before its due date.")
+            }
+            .onChange(of: due) { _, _ in onDueChange() }
     }
 }
 

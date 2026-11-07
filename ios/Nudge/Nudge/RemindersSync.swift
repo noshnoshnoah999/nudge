@@ -426,6 +426,7 @@ final class RemindersSync: ObservableObject {
                             copy.completedAt = nil
                             copy.snoozedUntil = nil
                             copy.dueDate = next
+                            copy.pinFrom = RecurrenceEngine.successorPinFrom(gapDays: copy.pinFromGapDays, nextDue: next)
                             copy.createdAt = iso(Date())
                             copy.updatedAt = iso(Date())
                             spawnedNext = copy

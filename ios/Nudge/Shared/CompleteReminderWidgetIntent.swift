@@ -210,6 +210,9 @@ enum WidgetCompletion {
             row["completed"] = .bool(false)
             row["completedAt"] = .null
             row["snoozedUntil"] = .null
+            // Pin from (2026-11-07): mirrors NudgeStore.advanceRoutine.
+            row["pinFrom"] = RecurrenceEngine.successorPinFrom(
+                gapDays: row["pinFromGapDays"]?.intValue, nextDue: row["dueDate"]?.stringValue, now: now).map { .string($0) } ?? .null
             row["updatedAt"] = .string(nowStamp)
             saved = await upsert(id: id, data: row, updatedAt: nowStamp, token: token)
 
@@ -236,6 +239,9 @@ enum WidgetCompletion {
                     copy["completedAt"] = .null
                     copy["snoozedUntil"] = .null
                     copy["dueDate"] = .string(next)
+                    // Pin from (2026-11-07): mirrors NudgeStore.toggleComplete.
+                    copy["pinFrom"] = RecurrenceEngine.successorPinFrom(
+                        gapDays: row["pinFromGapDays"]?.intValue, nextDue: next, now: now).map { .string($0) } ?? .null
                     copy["createdAt"] = .string(nowStamp)
                     copy["updatedAt"] = .string(nowStamp)
                     // Fail safe: no successor written → do not complete this one, or the series

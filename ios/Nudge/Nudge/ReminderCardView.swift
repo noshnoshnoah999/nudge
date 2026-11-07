@@ -281,6 +281,10 @@ struct ReminderCardView: View {
                 // Secondary indicators: repeat · subtasks · early · open-link · photo · location · source.
                 if hasIndicators(r) {
                     HStack(spacing: 12) {
+                        // Pin from (2026-11-07): waiting to join Home's PINNED section.
+                        if let pd = r.pendingPinDay {
+                            metaIcon("pin", text: "Pins \(pinDayLabel(pd))", color: settings.accent)
+                        }
                         if r.routine == true, !(r.escalation ?? []).isEmpty {
                             // Escalation overrides the recurrence rule — show the live cadence.
                             let d = store.routineIntervalDays(r)
@@ -462,6 +466,7 @@ struct ReminderCardView: View {
 
     private func hasIndicators(_ r: Reminder) -> Bool {
         (r.recurrence != nil && r.recurrence?.freq != "none")
+            || r.pendingPinDay != nil
             || r.url?.isEmpty == false
             || (r.location?.isEmpty == false)
             || (r.subtasks?.isEmpty == false)

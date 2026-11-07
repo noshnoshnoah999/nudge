@@ -45,6 +45,7 @@ struct BulkMoveView: View {
     @State private var timeMode: TimeMode = .keep
     @State private var sharedTime = Date()
     @State private var showConflictWarning = false
+    @State private var pendingPinMove: PendingPinMove?   // pin-from question, once per batch (2026-11-07)
 
     // Auto-arrange state
     @State private var arrangePreview: ArrangePreview?
@@ -170,6 +171,7 @@ struct BulkMoveView: View {
                 }, onAccept: { acceptPreview(p) })
             }
         }
+        .modifier(PinMovePrompt(pending: $pendingPinMove))
         .tint(Theme.controlTint)
         .presentationBackground(Theme.bg)
     }
@@ -258,8 +260,21 @@ struct BulkMoveView: View {
     }
 
     private func applyAll() {
+        // Pin from (2026-11-07): one question for every reminder in the batch whose pending
+        // pin day is affected; the answer applies to all of them.
+        let moves = reminders.map { r in (store.reminders.first(where: { $0.id == r.id }) ?? r, finalDate(for: r)) }
+        if let p = pinMoveNeeded(moves, perform: { _ in }) {
+            let affected = Set(p.items.map { $0.reminder.id })
+            pendingPinMove = PendingPinMove(items: p.items, perform: { choice in performAll(pin: choice, affected: affected) })
+        } else {
+            performAll(pin: .keep, affected: [])
+        }
+    }
+
+    /// The answer applies only to the reminders the question was about; the rest keep theirs.
+    private func performAll(pin: PinMove, affected: Set<String>) {
         for r in reminders {
-            store.reschedule(r.id, to: finalDate(for: r))
+            store.reschedule(r.id, to: finalDate(for: r), pin: affected.contains(r.id) ? pin : .keep)
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()

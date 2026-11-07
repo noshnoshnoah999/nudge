@@ -126,6 +126,14 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
     var snoozedUntil: String?
     var dismissed: Bool?
     var pinned: Bool? = nil   // kept on the Home dashboard regardless of due date
+    // "Pin from" date (2026-11-07): a pinned reminder only joins Home's PINNED section from
+    // this day (start of day, ISO). nil = pinned straight away. Only settable when the due
+    // date is tomorrow or later, and never later than the due date.
+    // `pinFromGapDays` is set only for a repeating reminder pinned "for all future ones":
+    // each next occurrence gets pinFrom = its due day minus this many days. nil = this
+    // occurrence only (the next occurrence is pinned straight away).
+    var pinFrom: String? = nil
+    var pinFromGapDays: Int? = nil
     // Nightly routine (e.g. KP / Epiduo): if not ticked by next morning, the app asks
     // "did you do it last night?" on first open. Advances in place rather than spawning
     // copies. `escalation` ramps the frequency over time; `escalateAskNext` is when to
@@ -165,6 +173,20 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
     var folderIds: [String]? = nil
 
     var isCompleted: Bool { completed ?? false }
+
+    /// The day this pinned reminder joins Home's PINNED section, if that is still in the
+    /// future. Robust to stale data: the effective pin day is never later than the due day,
+    /// so a reminder whose due date has come (today/overdue) is always pinned now — this is
+    /// the "moved to today → straight to Pinned" rule, and it also covers automatic moves
+    /// (snooze, move-over) that don't ask.
+    var pendingPinDay: Date? {
+        guard pinned == true, let pf = parseDate(pinFrom), let due = parseDate(dueDate) else { return nil }
+        let cal = Calendar.current
+        let day = min(cal.startOfDay(for: pf), cal.startOfDay(for: due))
+        return day > cal.startOfDay(for: Date()) ? day : nil
+    }
+    /// Pinned AND its pin-from day (if any) has arrived.
+    var isPinnedNow: Bool { pinned == true && pendingPinDay == nil }
     var isGrouped: Bool { (groupId?.isEmpty == false) }
     var listIdOrDefault: String { listId ?? "reminders" }
     var priorityOrNormal: String { priority ?? "normal" }

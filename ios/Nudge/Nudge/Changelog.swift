@@ -16,6 +16,16 @@ struct ChangelogEntry: Identifiable {
 enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "2.33", title: "Pin from a date", date: "7 Nov 2026",
+            added: [
+                "\"Pin from a date\" under Pin to Home: a pinned reminder can wait until a day you choose before it shows in Pinned on Home. Only for reminders due tomorrow or later, and never after the due date",
+                "Cards show a small \"Pins 1 Dec\" label until that day",
+                "Moving a reminder that has a pin date asks what the pin date should do: keep it, shift it by the same amount, or pick a new one. Bulk Move asks once for the whole batch",
+                "Moving it to today shows a warning that it'll go straight to Pinned instead",
+                "Repeating reminders ask whether the pin date is for this one only or all future ones (same number of days before each due date)"
+            ],
+            changed: []),
+        ChangelogEntry(
             version: "2.32", title: "Birthdays & AI move-over on your terms", date: "19 Oct 2026",
             added: [
                 "Birthday banner on Home: \"Say happy birthday to …!\" on the day, and a heads-up in the 3 days before. Tap ✕ to hide one for the day",

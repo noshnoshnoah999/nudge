@@ -703,6 +703,7 @@ final class NudgeStore: ObservableObject {
                     copy.completed = false
                     copy.completedAt = nil
                     copy.dueDate = next
+                    copy.pinFrom = RecurrenceEngine.successorPinFrom(gapDays: copy.pinFromGapDays, nextDue: next)
                     // Identical on purpose: createdAt == updatedAt is how an untick recognises
                     // a successor nobody has touched yet (below).
                     copy.createdAt = now
@@ -793,6 +794,7 @@ final class NudgeStore: ObservableObject {
         r.completed = false
         r.completedAt = iso(Date())
         r.snoozedUntil = nil
+        r.pinFrom = RecurrenceEngine.successorPinFrom(gapDays: r.pinFromGapDays, nextDue: r.dueDate)
         r.updatedAt = iso(Date())
     }
 
@@ -949,6 +951,7 @@ final class NudgeStore: ObservableObject {
         reminders[i].completed = false
         reminders[i].completedAt = nil
         reminders[i].snoozedUntil = nil
+        reminders[i].pinFrom = RecurrenceEngine.successorPinFrom(gapDays: reminders[i].pinFromGapDays, nextDue: next)
         reminders[i].updatedAt = iso(Date())
         persist()
         return true
@@ -1135,10 +1138,14 @@ final class NudgeStore: ObservableObject {
         return nextFreeSlot(desired, excluding: id)
     }
 
-    /// Move a single reminder to a new date/time.
-    func reschedule(_ id: String, to date: Date) {
+    /// Move a single reminder to a new date/time. `pin` says what happens to a pending
+    /// "pin from" date (2026-11-07) — the caller asks the user first (see PinMovePrompt);
+    /// the default keeps it, normalised so it never ends up after the new due day.
+    func reschedule(_ id: String, to date: Date, pin: PinMove = .keep) {
         guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+        let oldDue = parseDate(reminders[i].dueDate)
         reminders[i].dueDate = iso(date)
+        applyPinMove(i, oldDue: oldDue, pin: pin)
         reminders[i].hasTime = true
         reminders[i].snoozedUntil = nil
         reminders[i].tz = nil
@@ -1568,7 +1575,8 @@ final class NudgeStore: ObservableObject {
                       pinned: Bool = false, remindBefores: [Int] = [],
                       subtasks: [Subtask] = [], routine: Bool = false,
                       escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
-                      urgent: Bool = false, pushToNotion: Bool = false, idForNew: String? = nil) {
+                      urgent: Bool = false, pushToNotion: Bool = false, idForNew: String? = nil,
+                      pinFrom: Date? = nil, pinFromGapDays: Int? = nil) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let targetId = editing?.id ?? idForNew ?? ("r" + String(UUID().uuidString.prefix(12)))
         // With a pinned timezone, the picked wall time is interpreted in that zone.
@@ -1669,6 +1677,10 @@ final class NudgeStore: ObservableObject {
             // that's a one-way push and Nudge shouldn't reach back and delete things the
             // user might now be editing directly in Notion.
             reminders[i].pushToNotion = pushToNotion ? true : nil
+            // Pin from (2026-11-07). Normalised so a stored pin day is always tomorrow-or-later
+            // and never after the due day; anything else means "pinned straight away".
+            reminders[i].pinFrom = pinned ? Self.normalizedPinFrom(pinFrom.map { iso($0) }, due: reminders[i].dueDate) : nil
+            reminders[i].pinFromGapDays = pinned ? pinFromGapDays : nil
         }
         persist()
         // Urgent alarm: armed / moved / cancelled right away by the shared reconciler, the same
@@ -1692,7 +1704,8 @@ final class NudgeStore: ObservableObject {
                                         pinned: Bool = false, remindBefores: [Int] = [],
                                         subtasks: [Subtask] = [], routine: Bool = false,
                                         escalation: [EscalationStep] = [], reviewFrequency: Bool = false,
-                                        urgent: Bool = false, pushToNotion: Bool = false) {
+                                        urgent: Bool = false, pushToNotion: Bool = false,
+                                        pinFrom: Date? = nil, pinFromGapDays: Int? = nil) {
         // Snapshot the ORIGINAL (unedited) reminder before any mutation.
         guard let original = editing,
               let orig = reminders.first(where: { $0.id == original.id }),
@@ -1704,7 +1717,7 @@ final class NudgeStore: ObservableObject {
                          geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger, pinned: pinned,
                          remindBefores: remindBefores, subtasks: subtasks, routine: routine,
                          escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent,
-                         pushToNotion: pushToNotion)
+                         pushToNotion: pushToNotion, pinFrom: pinFrom, pinFromGapDays: pinFromGapDays)
             return
         }
         let nextDue = nextOccurrence(after: orig.dueDate, rec: origRec)
@@ -1717,7 +1730,7 @@ final class NudgeStore: ObservableObject {
                      geofenceEnabled: geofenceEnabled, geofenceTrigger: geofenceTrigger, pinned: pinned,
                      remindBefores: remindBefores, subtasks: subtasks, routine: routine,
                      escalation: escalation, reviewFrequency: reviewFrequency, urgent: urgent,
-                     pushToNotion: pushToNotion)
+                     pushToNotion: pushToNotion, pinFrom: pinFrom, pinFromGapDays: nil)   // a one-off: no gap
 
         // 2) Continue the ORIGINAL series from the next date, if one exists. Copy the whole
         //    original value so every field (prep links, groups, alerts, tz…) is preserved,
@@ -1734,10 +1747,50 @@ final class NudgeStore: ObservableObject {
         cont.completedAt = nil
         cont.snoozedUntil = nil
         cont.dismissed = false
+        cont.pinFrom = RecurrenceEngine.successorPinFrom(gapDays: cont.pinFromGapDays, nextDue: nextDue)
         cont.createdAt = iso(Date())
         cont.updatedAt = iso(Date())
         reminders.insert(cont, at: 0)
         persist()
+    }
+
+    // MARK: - Pin from (2026-11-07)
+
+    /// A stored pin-from day is only kept if it's tomorrow or later AND the due day is
+    /// tomorrow or later; it's clamped to never be after the due day. nil = pinned now.
+    static func normalizedPinFrom(_ pf: String?, due: String?, now: Date = Date()) -> String? {
+        guard let p = parseDate(pf), let d = parseDate(due) else { return nil }
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
+        let dueDay = cal.startOfDay(for: d)
+        guard dueDay > today else { return nil }
+        let day = min(cal.startOfDay(for: p), dueDay)
+        return day > today ? iso(day) : nil
+    }
+
+    /// Apply the user's choice for a pending pin-from date after reminders[i]'s due date
+    /// has ALREADY been changed. `oldDue` is the due date before the move (for Shift).
+    func applyPinMove(_ i: Int, oldDue: Date?, pin: PinMove) {
+        guard reminders[i].pinFrom != nil else { return }   // nothing pending → nothing to do
+        let cal = Calendar.current
+        switch pin {
+        case .keep: break
+        case .clear: reminders[i].pinFrom = nil
+        case .shift:
+            if let pf = parseDate(reminders[i].pinFrom), let o = oldDue, let n = parseDate(reminders[i].dueDate) {
+                let delta = cal.dateComponents([.day], from: cal.startOfDay(for: o), to: cal.startOfDay(for: n)).day ?? 0
+                reminders[i].pinFrom = cal.date(byAdding: .day, value: delta, to: cal.startOfDay(for: pf)).map { iso($0) }
+            }
+        case .set(let d):
+            reminders[i].pinFrom = iso(cal.startOfDay(for: d))
+        }
+        reminders[i].pinFrom = Self.normalizedPinFrom(reminders[i].pinFrom, due: reminders[i].dueDate)
+        // "All future ones": the gap follows the new pin/due pair so later occurrences match.
+        if reminders[i].pinFromGapDays != nil, let pf = parseDate(reminders[i].pinFrom),
+           let d = parseDate(reminders[i].dueDate) {
+            let gap = cal.dateComponents([.day], from: cal.startOfDay(for: pf), to: cal.startOfDay(for: d)).day ?? 0
+            reminders[i].pinFromGapDays = max(0, gap)
+        }
     }
 
     // MARK: - Grouping
@@ -1836,7 +1889,8 @@ final class NudgeStore: ObservableObject {
     func pinnedReminders() -> [Reminder] {
         // Chronological — earliest due first (no-date items last); priority only breaks ties.
         let prank: (Reminder) -> Int = { $0.priorityOrNormal == "high" ? 0 : $0.priorityOrNormal == "low" ? 2 : 1 }
-        return open().filter { $0.pinned == true }.sorted {
+        // isPinnedNow: a reminder with a future "pin from" day stays out until that day (2026-11-07).
+        return open().filter { $0.isPinnedNow }.sorted {
             let da = parseDate($0.dueDate) ?? .distantFuture, db = parseDate($1.dueDate) ?? .distantFuture
             if da != db { return da < db }
             return prank($0) < prank($1)
