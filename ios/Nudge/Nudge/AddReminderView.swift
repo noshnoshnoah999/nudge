@@ -117,6 +117,12 @@ struct AddReminderView: View {
     @StateObject private var locationMonitor = LocationMonitor.shared
     @State private var showLocationPicker = false
     @FocusState private var titleFocused: Bool
+    // Title-height fix (2026-11-07, iPhone only): load() fills the title in onAppear while
+    // the sheet is still sliding up, so the vertical TextField measures its height at a
+    // narrower, mid-animation width (extra wrapped lines → blank space under the title, up to
+    // the 8-line cap) and iOS doesn't re-measure until the field is tapped. Bumping this key
+    // once the sheet has settled rebuilds the field so it measures at its real width.
+    @State private var titleLayoutKey = 0
     @State private var buyRuleApplied = false   // so the live "buy" rule fires once per appearance of the word
     @State private var claudeRuleApplied = false   // same, for the "Claude - " → Claude list rule
     @ObservedObject private var calSvc = CalendarService.shared
@@ -179,6 +185,7 @@ struct AddReminderView: View {
                     // inside a ScrollView won't become first responder on iOS (no keyboard
                     // on tap), though it works on Mac Catalyst. This focuses reliably.
                     TextField("What do you need to remember?", text: $title, axis: .vertical)
+                        .id(titleLayoutKey)      // see titleLayoutKey — re-measure after the sheet settles
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                         .foregroundStyle(Theme.textMain)
                         .lineLimit(1...8)        // grows down as the title gets longer
@@ -780,6 +787,11 @@ struct AddReminderView: View {
         }
         title = r.title
         notes = r.notes ?? ""
+        // Editing only: a new reminder auto-focuses the title at 0.45 s, and rebuilding the field
+        // would drop that keyboard. Skipped too if the user has already tapped into the title.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if !titleFocused { titleLayoutKey += 1 }
+        }
         if let d = parseDate(r.dueDate) {
             hasDue = true; hasTime = r.hasTime ?? false
             if let tzId = r.tz, let tzone = TimeZone(identifier: tzId) {
