@@ -406,6 +406,15 @@ struct AddReminderView: View {
                             .lineLimit(2...6).foregroundStyle(Theme.textMain).padding(.vertical, 10)
                             .focused($notesFocused)
                             .simultaneousGesture(TapGesture().onEnded { notesFocused = true })
+                            #if os(iOS)
+                            // Return adds a new line in Notes (multi-line), so give a way to close the keyboard.
+                            .toolbar {
+                                ToolbarItemGroup(placement: .keyboard) {
+                                    Spacer()
+                                    Button("Done") { notesFocused = false }.fontWeight(.semibold)
+                                }
+                            }
+                            #endif
                     }
 
                     if let e = editing {
