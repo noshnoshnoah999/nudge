@@ -149,7 +149,7 @@ final class LocationMonitor: NSObject, ObservableObject {
         content.body = arriving ? "You've arrived at \(where_)" : "You've left \(where_)"
         content.sound = .default
         // Same category as timed reminders → identical Complete / Snooze / Reschedule buttons.
-        content.categoryIdentifier = NotificationManager.categoryId
+        content.categoryIdentifier = NotificationManager.category(forTitle: title)
 
         // `nudge-<id>` is what the notification delegate parses back into a reminder id (it
         // strips any `~suffix`). The `~geo` suffix keeps this request distinct from the pending

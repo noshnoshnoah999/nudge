@@ -26,10 +26,27 @@ final class NotificationManager: NSObject, ObservableObject {
         super.init()
     }
 
-    static let categoryId = "NUDGE_REMINDER"
+    nonisolated static let categoryId = "NUDGE_REMINDER"
+    /// Mac-only twin of `categoryId` for long titles: same buttons plus "See more".
+    nonisolated static let longCategoryId = "NUDGE_REMINDER_LONG"
     static let completeAction = "COMPLETE"
     static let snoozeAction = "SNOOZE"
     static let rescheduleAction = "RESCHEDULE"
+    nonisolated static let seeMoreAction = "SEE_MORE"
+
+    /// Titles at or above this length get the "See more" button on Mac. The Mac banner cuts a
+    /// title at two lines (~60+ chars); 45 errs on the side of offering the button.
+    nonisolated static let seeMoreMinLength = 45
+
+    /// Category for a reminder notification: on Mac, long titles get the "See more" variant.
+    /// iPhone always uses the plain category (it already has long-press to expand).
+    nonisolated static func category(forTitle title: String) -> String {
+        #if targetEnvironment(macCatalyst)
+        return title.count >= seeMoreMinLength ? longCategoryId : categoryId
+        #else
+        return categoryId
+        #endif
+    }
 
     /// Shared instance — the app's @StateObject and the AppDelegate both use this one, so
     /// the notification delegate set at launch is the same object the UI talks to.
@@ -43,7 +60,13 @@ final class NotificationManager: NSObject, ObservableObject {
         let rescheduleBtn = UNNotificationAction(identifier: Self.rescheduleAction, title: "Reschedule…", options: [.foreground])
         let cat = UNNotificationCategory(identifier: Self.categoryId, actions: [complete, snooze, rescheduleBtn],
                                          intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([cat])
+        // Background action (no .foreground): re-posts the notification with the full title in
+        // the body, without opening Nudge. Only ever assigned on Mac (see category(forTitle:)).
+        let seeMore = UNNotificationAction(identifier: Self.seeMoreAction, title: "See more", options: [])
+        let longCat = UNNotificationCategory(identifier: Self.longCategoryId,
+                                             actions: [complete, snooze, rescheduleBtn, seeMore],
+                                             intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([cat, longCat])
     }
 
     /// Become the notification delegate. Do this only AFTER the SwiftUI scene exists (from
@@ -236,7 +259,7 @@ final class NotificationManager: NSObject, ObservableObject {
             // without lighting up the screen. High is time-sensitive; normal is active.
             content.sound = low ? nil : .default
             content.interruptionLevel = high ? .timeSensitive : (low ? .passive : .active)
-            content.categoryIdentifier = Self.categoryId
+            content.categoryIdentifier = Self.category(forTitle: title)
             content.threadIdentifier = "nudge-\(p.r.listId ?? "reminders")"   // groups by list
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: p.fire)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
@@ -383,6 +406,31 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Sendable, so it must not be captured by the Task.
         let action = response.actionIdentifier
         let notifId = response.notification.request.identifier
+        // "See more" (Mac): re-post the same notification, same id (so it replaces itself),
+        // with the full title at the top of the body. Handled here, never in handle(), so it
+        // can't be mistaken for an app-opening tap. Built from the delivered content, so it
+        // needs no store and works even if Nudge isn't running.
+        if action == Self.seeMoreAction {
+            // Copy plain Strings off the (non-Sendable) content, then post on the main actor
+            // and call completionHandler there — same pinning as the normal path below.
+            let old = response.notification.request.content
+            let title = old.title, subtitle = old.subtitle, body = old.body
+            let thread = old.threadIdentifier
+            Task { @MainActor in
+                let content = UNMutableNotificationContent()
+                content.title = title
+                content.subtitle = subtitle
+                content.body = body.isEmpty ? title : title + "\n" + body
+                content.threadIdentifier = thread
+                content.categoryIdentifier = Self.categoryId   // keep Complete/Snooze/Reschedule, drop See more
+                content.sound = nil                            // silent: you asked for it
+                content.interruptionLevel = .active
+                let req = UNNotificationRequest(identifier: notifId, content: content, trigger: nil)
+                try? await UNUserNotificationCenter.current().add(req)
+                completionHandler()
+            }
+            return
+        }
         Task { @MainActor in
             await handle(action: action, notifId: notifId)
             completionHandler()
