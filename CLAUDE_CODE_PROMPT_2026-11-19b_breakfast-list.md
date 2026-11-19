@@ -31,7 +31,7 @@ uncommitted changes you didn't make, leave them alone and tell Noah.
   (new `Nudge/BreakfastSync.swift`, `Nudge/BreakfastView.swift`; small hooks in `ContentView.swift`;
   `LSApplicationQueriesSchemes = budget` in `Info.plist`; template placeholders; spec in
   `handoffs/HANDOFF_2026-11-19_breakfast-nudge-sync.md`)
-- two docs commits (this prompt + handoff, then a handoff correction)
+- a few docs-only commits (this prompt + handoff)
 
 This code has **never been compiled** (it was written in a sandbox without Xcode).
 
