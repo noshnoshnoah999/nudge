@@ -36,6 +36,6 @@ Claude Code prompt: `CLAUDE_CODE_PROMPT_2026-11-19b_breakfast-list.md`.
 ## Known limits / risks
 - `breakfast_list` is open to anyone holding Budget's publishable key (Noah's accepted choice).
 - A Nudge tick reaches Budget only when Budget is opened (no server push).
-- Rare race on Budget's side: if Budget fetches, Nudge ticks, then Budget upserts within the same
-  second, Budget's publish can overwrite the tick (Budget stamps newer). Low risk; Budget-side fix
-  would be a conditional upsert.
+- Same-row race: if Budget and Nudge change the SAME row within the few seconds of one Budget
+  sync, Budget's upload can win. Budget only uploads rows that differ from what it fetched, so a
+  Nudge tick on a row Budget isn't changing is never overwritten. Negligible.
