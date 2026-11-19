@@ -18,9 +18,10 @@ import Combine
 import UIKit
 import EventKit
 
-/// Test 0 expectations — each action event's start date and title on 29 Oct 2026, from the
-/// spec's section 2 table (generated from the spec, not retyped). Used ONLY by this check:
-/// the real feature reads titles and dates live from Calendar, because they will change.
+/// Each action event's start date and title on 29 Oct 2026, from the spec's section 2 table.
+/// Used ONLY by this check, and only as a reference: titles and dates are MEANT to change
+/// (Noah renames and moves them in Calendar; the feature reads them live), so since
+/// 19 Nov 2026 a difference is reported as a "changed since the plan" note, never a failure.
 private let test0Expected: [String: (start: String, title: String)] = [
     "tsuji-plan-24-20261029@noah.flouty.uk": (start: "2027-01-09", title: "Check open campus entry pass (参加証) has arrived"),   // #1
     "tsuji-plan-02-20261027@noah.flouty.uk": (start: "2027-01-31", title: "Japanese study checkpoint 1 – timed practice test"),   // #2
@@ -146,6 +147,7 @@ final class TsujiIDCheck: ObservableObject {
         out.append("")
         out.append("THE 13 ACTION EVENTS")
         var actionFound = 0
+        var changedCount = 0
         for (index, uid) in TsujiPlan.actionUIDs.enumerated() {
             let n = index + 1
             let matches = rows.filter { $0.externalID == uid }
@@ -164,19 +166,19 @@ final class TsujiIDCheck: ObservableObject {
             for r in matches {
                 let dateOK = (r.start == expected?.start)
                 let titleOK = (r.title.trimmingCharacters(in: .whitespacesAndNewlines) == expected?.title)
-                out.append("   start \(r.start)\(r.end != r.start ? " → end \(r.end)" : "") \(dateOK ? "OK" : "DIFFERENT (spec \(expected?.start ?? "?"))")")
-                out.append("   title \"\(r.title)\" \(titleOK ? "OK" : "DIFFERENT")")
-                if !titleOK { out.append("         spec: \"\(expected?.title ?? "?")\"") }
+                out.append("   start \(r.start)\(r.end != r.start ? " → end \(r.end)" : "") \(dateOK ? "OK" : "changed (29 Oct plan: \(expected?.start ?? "?"))")")
+                out.append("   title \"\(r.title)\" \(titleOK ? "OK" : "changed")")
+                if !titleOK { out.append("         29 Oct plan: \"\(expected?.title ?? "?")\"") }
+                if !dateOK || !titleOK { changedCount += 1 }
                 out.append("   all-day: \(r.isAllDay ? "yes" : "NO") | invitees: \(r.hasAttendees ? "YES" : "no") | repeats: \(r.hasRecurrence ? "YES" : "no")")
                 out.append("   alarms: \(r.alarms.isEmpty ? "none on the event" : r.alarms.joined(separator: "; "))")
-                if !dateOK { failures.append("#\(n) start date is \(r.start), spec says \(expected?.start ?? "?").") }
-                if !titleOK { failures.append("#\(n) title differs from the spec.") }
                 if !r.isAllDay { warnings.append("#\(n) is not an all-day event.") }
-                if r.hasAttendees { warnings.append("#\(n) has invitees — Nudge would refuse to edit it.") }
+                if r.hasAttendees { failures.append("#\(n) has invitees — Nudge will refuse to clear it.") }
                 if r.hasRecurrence { warnings.append("#\(n) repeats — the spec assumes no action event repeats.") }
             }
         }
         out.append("Action events found: \(actionFound) of \(TsujiPlan.actionUIDs.count)")
+        out.append("Renamed or moved since the 29 Oct plan: \(changedCount) (fine — Nudge reads titles and dates live)")
 
         // 5. Everything else in Tsuji Plan (must be ignored by the feature)
         let others = rows.filter { r in !TsujiPlan.actionUIDs.contains(where: { $0 == r.externalID }) }
