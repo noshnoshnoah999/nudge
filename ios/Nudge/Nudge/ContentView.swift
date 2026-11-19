@@ -649,6 +649,10 @@ struct ContentView: View {
         if !Theme.minimal { progressHero.popIn(0) }
         if let nu = nextUp { nextUpCard(nu).popIn(1) }
 
+        // Breakfast shopping list shared with Budget (BreakfastView.swift). Tap → the list.
+        // Sits under Next up / Still due and above Pay day + Pinned (Noah, 19 Nov 2026).
+        BreakfastHomeCard { showBreakfast = true }.popIn(1)
+
         // Pay day: surface the buy list right on Home (tickable), capped so it stays tidy.
         if Payday.isToday() {
             let buys = store.buyReminders()
@@ -688,9 +692,6 @@ struct ContentView: View {
                 ReminderCardView(reminder: r) { editingReminder = r }.popIn(3 + i)
             }
         }
-
-        // Breakfast shopping list shared with Budget (BreakfastView.swift). Tap → the list.
-        BreakfastHomeCard { showBreakfast = true }.popIn(2)
 
         let od = store.pastDayOverdueCount()
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
