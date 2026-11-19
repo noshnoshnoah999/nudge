@@ -625,6 +625,9 @@ struct ContentView: View {
     private func erasedSearchTab() -> AnyView { AnyView(searchTab) }
 
     @ViewBuilder private var dashboardTab: some View {
+        // Tsuji check error (TsujiViews.swift): only when the read-only Calendar ID check finds a
+        // REAL failure. Not dismissable (Noah, 19 Nov 2026) — it stays until the problem is fixed.
+        TsujiCheckErrorBanner()
         // Birthday banners first: "Say happy birthday to X!" on the day, a heads-up up to 3
         // days before. Each ✕ hides that banner for the rest of the day (BirthdayBanner.swift).
         ForEach(birthdays.visible) { b in

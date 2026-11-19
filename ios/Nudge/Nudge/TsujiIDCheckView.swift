@@ -40,6 +40,13 @@ private let test0Expected: [String: (start: String, title: String)] = [
 
 @MainActor
 final class TsujiIDCheck: ObservableObject {
+    /// One shared checker (19 Nov 2026): Settings → Calendar ID check AND the Home error banner
+    /// both use it. TsujiStore runs it after every calendar read (launch, foreground, calendar
+    /// change), so a real failure shows on Home without opening Settings. Still read-only.
+    static let shared = TsujiIDCheck()
+
+    /// The real problems from the last run (empty when it passed).
+    @Published private(set) var failureList: [String] = []
     @Published private(set) var report = ""
     @Published private(set) var verdict = ""
     @Published private(set) var passed: Bool?
@@ -227,6 +234,7 @@ final class TsujiIDCheck: ObservableObject {
 
     private func finish(out: inout [String], failures: [String], warnings: [String]) {
         passed = failures.isEmpty
+        failureList = failures
         verdict = failures.isEmpty
             ? (warnings.isEmpty ? "PASS" : "PASS, with \(warnings.count) warning\(warnings.count == 1 ? "" : "s")")
             : "FAIL — \(failures.count) problem\(failures.count == 1 ? "" : "s")"
@@ -287,8 +295,14 @@ final class TsujiIDCheck: ObservableObject {
 }
 
 struct TsujiIDCheckView: View {
-    @StateObject private var check = TsujiIDCheck()
+    @ObservedObject private var check = TsujiIDCheck.shared
     @State private var copied = false
+    /// True when opened from the Home error banner: the report is copied straight away.
+    let openedFromErrorBanner: Bool
+
+    init(openedFromErrorBanner: Bool = false) {
+        self.openedFromErrorBanner = openedFromErrorBanner
+    }
 
     var body: some View {
         Form {
@@ -337,6 +351,12 @@ struct TsujiIDCheckView: View {
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("Calendar ID check")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { if !check.hasRun { check.run() } }
+        .onAppear {
+            check.run()   // always fresh when opened
+            if openedFromErrorBanner {
+                UIPasteboard.general.string = check.report
+                copied = true
+            }
+        }
     }
 }

@@ -321,6 +321,7 @@ final class TsujiStore: ObservableObject {
             collapsedNow = []
             persistCollapse()
         }
+        TsujiIDCheck.shared.run()   // read-only health check → Home error banner on a real failure
         Task { await TsujiNotifications.schedule() }
     }
 

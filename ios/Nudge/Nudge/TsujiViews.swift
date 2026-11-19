@@ -426,3 +426,67 @@ struct TsujiPlanListView: View {
         .sheet(item: $detail) { item in TsujiItemSheet(item: item) }
     }
 }
+
+// MARK: - Home error banner (Calendar ID check found a real failure)
+
+/// Shown at the top of Home on iPhone and Mac when TsujiIDCheck finds a REAL failure (an event
+/// missing or duplicated, invitees on one of the 13, Tsuji Plan calendar missing or doubled,
+/// Calendar access off). Renamed or moved events never trigger it. Not dismissable (Noah,
+/// 19 Nov 2026): it disappears by itself once the next check passes. Tapping it copies the report
+/// and opens the Calendar ID check, so Noah can paste the report to Claude.
+struct TsujiCheckErrorBanner: View {
+    @ObservedObject private var check = TsujiIDCheck.shared
+    @State private var open = false
+
+    private var failing: Bool { check.hasRun && check.passed == false }
+
+    var body: some View {
+        // `|| open`: if the problem is fixed while the sheet is open, keep the card so the sheet
+        // isn't torn down mid-use.
+        if failing || open {
+            Button { open = true } label: { card }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $open) {
+                    NavigationStack {
+                        TsujiIDCheckView(openedFromErrorBanner: true)
+                            .toolbar {
+                                ToolbarItem(placement: .confirmationAction) {
+                                    Button("Done") { open = false }
+                                }
+                            }
+                    }
+                }
+        }
+    }
+
+    private var card: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.title3)
+                .foregroundStyle(Theme.coral)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Tsuji plan: something needs fixing")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.textMain)
+                ForEach(Array(check.failureList.prefix(3).enumerated()), id: \.offset) { _, f in
+                    Text(f).font(.caption).foregroundStyle(Theme.textMain)
+                }
+                if check.failureList.count > 3 {
+                    Text("+ \(check.failureList.count - 3) more").font(.caption).foregroundStyle(Theme.textMeta)
+                }
+                Text("Tap to copy the report, then paste it to Claude to fix it.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.coral)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.textMeta)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.coral.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
+        .contentShape(Rectangle())
+    }
+}
