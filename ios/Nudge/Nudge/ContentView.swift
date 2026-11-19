@@ -43,6 +43,7 @@ struct ContentView: View {
     @State private var backgroundedAt: Date?          // when the app last left the foreground (nil = not backgrounded)
     @State private var rescheduleTarget: Reminder?
     @State private var showTimetable = false
+    @State private var showBreakfast = false   // Breakfast list shared with Budget (2026-11-19)
     @State private var smartCollection: SmartCollection?
     @State private var showRoutineCheckin = false
     @State private var routineLapsed: [Reminder] = []
@@ -147,6 +148,7 @@ struct ContentView: View {
         .sheet(item: $autoClaudeURL) { SafariView(url: $0.url) }
         .sheet(item: $rescheduleResult) { SmartReschedulePreviewView(proposed: $0.changes).environmentObject(store) }
         .sheet(isPresented: $showTimetable) { TimetableView().environmentObject(store) }
+        .sheet(isPresented: $showBreakfast) { BreakfastView() }
         .sheet(isPresented: $showCompleted) { CompletedHistoryView().environmentObject(store) }
         .sheet(item: $rescheduleTarget) { r in RescheduleOptionsView(reminder: r).environmentObject(store) }
         .sheet(isPresented: $showBulkMove, onDismiss: {
@@ -190,6 +192,7 @@ struct ContentView: View {
             if router.pendingQuickAdd { router.pendingQuickAdd = false; showAdd = true }
             if router.pendingQuickCatch { router.pendingQuickCatch = false; showQuickCatch = true }
             await store.refresh()
+            Task { await BreakfastStore.shared.refresh() }   // Budget's breakfast list (never blocks the rest)
             store.purgeOldCompleted()      // clear reminders completed >3 weeks ago
             stuckCount = store.stuckCount()
             await sync.syncNow(); await notifier.reschedule()
@@ -212,6 +215,7 @@ struct ContentView: View {
                 // mid-edit store change can drop the title field's keyboard focus.
                 if showAdd || showQuickCatch || editingReminder != nil || showSettings { continue }
                 await store.refresh()
+                Task { await BreakfastStore.shared.refresh() }
                 stuckCount = store.stuckCount()
                 await notifier.clearStaleDelivered()   // clear alerts for reminders completed elsewhere
             }
@@ -265,6 +269,7 @@ struct ContentView: View {
                     LockShield.shared.hide()
                 }
                 if didLoad {
+                    Task { await BreakfastStore.shared.refresh() }
                     Task { await store.refresh(); store.purgeOldCompleted()
                            stuckCount = store.stuckCount()
                            await sync.syncNow(); await notifier.reschedule()
@@ -683,6 +688,9 @@ struct ContentView: View {
                 ReminderCardView(reminder: r) { editingReminder = r }.popIn(3 + i)
             }
         }
+
+        // Breakfast shopping list shared with Budget (BreakfastView.swift). Tap → the list.
+        BreakfastHomeCard { showBreakfast = true }.popIn(2)
 
         let od = store.pastDayOverdueCount()
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {

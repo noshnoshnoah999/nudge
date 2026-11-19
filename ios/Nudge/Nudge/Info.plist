@@ -16,6 +16,10 @@
 	<array>
 		<string>uk.flouty.Nudge.carryover</string>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>budget</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
