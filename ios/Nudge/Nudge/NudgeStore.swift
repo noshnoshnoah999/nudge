@@ -201,6 +201,10 @@ final class NudgeStore: ObservableObject {
     /// Set by pullAll when mergeRows re-dirtied rows the server held an older copy of.
     private var needsHealPush = false
 
+    /// True only while syncBreakfastReminders completes a Breakfast reminder whose items are
+    /// all bought/skipped — the ONLY way one may complete (see BreakfastReminders.swift).
+    var breakfastAutoCompleting = false
+
     /// Delta-pull every table and merge per item. Returns the HTTP status of the first
     /// failure so the caller can retry once after refreshing the token.
     ///
@@ -671,6 +675,13 @@ final class NudgeStore: ObservableObject {
     // MARK: - Mutations
     func toggleComplete(_ r: Reminder) {
         guard let i = reminders.firstIndex(where: { $0.id == r.id }) else { return }
+        // Breakfast buy reminders are never completed by hand — from any card, menu, Siri or
+        // notification. Items are ticked only in the shopping list; open it instead, with this
+        // reminder's items grouped at the top (Noah, 20 Nov 2026).
+        if reminders[i].isBreakfast, !(reminders[i].completed ?? false), !breakfastAutoCompleting {
+            AppRouter.shared.pendingBreakfast = r.id
+            return
+        }
         // A nightly routine never "completes" — ticking it means "did it tonight", so it
         // rolls forward in place (no spawned copies). Untick on a routine is a no-op.
         if (reminders[i].routine ?? false) && !(reminders[i].completed ?? false) {
@@ -686,8 +697,6 @@ final class NudgeStore: ObservableObject {
         reminders[i].snoozedUntil = nil
         reminders[i].updatedAt = now
         if nowComplete { clearNotifications(for: r.id) }   // drop any delivered/pending alert
-        // Breakfast buy reminder: tick / untick its units in Budget's shared list (this device only).
-        if reminders[i].breakfast != nil { applyBreakfastCompletion(at: i, nowComplete: nowComplete) }
         #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
         if nowComplete, #available(iOS 26.0, *) { NudgeAlarms.cancel(reminderId: r.id) }   // stop the urgent alarm
         #endif
@@ -706,7 +715,9 @@ final class NudgeStore: ObservableObject {
                     copy.completedAt = nil
                     copy.dueDate = next
                     copy.pinFrom = RecurrenceEngine.successorPinFrom(gapDays: copy.pinFromGapDays, nextDue: next)
-                    copy.breakfast?.ticked = nil   // next week's occurrence hasn't ticked anything
+                    copy.breakfast?.ticked = nil
+                    // Weekly "everything": next week takes its own fresh snapshot.
+                    if copy.breakfast?.mode == "all" { copy.breakfast?.items = nil }
                     // Identical on purpose: createdAt == updatedAt is how an untick recognises
                     // a successor nobody has touched yet (below).
                     copy.createdAt = now
@@ -951,6 +962,7 @@ final class NudgeStore: ObservableObject {
         }
         clearNotifications(for: r.id)          // clear the alert for the occurrence being skipped
         reminders[i].dueDate = next
+        if reminders[i].breakfast?.mode == "all" { reminders[i].breakfast?.items = nil }   // fresh weekly snapshot
         reminders[i].completed = false
         reminders[i].completedAt = nil
         reminders[i].snoozedUntil = nil
@@ -1845,10 +1857,12 @@ final class NudgeStore: ObservableObject {
             return prank($0) < prank($1)
         }
         var out: [ReminderSection] = []
-        if !overdue.isEmpty   { out.append(ReminderSection(id: "overdue",  title: "Overdue",  items: overdue.sorted(by: byDate))) }
-        if !todayItems.isEmpty { out.append(ReminderSection(id: "today",   title: "Today",    items: todayItems.sorted(by: byDate))) }
-        if !upcoming.isEmpty  { out.append(ReminderSection(id: "upcoming", title: "Upcoming", items: upcoming.sorted(by: byDateThenPriority))) }
-        if !nodate.isEmpty    { out.append(ReminderSection(id: "nodate",   title: "No Date",  items: nodate.sorted(by: byPriority))) }
+        // Breakfast buy reminders always first in their section (Noah, 20 Nov 2026).
+        let bf = Self.breakfastFirst
+        if !overdue.isEmpty   { out.append(ReminderSection(id: "overdue",  title: "Overdue",  items: bf(overdue.sorted(by: byDate)))) }
+        if !todayItems.isEmpty { out.append(ReminderSection(id: "today",   title: "Today",    items: bf(todayItems.sorted(by: byDate)))) }
+        if !upcoming.isEmpty  { out.append(ReminderSection(id: "upcoming", title: "Upcoming", items: bf(upcoming.sorted(by: byDateThenPriority)))) }
+        if !nodate.isEmpty    { out.append(ReminderSection(id: "nodate",   title: "No Date",  items: bf(nodate.sorted(by: byPriority)))) }
         return out
     }
 
@@ -1858,7 +1872,7 @@ final class NudgeStore: ObservableObject {
     func todayReminders() -> [Reminder] {
         let cal = Calendar.current
         let prank: (Reminder) -> Int = { $0.priorityOrNormal == "high" ? 0 : $0.priorityOrNormal == "low" ? 2 : 1 }
-        return open().filter {
+        return Self.breakfastFirst(open().filter {
             guard let d = parseDate($0.dueDate) else { return false }
             if let s = parseDate($0.snoozedUntil), s > Date() { return false }
             return cal.isDateInToday(d)
@@ -1866,7 +1880,7 @@ final class NudgeStore: ObservableObject {
             let da = parseDate($0.dueDate) ?? .distantFuture, db = parseDate($1.dueDate) ?? .distantFuture
             if da != db { return da < db }
             return prank($0) < prank($1)
-        }
+        })
     }
 
     /// Reminders for the Overdue page: due on a PREVIOUS calendar day. A reminder due
@@ -1876,7 +1890,7 @@ final class NudgeStore: ObservableObject {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let prank: (Reminder) -> Int = { $0.priorityOrNormal == "high" ? 0 : $0.priorityOrNormal == "low" ? 2 : 1 }
-        return open().filter {
+        return Self.breakfastFirst(open().filter {
             guard let d = parseDate($0.dueDate) else { return false }
             if let s = parseDate($0.snoozedUntil), s > Date() { return false }
             return cal.startOfDay(for: d) < today
@@ -1884,7 +1898,7 @@ final class NudgeStore: ObservableObject {
             let ra = prank($0), rb = prank($1)
             if ra != rb { return ra < rb }
             return (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture)
-        }
+        })
     }
     func pastDayOverdueCount() -> Int { pastDayOverdue().count }
 

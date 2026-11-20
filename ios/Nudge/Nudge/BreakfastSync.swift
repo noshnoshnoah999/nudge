@@ -192,27 +192,6 @@ final class BreakfastStore: ObservableObject {
             .sorted { ($0.sort, $0.unit, $0.id) < ($1.sort, $1.unit, $1.id) }
     }
 
-    /// Tick what a buy reminder covers: every open unit ("all"), or up to `count` open units of
-    /// each item, lowest unit numbers first. Returns the row ids it ticked (kept for undo).
-    func markBought(_ plan: BreakfastPlan, week monday: String) -> [String] {
-        let open = openRows(week: monday)
-        var ids: [String] = []
-        if plan.mode == "all" {
-            ids = open.map(\.id)
-        } else {
-            for it in plan.items ?? [] where it.count > 0 {
-                ids += open.filter { $0.item_id == it.itemId }.prefix(it.count).map(\.id)
-            }
-        }
-        for id in ids { setDone(id, true) }
-        return ids
-    }
-
-    /// Undo `markBought`: untick those rows if they are still ticked.
-    func unmarkBought(_ ids: [String]) {
-        for id in ids { setDone(id, false) }
-    }
-
     /// Send queued ticks now (used by the notification Bought button, which may run with the
     /// app in the background and be suspended soon after).
     func flushNow() async { await flushPending() }

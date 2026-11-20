@@ -15,6 +15,7 @@ final class AppRouter: ObservableObject {
     @Published var pendingReschedule: String? = nil      // reminder id to reschedule (from a notification)
     @Published var pendingShopping: Bool = false         // open the Shopping list (pay-day notification tap)
     @Published var pendingOpenReminder: String? = nil    // reminder id to open (notification tap, warm path)
+    @Published var pendingBreakfast: String? = nil       // open the Breakfast list; a reminder id groups its items on top ("" = just open)
     private init() {}
     func requestQuickAdd() { pendingQuickAdd = true }
     func requestQuickCatch() { pendingQuickCatch = true }

@@ -63,12 +63,27 @@ struct BreakfastView: View {
     @State private var openBought: Set<String> = []   // weeks whose Bought list is open
     @State private var armedId: String?               // row waiting for its confirming 2nd tap
     @State private var armTimer: Task<Void, Never>?
+    @State private var focus: String?            // reminder whose items are grouped on top
+    @State private var rescheduling: Reminder?   // reminder being rescheduled (long-press)
+    @State private var deletingWeekly: Reminder? // weekly reminder: this week or stop weekly?
+
+    /// `focusId`: opened from a Breakfast reminder (notification, widget, card) — its items
+    /// are grouped at the top so Noah sees what he planned to buy.
+    init(focusId: String? = nil) { _focus = State(initialValue: focusId) }
+
+    /// The focused reminder, while it's still open.
+    private var focused: Reminder? {
+        guard let f = focus else { return nil }
+        return nudge.reminders.first { $0.id == f && !$0.isCompleted && $0.isBreakfast }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     statusNote
+                    BreakfastOverdueBanners { focus = $0 }
+                    if let f = focused { focusSection(f) }
                     scheduledSection
                     let weeks = store.weeks
                     if weeks.isEmpty {
@@ -90,7 +105,15 @@ struct BreakfastView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .sheet(item: $planner) { seed in
-                BreakfastPlannerView(preselectItem: seed.itemId).environmentObject(nudge)
+                BreakfastPlannerView(preselectItem: seed.itemId, onShowExisting: { id in focus = id }).environmentObject(nudge)
+            }
+            .sheet(item: $rescheduling) { r in RescheduleOptionsView(reminder: r).environmentObject(nudge) }
+            .confirmationDialog("Delete weekly reminder?",
+                                isPresented: Binding(get: { deletingWeekly != nil }, set: { if !$0 { deletingWeekly = nil } }),
+                                titleVisibility: .visible, presenting: deletingWeekly) { r in
+                Button("Delete this week only", role: .destructive) { _ = nudge.deleteThisOccurrence(r) }
+                Button("Stop weekly (delete all)", role: .destructive) { nudge.deleteReminder(r) }
+                Button("Cancel", role: .cancel) {}
             }
             .task { await store.refresh(); nudge.syncBreakfastReminders() }
             .alert("Skip in Budget", isPresented: Binding(get: { skipWeek != nil }, set: { if !$0 { skipWeek = nil } })) {
@@ -134,7 +157,8 @@ struct BreakfastView: View {
     @ViewBuilder private func weekSection(_ w: BreakfastWeek) -> some View {
         let isThis = w.monday <= BreakfastStore.dayKey()
         let expanded = isThis || showNext
-        let open = w.rows.filter { !$0.isDone }
+        let grouped = Set(focused.map { NudgeStore.breakfastRows(for: $0).map(\.id) } ?? [])
+        let open = w.rows.filter { !$0.isDone && !grouped.contains($0.id) }
         let bought = Self.boughtNewestFirst(w.rows.filter(\.isDone))
         VStack(alignment: .leading, spacing: 10) {
             Button {
@@ -244,28 +268,70 @@ struct BreakfastView: View {
     /// Open Breakfast buy reminders, soonest first — so Noah can see what's set.
     @ViewBuilder private var scheduledSection: some View {
         let items = nudge.reminders
-            .filter { $0.breakfast != nil && !$0.isCompleted }
+            .filter { $0.isBreakfast && !$0.isCompleted }
             .sorted { (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture) }
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("REMINDERS").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.accent)
                 ForEach(items) { r in
-                    HStack(spacing: 10) {
-                        Image(systemName: r.recurrence != nil ? "bell.and.waves.left.and.right" : "bell")
-                            .font(.caption).foregroundStyle(Theme.accent)
-                        Text(r.title).font(.subheadline).foregroundStyle(Theme.textMain).lineLimit(2)
-                        Spacer(minLength: 6)
-                        if let d = parseDate(r.dueDate) {
-                            Text(d.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
-                                .font(.caption.weight(.semibold)).foregroundStyle(Theme.textMeta)
+                    Button { withAnimation(Theme.spring) { focus = r.id } } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: r.recurrence != nil ? "bell.and.waves.left.and.right" : "bell")
+                                .font(.caption).foregroundStyle(Theme.accent)
+                            Text(r.title).font(.subheadline).foregroundStyle(Theme.textMain).lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 6)
+                            Text(NudgeStore.breakfastWhen(r)).font(.caption.weight(.semibold)).foregroundStyle(Theme.textMeta)
                         }
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 4)
+                    .buttonStyle(.plain)
+                    .contextMenu { reminderMenu(r) }
                 }
-                Text("Edit or delete them in Lists → Breakfast. Long-press an item to remind just that one.")
+                Label("Hold a reminder to reschedule or delete it. Tap it to see its items on top.",
+                      systemImage: "hand.tap")
                     .font(.caption2).foregroundStyle(Theme.textMeta)
             }
         }
+    }
+
+    /// Long-press menu for a Breakfast reminder: no Complete, no Edit — only Reschedule / Delete.
+    @ViewBuilder private func reminderMenu(_ r: Reminder) -> some View {
+        Button { rescheduling = r } label: { Label("Reschedule…", systemImage: "calendar.badge.clock") }
+        if r.recurrence != nil {
+            Button(role: .destructive) { deletingWeekly = r } label: { Label("Delete…", systemImage: "trash") }
+        } else {
+            Button(role: .destructive) { nudge.deleteReminder(r) } label: { Label("Delete", systemImage: "trash") }
+        }
+    }
+
+    /// "Reminder for Sat 21 Nov, 10:00" — the items that reminder covers, still to buy.
+    @ViewBuilder private func focusSection(_ r: Reminder) -> some View {
+        let rows = NudgeStore.breakfastRows(for: r)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "bell.fill").font(.caption2).foregroundStyle(Theme.accent)
+                Text("REMINDER FOR \(NudgeStore.breakfastWhen(r).uppercased())")
+                    .font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.accent)
+                Spacer()
+                Button { withAnimation(Theme.spring) { focus = nil } } label: {
+                    Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(Theme.textMeta)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Stop grouping")
+            }
+            if rows.isEmpty {
+                Text(store.hasWeek(NudgeStore.breakfastWeek(of: r.dueDate))
+                     ? "Nothing left — this reminder will clear itself."
+                     : "That week's list isn't loaded yet. Open Budget once that week.")
+                    .font(.subheadline).foregroundStyle(Theme.textMeta)
+            } else {
+                ForEach(rows) { row($0) }
+            }
+        }
+        .padding(12)
+        .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.radius(16), style: .continuous))
     }
 
     /// Two taps to tick or untick (Noah, 20 Nov 2026): the first tap arms the circle — it beats
@@ -276,6 +342,8 @@ struct BreakfastView: View {
             armedId = nil
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             withAnimation(Theme.spring) { store.toggle(r) }
+            // Reminder titles drop to what's left straight away (not at the next refresh).
+            nudge.syncBreakfastReminders()
         } else {
             armTimer?.cancel()
             armedId = r.id
@@ -349,6 +417,63 @@ struct BreakfastView: View {
             groups[r.shop, default: []].append(r)
         }
         return order.map { ShopGroup(shop: $0, rows: groups[$0] ?? []) }
+    }
+}
+
+// MARK: - Overdue banner (Home + shopping list)
+
+/// One banner per Breakfast reminder whose day has passed (after midnight) and still isn't
+/// done: Reschedule, or Delete (weekly: Delete this week / Stop weekly). Deleting only removes
+/// the reminder — the items stay on the shopping list.
+struct BreakfastOverdueBanners: View {
+    @EnvironmentObject var nudge: NudgeStore
+    var onOpen: (String) -> Void = { _ in }
+    @State private var rescheduling: Reminder?
+    @State private var deletingWeekly: Reminder?
+
+    var body: some View {
+        let missed = nudge.breakfastOverdue()
+        if !missed.isEmpty {
+            VStack(alignment: .leading, spacing: 10) { ForEach(missed) { r in banner(r) } }
+            .sheet(item: $rescheduling) { r in RescheduleOptionsView(reminder: r).environmentObject(nudge) }
+            .confirmationDialog("Delete weekly reminder?",
+                                isPresented: Binding(get: { deletingWeekly != nil }, set: { if !$0 { deletingWeekly = nil } }),
+                                titleVisibility: .visible, presenting: deletingWeekly) { r in
+                Button("Delete this week only", role: .destructive) { _ = nudge.deleteThisOccurrence(r) }
+                Button("Stop weekly (delete all)", role: .destructive) { nudge.deleteReminder(r) }
+                Button("Cancel", role: .cancel) {}
+            }
+        }
+    }
+
+    private func banner(_ r: Reminder) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "cart.badge.questionmark").foregroundStyle(Theme.coral)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Breakfast reminder missed").font(.subheadline.weight(.bold)).foregroundStyle(Theme.textMain)
+                    Text("\(r.title) · was \(NudgeStore.breakfastWhen(r))")
+                        .font(.caption).foregroundStyle(Theme.textMeta)
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { onOpen(r.id) }
+            HStack(spacing: 10) {
+                Button { rescheduling = r } label: {
+                    Label("Reschedule", systemImage: "calendar.badge.clock").font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent).tint(Theme.accent)
+                Button(role: .destructive) {
+                    if r.recurrence != nil { deletingWeekly = r } else { nudge.deleteReminder(r) }
+                } label: {
+                    Label("Delete", systemImage: "trash").font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(14)
+        .background(Theme.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
     }
 }
 

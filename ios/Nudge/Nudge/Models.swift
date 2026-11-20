@@ -172,9 +172,9 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
     // whose folder no longer exists is simply ignored. nil/empty = not in any folder.
     var folderIds: [String]? = nil
     // Breakfast buy reminder (2026-11-20): what to buy from the Breakfast list shared with Budget.
-    // Its week is the Mon–Sun week containing `dueDate`. Completing the reminder (anywhere in
-    // the app, or its notification's Bought button) ticks those units; unticking it unticks
-    // exactly the units it ticked (`breakfast.ticked`). See BreakfastReminders.swift.
+    // Its week is the Mon–Sun week containing `dueDate`. It is NEVER completed by hand — it
+    // completes itself once everything it covers is ticked in the shopping list.
+    // See BreakfastReminders.swift.
     var breakfast: BreakfastPlan? = nil
 
     var isCompleted: Bool { completed ?? false }
@@ -208,6 +208,7 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
     /// off-limits, no matter what the AI suggests. Checked both when building the AI's input
     /// (so it never even sees these) and again at the apply step (belt-and-braces).
     var isProtectedFromAI: Bool {
+        if breakfast != nil { return true }   // Breakfast reminders: Noah reschedules them himself (banner)
         if routine == true { return true }
         if let e = escalation, !e.isEmpty { return true }
         if let r = recurrence, r.freq != "none" { return true }
@@ -219,7 +220,7 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
 struct BreakfastPlan: Codable, Hashable {
     var mode: String                     // "all" = everything still unbought that week | "items"
     var items: [BreakfastPlanItem]? = nil // mode "items": which items and how many units of each
-    var ticked: [String]? = nil          // breakfast_list row ids this reminder ticked (for undo)
+    var ticked: [String]? = nil          // unused since 20 Nov 2026 (reminders no longer tick); kept for old data
 }
 
 struct BreakfastPlanItem: Codable, Hashable {

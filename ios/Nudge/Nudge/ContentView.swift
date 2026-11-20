@@ -44,6 +44,7 @@ struct ContentView: View {
     @State private var rescheduleTarget: Reminder?
     @State private var showTimetable = false
     @State private var showBreakfast = false   // Breakfast list shared with Budget (2026-11-19)
+    @State private var breakfastFocus: String?   // Breakfast reminder whose items go on top of the list
     @State private var smartCollection: SmartCollection?
     @State private var showRoutineCheckin = false
     @State private var routineLapsed: [Reminder] = []
@@ -148,7 +149,7 @@ struct ContentView: View {
         .sheet(item: $autoClaudeURL) { SafariView(url: $0.url) }
         .sheet(item: $rescheduleResult) { SmartReschedulePreviewView(proposed: $0.changes).environmentObject(store) }
         .sheet(isPresented: $showTimetable) { TimetableView().environmentObject(store) }
-        .sheet(isPresented: $showBreakfast) { BreakfastView().environmentObject(store) }
+        .sheet(isPresented: $showBreakfast) { BreakfastView(focusId: breakfastFocus).environmentObject(store) }
         .sheet(isPresented: $showCompleted) { CompletedHistoryView().environmentObject(store) }
         .sheet(item: $rescheduleTarget) { r in RescheduleOptionsView(reminder: r).environmentObject(store) }
         .sheet(isPresented: $showBulkMove, onDismiss: {
@@ -311,6 +312,9 @@ struct ContentView: View {
         .onChange(of: router.pendingQuickAdd) { _, v in if v { router.pendingQuickAdd = false; showAdd = true } }
         .onChange(of: router.pendingQuickCatch) { _, v in if v { router.pendingQuickCatch = false; showQuickCatch = true } }
         .onChange(of: router.pendingShopping) { _, v in if v { router.pendingShopping = false; openShopping() } }
+        .onChange(of: router.pendingBreakfast) { _, id in
+            if let id { router.pendingBreakfast = nil; openBreakfast(id) }
+        }
         .onChange(of: router.pendingOpenReminder) { _, id in
             guard let id, let r = store.reminders.first(where: { $0.id == id }) else { return }
             router.pendingOpenReminder = nil
@@ -642,6 +646,8 @@ struct ContentView: View {
         // Tsuji plan banner (TsujiViews.swift): only appears when a Tsuji item is due within
         // 7 days, overdue, or missing from the Tsuji Plan calendar.
         TsujiBanner()
+        // Breakfast reminder past midnight and not done → Reschedule / Delete (Noah, 20 Nov 2026).
+        BreakfastOverdueBanners { openBreakfast($0) }
         // The hero is a filled card wrapping a big number and a progress ring — the single
         // most decorative thing on Home. Minimal drops it entirely; the header above already
         // says the date and the status line already says how many are left, so no information
@@ -651,7 +657,7 @@ struct ContentView: View {
 
         // Breakfast shopping list shared with Budget (BreakfastView.swift). Tap → the list.
         // Sits under Next up / Still due and above Pay day + Pinned (Noah, 19 Nov 2026).
-        BreakfastHomeCard { showBreakfast = true }.popIn(1)
+        BreakfastHomeCard { breakfastFocus = nil; showBreakfast = true }.popIn(1)
 
         // Pay day: surface the buy list right on Home (tickable), capped so it stays tidy.
         if Payday.isToday() {
@@ -762,6 +768,7 @@ struct ContentView: View {
                 let rid = raw.contains("~") ? String(raw.split(separator: "~")[0]) : raw
                 if let r = store.reminders.first(where: { $0.id == rid }) {
                     if tap.action == NotificationManager.rescheduleAction { rescheduleTarget = r }
+                    else if r.isBreakfast { openBreakfast(r.id) }   // Breakfast → the shopping list
                     else if let p = ClaudeLink.prompt(from: r.title) { router.pendingClaudePrompt = p }
                     else { editingReminder = r }
                 }
@@ -776,6 +783,15 @@ struct ContentView: View {
         if let id = router.pendingReschedule, let r = store.reminders.first(where: { $0.id == id }) {
             router.pendingReschedule = nil; rescheduleTarget = r
         }
+        if let id = router.pendingBreakfast { router.pendingBreakfast = nil; openBreakfast(id) }
+    }
+
+    /// Open the Breakfast shopping list; with a reminder id, that reminder's items go on top.
+    /// Closes any other sheet first (SwiftUI can't stack a second one on top).
+    private func openBreakfast(_ id: String) {
+        editingReminder = nil; showAdd = false; showSettings = false; listFilter = nil; smartCollection = nil
+        breakfastFocus = id.isEmpty ? nil : id
+        showBreakfast = true
     }
 
     /// The Home "next up" card. Prefers the soonest still-open reminder due TODAY that
@@ -809,14 +825,15 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onTapGesture { editingReminder = r }
+            .onTapGesture { if r.isBreakfast { openBreakfast(r.id) } else { editingReminder = r } }
 
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 withAnimation(Theme.spring) { store.toggleComplete(r) }
             } label: {
-                Image(systemName: "circle")
-                    .font(.system(size: 28, weight: .regular))
+                // Breakfast reminders have no tick — the cart opens the shopping list.
+                Image(systemName: r.isBreakfast ? "cart" : "circle")
+                    .font(.system(size: r.isBreakfast ? 22 : 28, weight: .regular))
                     .foregroundStyle(Theme.accent)
             }
             .buttonStyle(PressableStyle(scale: 0.85))
@@ -1061,6 +1078,7 @@ struct ContentView: View {
             return prank($0) < prank($1)
         }
         let tomorrowIds = Set(tomorrowItems.map { $0.id })
+        let tomorrowSorted = NudgeStore.breakfastFirst(tomorrowItems)
         let defaults = store.sections().filter { $0.id == "upcoming" || $0.id == "nodate" }
             .map { NudgeStore.ReminderSection(id: $0.id, title: $0.title,
                                               items: $0.items.filter { !chosenIds.contains($0.listIdOrDefault) && !tomorrowIds.contains($0.id) }) }
@@ -1073,13 +1091,13 @@ struct ContentView: View {
                 if tomorrowIds.contains(r.id) { return false }                                // tomorrow → its own section
                 return true
             }.sorted(by: byDate)
-            return items.isEmpty ? nil : NudgeStore.ReminderSection(id: "list-\(l.id)", title: l.name, items: items)
+            return items.isEmpty ? nil : NudgeStore.ReminderSection(id: "list-\(l.id)", title: l.name, items: NudgeStore.breakfastFirst(items))
         }
         if pinned.isEmpty && defaults.isEmpty && tomorrowItems.isEmpty {
             emptyCard("calendar", "Nothing upcoming", "New reminders will show here.")
         }
         if !tomorrowItems.isEmpty {
-            sectionView(NudgeStore.ReminderSection(id: "tomorrow", title: "Tomorrow", items: tomorrowItems))
+            sectionView(NudgeStore.ReminderSection(id: "tomorrow", title: "Tomorrow", items: tomorrowSorted))
         }
         ForEach(pinned) { sectionView($0) }
         ForEach(defaults) { sectionView($0) }

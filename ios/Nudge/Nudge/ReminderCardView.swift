@@ -46,12 +46,19 @@ struct ReminderCardView: View {
             // don't make sense mid-bulk-selection and would be an easy way to fat-finger
             // a destructive action while trying to build a selection.
             if !selectMode {
-                Button { store.toggleComplete(reminder) } label: { Label("Complete", systemImage: "checkmark.circle") }
+                if reminder.isBreakfast {
+                    // No Complete / Edit: only ticking items in the shopping list finishes it.
+                    Button { AppRouter.shared.pendingBreakfast = reminder.id } label: { Label("Open shopping list", systemImage: "cart") }
+                } else {
+                    Button { store.toggleComplete(reminder) } label: { Label("Complete", systemImage: "checkmark.circle") }
+                }
                 Button { store.snooze(reminder, minutes: 30) } label: { Label("Snooze 30 min", systemImage: "moon.zzz") }
                 Button { store.snooze(reminder, minutes: 60) } label: { Label("Snooze 1 hour", systemImage: "moon.zzz") }
                 Button { showReschedule = true } label: { Label("Reschedule…", systemImage: "calendar.badge.clock") }
                 Button { showFolders = true } label: { Label("Folders…", systemImage: "folder") }
-                Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
+                if !reminder.isBreakfast {
+                    Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
+                }
                 Button(role: .destructive) {
                     if reminder.recurrence != nil {
                         showRecurDeleteDialog = true
@@ -106,7 +113,7 @@ struct ReminderCardView: View {
             } label: {
                 Image(systemName: selectMode
                       ? (isSelected ? "checkmark.circle.fill" : "circle")
-                      : (done ? "checkmark.circle.fill" : "circle"))
+                      : (r.isBreakfast && !done ? "cart" : (done ? "checkmark.circle.fill" : "circle")))
                     .font(.title3)
                     .foregroundStyle(selectMode
                                      ? (isSelected ? Theme.accent : Theme.textMeta.opacity(0.5))
@@ -124,6 +131,11 @@ struct ReminderCardView: View {
                     .strikethrough(done, color: Theme.textMeta)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if r.isBreakfast && !done {
+                    // Noah forgets the long-press; say it on the card itself (20 Nov 2026).
+                    Text("Tap to open the list · Hold to reschedule or delete")
+                        .font(.caption2.weight(.medium)).foregroundStyle(Theme.accent)
+                }
 
                 // "Personal  20:00" — list on the left, time after it, red when overdue.
                 // Built as two Texts rather than one string so only the time takes the colour.
@@ -153,7 +165,7 @@ struct ReminderCardView: View {
         }
         .padding(.vertical, Theme.rowVerticalPadding)
         .contentShape(Rectangle())
-        .onTapGesture { if selectMode { onToggleSelect() } else { onEdit() } }
+        .onTapGesture { if selectMode { onToggleSelect() } else { openOrEdit() } }
         .cardSurface(radius: 0,
                      showsDivider: true,
                      dividerInset: Theme.minimalRowTextInset,
@@ -229,8 +241,8 @@ struct ReminderCardView: View {
                 Button {
                     completeWithFlair(r)
                 } label: {
-                    Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 23, weight: .regular))
+                    Image(systemName: r.isBreakfast && !done ? "cart" : (done ? "checkmark.circle.fill" : "circle"))
+                        .font(.system(size: r.isBreakfast && !done ? 19 : 23, weight: .regular))
                         .foregroundStyle(done ? Theme.sage : (overdue ? Theme.coral : Theme.textMeta.opacity(0.5)))
                         .symbolEffect(.bounce, value: Theme.minimal ? false : done)
                 }
@@ -251,6 +263,11 @@ struct ReminderCardView: View {
                         .lineSpacing(1.5)
                         .lineLimit(compact ? 2 : nil)
                         .fixedSize(horizontal: false, vertical: compact ? false : true)
+                }
+                if r.isBreakfast && !done {
+                    // Noah forgets the long-press; say it on the card itself (20 Nov 2026).
+                    Text("Tap to open the list · Hold to reschedule or delete")
+                        .font(.caption2.weight(.medium)).foregroundStyle(Theme.accent)
                 }
 
                 // Undated reminders get a quiet, informational label so undated items are
@@ -321,7 +338,7 @@ struct ReminderCardView: View {
                 if let p = claudeP { askClaudeButton(p).padding(.top, 2) }
             }
             .contentShape(Rectangle())
-            .onTapGesture { if selectMode { onToggleSelect() } else { onEdit() } }
+            .onTapGesture { if selectMode { onToggleSelect() } else { openOrEdit() } }
 
             Spacer(minLength: 0)
         }
@@ -353,7 +370,16 @@ struct ReminderCardView: View {
     /// Trace the gold border, slide the card off to the left, then commit the completion so the
     /// list springs to bunch up. Un-ticking and nightly routines skip the slide (routines roll
     /// forward in place rather than leaving the list).
+    /// Tap on the card: a Breakfast reminder opens the shopping list (its items on top);
+    /// anything else opens the editor as before.
+    private func openOrEdit() {
+        if reminder.isBreakfast && !reminder.isCompleted { AppRouter.shared.pendingBreakfast = reminder.id }
+        else { onEdit() }
+    }
+
     private func completeWithFlair(_ r: Reminder) {
+        // Breakfast reminders have no tick: the cart opens the shopping list instead.
+        if r.isBreakfast && !r.isCompleted { AppRouter.shared.pendingBreakfast = r.id; return }
         // Double-tap guard (2026-10-18). The flair path commits the completion 0.76 s after the
         // tap, and nothing stopped a second tap inside that window: two delayed toggles then
         // completed AND un-completed the reminder. A routine's tick is immediate, so a double

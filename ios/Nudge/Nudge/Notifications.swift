@@ -29,8 +29,10 @@ final class NotificationManager: NSObject, ObservableObject {
     nonisolated static let categoryId = "NUDGE_REMINDER"
     /// Mac-only twin of `categoryId` for long titles: same buttons plus "See more".
     nonisolated static let longCategoryId = "NUDGE_REMINDER_LONG"
-    /// Breakfast buy reminders: "✓ Bought" (same COMPLETE action → ticks the items) + snooze/reschedule.
+    /// Breakfast buy reminders: NO complete button (items are only ticked in the shopping list).
+    /// "Open list" opens the Breakfast list with this reminder's items on top; plus snooze/reschedule.
     nonisolated static let breakfastCategoryId = "NUDGE_BREAKFAST"
+    static let openBreakfastAction = "OPEN_BREAKFAST"
     static let completeAction = "COMPLETE"
     static let snoozeAction = "SNOOZE"
     static let rescheduleAction = "RESCHEDULE"
@@ -68,9 +70,9 @@ final class NotificationManager: NSObject, ObservableObject {
         let longCat = UNNotificationCategory(identifier: Self.longCategoryId,
                                              actions: [complete, snooze, rescheduleBtn, seeMore],
                                              intentIdentifiers: [], options: [])
-        let bought = UNNotificationAction(identifier: Self.completeAction, title: "✓ Bought", options: [])
+        let openList = UNNotificationAction(identifier: Self.openBreakfastAction, title: "Open list", options: [.foreground])
         let breakfastCat = UNNotificationCategory(identifier: Self.breakfastCategoryId,
-                                                  actions: [bought, snooze, rescheduleBtn],
+                                                  actions: [openList, snooze, rescheduleBtn],
                                                   intentIdentifiers: [], options: [])
         UNUserNotificationCenter.current().setNotificationCategories([cat, longCat, breakfastCat])
     }
@@ -498,18 +500,19 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             // Complete, never toggle: if it was already completed elsewhere (the other device,
             // the widget) a toggle here would UN-complete it from a notification button.
             guard !store.reminders[i].isCompleted else { return }
-            let isBreakfast = store.reminders[i].breakfast != nil
-            // Breakfast "Bought": tick against the latest list, and send the ticks before
-            // iOS suspends the app again.
-            if isBreakfast { await BreakfastStore.shared.refresh() }
-            guard let j = store.reminders.firstIndex(where: { $0.id == rid }), !store.reminders[j].isCompleted else { return }
-            store.toggleComplete(store.reminders[j]); await store.persistNow()
-            if isBreakfast { await BreakfastStore.shared.flushNow() }
+            // A Breakfast reminder is never completed from a notification (an older pending
+            // one may still carry the old button) — open the shopping list instead.
+            if store.reminders[i].isBreakfast { onMain { AppRouter.shared.pendingBreakfast = rid }; return }
+            store.toggleComplete(store.reminders[i]); await store.persistNow()
         case Self.snoozeAction:
             store.snooze(store.reminders[i], minutes: 60); await store.persistNow()
         case Self.rescheduleAction:
             onMain { AppRouter.shared.pendingReschedule = rid }
+        case Self.openBreakfastAction:
+            onMain { AppRouter.shared.pendingBreakfast = rid }
         default:
+            // Tapping a Breakfast reminder's notification opens the shopping list too.
+            if store.reminders[i].isBreakfast { onMain { AppRouter.shared.pendingBreakfast = rid }; return }
             // Open the specific reminder the user tapped (Claude reminders start their chat).
             if let p = ClaudeLink.prompt(from: store.reminders[i].title) {
                 onMain { AppRouter.shared.pendingClaudePrompt = p }

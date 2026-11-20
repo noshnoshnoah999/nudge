@@ -15,8 +15,13 @@ struct BreakfastPlannerView: View {
     @State private var counts: [String: Int]
     @State private var due: Date
     @State private var weekly = false
+    @State private var reviewing = false          // summary step before saving (Noah, 20 Nov 2026)
+    @State private var duplicate: Reminder?       // exact copy already exists → blocked
+    /// Called with an existing reminder's id when Noah taps "Show it" on the duplicate alert.
+    var onShowExisting: (String) -> Void = { _ in }
 
-    init(preselectItem: String?) {
+    init(preselectItem: String?, onShowExisting: @escaping (String) -> Void = { _ in }) {
+        self.onShowExisting = onShowExisting
         _everything = State(initialValue: preselectItem == nil)
         _counts = State(initialValue: preselectItem.map { [$0: 1] } ?? [:])
         // Default: the next whole hour.
@@ -70,6 +75,95 @@ struct BreakfastPlannerView: View {
 
     var body: some View {
         NavigationStack {
+            Group {
+                if reviewing { summary } else { editor }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle(reviewing ? "Check before saving" : "Remind me to buy")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if reviewing { Button("Back") { reviewing = false } }
+                    else { Button("Cancel") { dismiss() } }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if reviewing {
+                        Button("Confirm") { confirm() }.fontWeight(.bold)
+                    } else {
+                        Button("Review") { reviewing = true }.disabled(!canSave)
+                    }
+                }
+            }
+            .alert("You already have this reminder",
+                   isPresented: Binding(get: { duplicate != nil }, set: { if !$0 { duplicate = nil } }),
+                   presenting: duplicate) { d in
+                Button("Show it") { onShowExisting(d.id); dismiss() }
+                Button("OK", role: .cancel) {}
+            } message: { d in
+                Text("\(d.title) · \(NudgeStore.breakfastWhen(d)). Nothing was saved.")
+            }
+            // Keep counts inside what's possible when the week or repeat changes.
+            .onChange(of: due) { _, _ in clamp() }
+            .onChange(of: weekly) { _, _ in
+                if !dateRange.contains(due) { due = min(max(due, dateRange.lowerBound), dateRange.upperBound) }
+                clamp()
+            }
+        }
+        .tint(Theme.controlTint)
+        .presentationBackground(Theme.bg)
+    }
+
+    /// Save, unless an exact copy already exists for that week.
+    private func confirm() {
+        if let d = nudge.breakfastDuplicate(plan, due: due) { duplicate = d; return }
+        nudge.addBreakfastReminder(plan: plan, due: due, weekly: weekly)
+        dismiss()
+    }
+
+    /// The summary shown before saving: exactly what, when, how often, and the notification.
+    private var summary: some View {
+        let shown: [BreakfastPlanItem] = everything ? (NudgeStore.breakfastSnapshot(week: week) ?? []) : (plan.items ?? [])
+        let overlaps = nudge.breakfastOverlaps(plan, due: due)
+        let t = NudgeStore.breakfastText(plan, week: week)
+        return Form {
+            Section(everything ? "Everything unbought right now" : "Items") {
+                if shown.isEmpty {
+                    Text(everything ? "Nothing unbought that week yet." : "No items picked.")
+                        .foregroundStyle(Theme.textMeta)
+                }
+                ForEach(shown, id: \.itemId) { it in
+                    HStack {
+                        Text(NudgeStore.shortName(it.name)).foregroundStyle(Theme.textMain)
+                        Spacer()
+                        Text("×\(it.count)").font(.headline.monospacedDigit()).foregroundStyle(Theme.accent)
+                    }
+                }
+            }
+            Section("When") {
+                LabeledContent("Date & time", value: due.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))
+                LabeledContent("Repeat", value: weekly ? "Every week" : "Once")
+            }
+            Section("Notification") {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(t.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textMain)
+                    if let n = t.notes { Text(n).font(.caption).foregroundStyle(Theme.textMeta) }
+                }
+            }
+            if !overlaps.isEmpty {
+                Section {
+                    ForEach(overlaps) { o in
+                        Label("\(o.title) · \(NudgeStore.breakfastWhen(o))", systemImage: "exclamationmark.triangle")
+                            .font(.subheadline).foregroundStyle(Theme.coral)
+                    }
+                } header: { Text("Heads up") } footer: {
+                    Text("These reminders that week already cover some of the same items. You can still save.")
+                }
+            }
+        }
+    }
+
+    private var editor: some View {
             Form {
                 Section("What to buy") {
                     Picker("What", selection: $everything) {
@@ -126,29 +220,6 @@ struct BreakfastPlannerView: View {
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bg.ignoresSafeArea())
-            .navigationTitle("Remind me to buy")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        nudge.addBreakfastReminder(plan: plan, due: due, weekly: weekly)
-                        dismiss()
-                    }
-                    .disabled(!canSave)
-                }
-            }
-            // Keep counts inside what's possible when the week or repeat changes.
-            .onChange(of: due) { _, _ in clamp() }
-            .onChange(of: weekly) { _, _ in
-                if !dateRange.contains(due) { due = min(max(due, dateRange.lowerBound), dateRange.upperBound) }
-                clamp()
-            }
-        }
-        .tint(Theme.controlTint)
-        .presentationBackground(Theme.bg)
     }
 
     private func clamp() {
