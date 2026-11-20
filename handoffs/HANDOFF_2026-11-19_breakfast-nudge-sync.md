@@ -2,8 +2,9 @@
 
 For: **Nudge's Claude** (and the Budget app's Claude, for the Budget half).
 Owner: Noah. Written in the Budget project from the Budget code at commit 1557f2a.
-**Status:** the Budget half (sections 5, 6 "Budget side", 7 link) is built — see section 11.
-The Nudge half is not built yet.
+**Status (2026-11-20): DONE on both sides.** Budget half built and pushed 2026-11-19
+(main 72c6a20, table verified: 30 rows). Nudge half built, pushed, and confirmed working by
+Noah on iPhone + Mac on 2026-11-20. See section 12 for the contract both apps now rely on.
 
 > **Security first. Read before writing any code.**
 > - This document deliberately contains **no keys, user keys or URLs with secrets**. Copy them
@@ -334,3 +335,31 @@ Next week · 23–29 Nov  ›   (collapsed)
 - Code: `ios/Budget/Budget/BreakfastListSync.swift`; logic + row building in
   `ios/Budget/Shared/Finance.swift` ("Breakfast ⇄ Nudge shared list"); tests
   `BreakfastNudgeSyncTests` (5).
+
+## 12. Contract between Budget and Nudge (2026-11-20) — read before changing anything here
+Both apps are live on this. **Do not change any of the following without telling Noah, so
+he can tell Nudge's Claude first:**
+- **Table `breakfast_list`**: its columns and their types (section 5).
+- **Status values**: exactly `'open'`, `'done'`, `'skipped'`.
+- **Row id format**: `"<Monday>|<item_id>|<unit>"` (unit 0 = item with no units).
+- **Budget's Supabase URL or publishable key.** Nudge keeps its **own copy** in a
+  gitignored `Secrets.swift`. If either ever changes (e.g. the key is rotated), tell Noah so
+  Nudge gets updated, or Nudge's Breakfast list silently stops syncing.
+
+What Nudge does (confirmed by Nudge's Claude, 2026-11-20):
+- It only **PATCHes** `status` (open ↔ done), `done_on`, `changed_by = 'nudge'` and
+  `updated_at`, guarded by `status=neq.skipped` and `updated_at=lt.<its stamp>`. Its stamp
+  is always newer than the row's stamp it saw.
+- It **never** creates, deletes or skips rows, and never reads `pay_month` or `finance_data`.
+- It shows every week whose Sunday is today or later. In practice that's the two weeks
+  Budget publishes (this week and next).
+- There is **no Nudge widget** for Breakfast (Noah's choice).
+
+What that means for Budget's side:
+- Budget may freely add, update or delete rows. Nudge just redraws from the table.
+- Budget must keep publishing `skipped` for skipped items/units (Nudge's guard relies on it),
+  and keep stamps in the fixed-width UTC format (`.SSS` + `Z`). Nudge's `lt.` guard compares
+  them as text.
+- Budget code that carries this contract: `Calc.BreakfastListRow` and the
+  "Breakfast ⇄ Nudge shared list" section in `ios/Budget/Shared/Finance.swift`, and
+  `ios/Budget/Budget/BreakfastListSync.swift`.
