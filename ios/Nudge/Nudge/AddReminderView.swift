@@ -179,6 +179,8 @@ struct AddReminderView: View {
 
     var body: some View {
         NavigationStack {
+            // Reader lets Notes keep its growing box above the keyboard (see .onChange(of: notes) below).
+            ScrollViewReader { notesScroll in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     // Title — plain (single-line) TextField: a vertical-axis TextField
@@ -405,6 +407,7 @@ struct AddReminderView: View {
                         TextField("Add notes…", text: $notes, axis: .vertical)
                             .lineLimit(2...6).foregroundStyle(Theme.textMain).padding(.vertical, 10)
                             .focused($notesFocused)
+                            .id("notesField")
                             .simultaneousGesture(TapGesture().onEnded { notesFocused = true })
                             #if os(iOS)
                             // Return adds a new line in Notes (multi-line), so give a way to close the keyboard.
@@ -449,6 +452,16 @@ struct AddReminderView: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
+            // iOS only scrolls to Notes when it first gains focus, not as the box grows with each
+            // new line, so new lines ended up behind the keyboard. While Notes is focused, follow
+            // the bottom of the box on every change. Async so the new height is laid out first.
+            .onChange(of: notes) { _, _ in
+                guard notesFocused else { return }
+                DispatchQueue.main.async {
+                    withAnimation(.easeOut(duration: 0.15)) { notesScroll.scrollTo("notesField", anchor: .bottom) }
+                }
+            }
+            } // ScrollViewReader
             // Drop the keyboard when a date/time picker opens so it doesn't cover it.
             .onChange(of: schedExpand) { _, v in if v != .none { titleFocused = false } }
             // Live "buy" rule: the moment the title contains the word "buy", drop it into
