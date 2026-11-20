@@ -411,7 +411,14 @@ struct AddReminderView: View {
                             .toolbar {
                                 ToolbarItemGroup(placement: .keyboard) {
                                     Spacer()
-                                    Button("Done") { notesFocused = false }.fontWeight(.semibold)
+                                    // This toolbar is shared by every field on the screen (title, subtask,
+                                    // link, notes), so Done must close whichever one is focused. Link and
+                                    // subtask have no FocusState, hence the resign-first-responder fallback.
+                                    Button("Done") {
+                                        titleFocused = false
+                                        notesFocused = false
+                                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                    }.fontWeight(.semibold)
                                 }
                             }
                             #endif
