@@ -1,7 +1,8 @@
 // BreakfastView.swift — Nudge (iOS + Mac Catalyst)
 // The Breakfast shopping list shared with Budget (see BreakfastSync.swift for the rules).
 // Home card ("Breakfast · 6 of 15 bought") → this sheet: this week, then next week
-// (collapsed), grouped by shop. Tick = bought today. Skip only explains that skipping
+// (collapsed). Unbought on top by shop; bought in a collapsed "Bought" list, each with its day.
+// Tick and untick need two taps (the circle beats in between). Tick = bought today. Skip only explains that skipping
 // happens in Budget and offers to open Budget at that week. No ¥ totals — Budget owns money.
 
 import SwiftUI
@@ -57,6 +58,9 @@ struct BreakfastView: View {
     @State private var showNext = false
     @State private var skipWeek: String?          // the week of the row whose Skip was tapped
     @State private var budgetMissing = false
+    @State private var openBought: Set<String> = []   // weeks whose Bought list is open
+    @State private var armedId: String?               // row waiting for its confirming 2nd tap
+    @State private var armTimer: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -119,6 +123,8 @@ struct BreakfastView: View {
     @ViewBuilder private func weekSection(_ w: BreakfastWeek) -> some View {
         let isThis = w.monday <= BreakfastStore.dayKey()
         let expanded = isThis || showNext
+        let open = w.rows.filter { !$0.isDone }
+        let bought = Self.boughtNewestFirst(w.rows.filter(\.isDone))
         VStack(alignment: .leading, spacing: 10) {
             Button {
                 if !isThis { withAnimation(Theme.spring) { showNext.toggle() } }
@@ -140,35 +146,63 @@ struct BreakfastView: View {
             .disabled(isThis)
 
             if expanded {
-                ForEach(Self.byShop(w.rows)) { g in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(g.shop.isEmpty ? "Other" : g.shop)
-                            .font(.caption.weight(.semibold)).foregroundStyle(Theme.textMeta).padding(.leading, 2)
-                        ForEach(g.rows) { row($0) }
+                // Still to buy — on top, grouped by shop (Noah, 20 Nov 2026).
+                if open.isEmpty {
+                    Text("All bought").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.sage).padding(.leading, 2)
+                } else {
+                    ForEach(Self.byShop(open)) { g in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(g.shop.isEmpty ? "Other" : g.shop)
+                                .font(.caption.weight(.semibold)).foregroundStyle(Theme.textMeta).padding(.leading, 2)
+                            ForEach(g.rows) { row($0) }
+                        }
                     }
+                }
+                // Bought — collapsed by default, newest day first, each with its own day.
+                if !bought.isEmpty {
+                    let isOpen = openBought.contains(w.monday)
+                    Button {
+                        withAnimation(Theme.spring) {
+                            if isOpen { openBought.remove(w.monday) } else { openBought.insert(w.monday) }
+                        }
+                    } label: {
+                        HStack(spacing: 7) {
+                            Image(systemName: isOpen ? "chevron.down" : "chevron.right")
+                                .font(.caption2.weight(.bold)).foregroundStyle(Theme.textMeta)
+                            Text("BOUGHT").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.textMeta)
+                            Text("\(bought.count)").font(.caption2.weight(.bold)).foregroundStyle(Theme.textMeta)
+                                .padding(.horizontal, 6).padding(.vertical, 1)
+                                .background(Theme.surfaceAlt, in: Capsule())
+                            Spacer()
+                        }
+                        .padding(.top, 4)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if isOpen { ForEach(bought) { row($0) } }
                 }
             }
         }
     }
 
     private func row(_ r: BreakfastRow) -> some View {
-        HStack(spacing: 12) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(Theme.spring) { store.toggle(r) }
-            } label: {
-                Image(systemName: r.isDone ? "checkmark.circle.fill" : "circle")
-                    .font(.title3).foregroundStyle(Theme.accent)
+        let armed = armedId == r.id
+        return HStack(spacing: 12) {
+            Button { tapCircle(r) } label: {
+                HeartbeatCircle(done: r.isDone, armed: armed)
             }
-            .buttonStyle(PressableStyle(scale: 0.85))
+            .buttonStyle(.plain)
             .accessibilityLabel(r.isDone ? "Untick \(r.name)" : "Tick \(r.name)")
+            .accessibilityHint(armed ? "Tap again to confirm" : "Tap twice to confirm")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(Self.title(r)).font(.subheadline)
                     .foregroundStyle(r.isDone ? Theme.textMeta : Theme.textMain)
                     .strikethrough(r.isDone, color: Theme.textMeta.opacity(0.5))
                     .lineLimit(2)
-                Text(Self.yen(r.price)).font(.caption).foregroundStyle(Theme.textMeta)
+                Text(armed ? (r.isDone ? "Tap again to untick" : "Tap again to tick") : Self.yen(r.price))
+                    .font(.caption.weight(armed ? .semibold : .regular))
+                    .foregroundStyle(armed ? Theme.accent : Theme.textMeta)
             }
             Spacer(minLength: 0)
             if r.isDone {
@@ -185,6 +219,26 @@ struct BreakfastView: View {
         .padding(13)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
+    }
+
+    /// Two taps to tick or untick (Noah, 20 Nov 2026): the first tap arms the circle — it beats
+    /// like a heartbeat for 3 s — and only a second tap on the SAME circle in that time acts.
+    private func tapCircle(_ r: BreakfastRow) {
+        if armedId == r.id {
+            armTimer?.cancel()
+            armedId = nil
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            withAnimation(Theme.spring) { store.toggle(r) }
+        } else {
+            armTimer?.cancel()
+            armedId = r.id
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            let id = r.id
+            armTimer = Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if !Task.isCancelled, armedId == id { armedId = nil }
+            }
+        }
     }
 
     private func note(_ icon: String, _ text: String) -> some View {
@@ -230,6 +284,15 @@ struct BreakfastView: View {
     }
 
     /// Rows grouped by shop, shops in the order Budget lists their first item.
+    /// Bought rows, newest day first; same day (or no day) keeps Budget's order.
+    static func boughtNewestFirst(_ rows: [BreakfastRow]) -> [BreakfastRow] {
+        rows.sorted { a, b in
+            let da = a.done_on ?? "", db = b.done_on ?? ""
+            if da != db { return da > db }
+            return (a.sort, a.unit) < (b.sort, b.unit)
+        }
+    }
+
     struct ShopGroup: Identifiable { let shop: String; let rows: [BreakfastRow]; var id: String { shop } }
     static func byShop(_ rows: [BreakfastRow]) -> [ShopGroup] {
         var order: [String] = []
@@ -239,6 +302,32 @@ struct BreakfastView: View {
             groups[r.shop, default: []].append(r)
         }
         return order.map { ShopGroup(shop: $0, rows: groups[$0] ?? []) }
+    }
+}
+
+// MARK: - Heartbeat circle
+
+/// The tick circle. Armed (first tap done) -> it beats like a heart, a double "lub-dub" with a
+/// rest, shown filled so it's obvious. The beat runs even in Minimal design, because it's the
+/// only sign the first tap landed.
+struct HeartbeatCircle: View {
+    let done: Bool
+    let armed: Bool
+
+    var body: some View {
+        let icon = armed ? (done ? "checkmark.circle" : "circle.inset.filled")
+                         : (done ? "checkmark.circle.fill" : "circle")
+        let base = Image(systemName: icon).font(.title2).foregroundStyle(Theme.accent)
+            .frame(width: 32, height: 32)
+        if armed {
+            base.phaseAnimator([1.0, 1.32, 1.0, 1.22, 1.0, 1.0]) { content, scale in
+                content.scaleEffect(scale)
+            } animation: { scale in
+                scale == 1.0 ? .easeIn(duration: 0.14) : .easeOut(duration: 0.12)
+            }
+        } else {
+            base
+        }
     }
 }
 
