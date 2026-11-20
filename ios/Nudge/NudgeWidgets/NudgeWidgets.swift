@@ -20,6 +20,9 @@ struct WItem: Identifiable {
     /// chronological, as it always has. `var` with a default so the existing positional
     /// initialisers (samples, placeholders) still compile.
     var priority: String = "normal"
+    /// Breakfast buy reminder: listed first, and tapping opens the shopping list in the app
+    /// (never completes from the widget).
+    var isBreakfast: Bool = false
 }
 
 /// Whether the timeline entry reflects real fetched data or a failed sync.
@@ -135,7 +138,7 @@ struct NudgeProvider: TimelineProvider {
             let isOver = cutoff < now
             let item = WItem(id: r.id, title: wDisplay(r.title), due: d,
                              hasTime: hasTime, overdue: isOver, color: color(r.listId),
-                             priority: r.priority ?? "normal")
+                             priority: r.priority ?? "normal", isBreakfast: r.breakfast != nil)
             if cal.startOfDay(for: d) < today { pastDayItems.append(item) }
             else if cal.isDateInToday(d) { todayItems.append(item) }
         }
@@ -153,6 +156,11 @@ struct NudgeProvider: TimelineProvider {
         // Fall back to the past-day pile ONLY when today is completely empty — otherwise a
         // widget reading "All clear" would be flatly untrue. When today has anything at all,
         // even a single item, the old pile stays hidden and lives on the Overdue tab.
+        // Breakfast buy reminders always first (Noah, 20 Nov 2026) — stable, so the rest keep
+        // the order above.
+        todayItems = todayItems.filter(\.isBreakfast) + todayItems.filter { !$0.isBreakfast }
+        pastDayItems = pastDayItems.filter(\.isBreakfast) + pastDayItems.filter { !$0.isBreakfast }
+
         let useOverdue = todayItems.isEmpty && !pastDayItems.isEmpty
         let shown = useOverdue ? pastDayItems : todayItems
         return NudgeEntry(date: now, overdue: pastDayItems.count, todayDone: todayDone,
@@ -532,12 +540,21 @@ struct TodayWidgetView: View {
                         // First tap arms, second tap on the SAME row completes — a widget can't
                         // show a confirmation dialog, so the second tap IS the confirmation.
                         // See CompleteReminderWidgetIntent.perform().
-                        Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
-                            WidgetRowTitle(title: it.title.lowercased(),
-                                           size: style.titleSize, design: style.design,
-                                           armed: it.id == pendingId)
+                        if it.isBreakfast, let url = URL(string: "nudgeapp://breakfast?r=\(it.id)") {
+                            // Breakfast: no completing here. Tap opens the shopping list with
+                            // this reminder's items grouped on top.
+                            Link(destination: url) {
+                                WidgetRowTitle(title: it.title.lowercased(),
+                                               size: style.titleSize, design: style.design)
+                            }
+                        } else {
+                            Button(intent: CompleteReminderWidgetIntent(reminderId: it.id)) {
+                                WidgetRowTitle(title: it.title.lowercased(),
+                                               size: style.titleSize, design: style.design,
+                                               armed: it.id == pendingId)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                     Spacer(minLength: 0)
                 }

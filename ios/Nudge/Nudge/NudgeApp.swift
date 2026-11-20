@@ -136,6 +136,14 @@ struct NudgeApp: App {
                         switch url.host {
                         case "add":
                             AppRouter.shared.requestQuickAdd()
+                        case "breakfast":
+                            // Widget tap on a Breakfast reminder → the shopping list with its items
+                            // on top. The id comes from a URL, so only a plain short id is accepted;
+                            // anything else just opens the list.
+                            let r = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                                .queryItems?.first(where: { $0.name == "r" })?.value ?? ""
+                            let ok = r.count <= 64 && r.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil
+                            AppRouter.shared.pendingBreakfast = ok ? r : ""
                         default:
                             break // "open" (or anything else) just brings the app to the front
                         }

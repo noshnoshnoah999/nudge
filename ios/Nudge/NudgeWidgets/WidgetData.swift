@@ -30,7 +30,12 @@ struct WReminder: Codable {
     var snoozedUntil: String?
     var dismissed: Bool?
     var source: String?
+    /// Present only on Breakfast buy reminders. Its contents aren't needed here — just whether
+    /// it exists (those rows open the shopping list instead of completing).
+    var breakfast: WPresence?
 }
+/// Decodes any JSON object and keeps nothing: used to detect that a key is present.
+struct WPresence: Codable {}
 struct WList: Codable { var id: String; var name: String; var color: String }
 struct WData: Codable { var reminders: [WReminder]; var lists: [WList] }
 

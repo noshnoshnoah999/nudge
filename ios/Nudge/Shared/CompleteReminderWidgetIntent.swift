@@ -164,6 +164,14 @@ enum WidgetCompletion {
             WidgetReload.today()
             return nil
         }
+        // Breakfast buy reminders are NEVER completed from the widget (Noah, 20 Nov 2026): only
+        // ticking their items in the app's shopping list clears them. The widget shows them as
+        // a link that opens that list; this is the backstop for an old timeline that still had
+        // a complete button on one.
+        if let b = row["breakfast"], case .object = b {
+            WidgetReload.today()
+            return nil
+        }
         let originalDue = row["dueDate"]?.stringValue
         var saved = false
 
