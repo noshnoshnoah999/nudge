@@ -54,8 +54,10 @@ struct BreakfastHomeCard: View {
 
 struct BreakfastView: View {
     @ObservedObject private var store = BreakfastStore.shared
+    @EnvironmentObject var nudge: NudgeStore
     @Environment(\.dismiss) private var dismiss
     @State private var showNext = false
+    @State private var planner: PlannerSeed?   // "Remind me to buy" sheet
     @State private var skipWeek: String?          // the week of the row whose Skip was tapped
     @State private var budgetMissing = false
     @State private var openBought: Set<String> = []   // weeks whose Bought list is open
@@ -67,6 +69,7 @@ struct BreakfastView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     statusNote
+                    scheduledSection
                     let weeks = store.weeks
                     if weeks.isEmpty {
                         emptyState
@@ -76,12 +79,20 @@ struct BreakfastView: View {
                 }
                 .padding(16)
             }
-            .refreshable { await store.refresh() }
+            .refreshable { await store.refresh(); nudge.syncBreakfastReminders() }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Breakfast")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .task { await store.refresh() }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { planner = PlannerSeed(itemId: nil) } label: { Label("Remind me", systemImage: "bell.badge") }
+                }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+            .sheet(item: $planner) { seed in
+                BreakfastPlannerView(preselectItem: seed.itemId).environmentObject(nudge)
+            }
+            .task { await store.refresh(); nudge.syncBreakfastReminders() }
             .alert("Skip in Budget", isPresented: Binding(get: { skipWeek != nil }, set: { if !$0 { skipWeek = nil } })) {
                 if !budgetMissing, let w = skipWeek, BudgetLink.url(week: w) != nil {
                     Button("Open Budget") { if let w = skipWeek { BudgetLink.open(week: w) } }
@@ -219,6 +230,42 @@ struct BreakfastView: View {
         .padding(13)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.radius(14), style: .continuous).stroke(Theme.cardStroke, lineWidth: 1))
+        .contextMenu {
+            if !r.isDone {
+                Button { planner = PlannerSeed(itemId: r.item_id) } label: {
+                    Label("Remind me to buy this", systemImage: "bell")
+                }
+            }
+        }
+    }
+
+    // MARK: Scheduled buy reminders
+
+    /// Open Breakfast buy reminders, soonest first — so Noah can see what's set.
+    @ViewBuilder private var scheduledSection: some View {
+        let items = nudge.reminders
+            .filter { $0.breakfast != nil && !$0.isCompleted }
+            .sorted { (parseDate($0.dueDate) ?? .distantFuture) < (parseDate($1.dueDate) ?? .distantFuture) }
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("REMINDERS").font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(Theme.accent)
+                ForEach(items) { r in
+                    HStack(spacing: 10) {
+                        Image(systemName: r.recurrence != nil ? "bell.and.waves.left.and.right" : "bell")
+                            .font(.caption).foregroundStyle(Theme.accent)
+                        Text(r.title).font(.subheadline).foregroundStyle(Theme.textMain).lineLimit(2)
+                        Spacer(minLength: 6)
+                        if let d = parseDate(r.dueDate) {
+                            Text(d.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
+                                .font(.caption.weight(.semibold)).foregroundStyle(Theme.textMeta)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                Text("Edit or delete them in Lists → Breakfast. Long-press an item to remind just that one.")
+                    .font(.caption2).foregroundStyle(Theme.textMeta)
+            }
+        }
     }
 
     /// Two taps to tick or untick (Noah, 20 Nov 2026): the first tap arms the circle — it beats
@@ -303,6 +350,12 @@ struct BreakfastView: View {
         }
         return order.map { ShopGroup(shop: $0, rows: groups[$0] ?? []) }
     }
+}
+
+/// What the planner opens with: nil = "everything", or one item preselected (count 1).
+struct PlannerSeed: Identifiable {
+    let itemId: String?
+    var id: String { itemId ?? "all" }
 }
 
 // MARK: - Heartbeat circle

@@ -29,6 +29,8 @@ final class NotificationManager: NSObject, ObservableObject {
     nonisolated static let categoryId = "NUDGE_REMINDER"
     /// Mac-only twin of `categoryId` for long titles: same buttons plus "See more".
     nonisolated static let longCategoryId = "NUDGE_REMINDER_LONG"
+    /// Breakfast buy reminders: "✓ Bought" (same COMPLETE action → ticks the items) + snooze/reschedule.
+    nonisolated static let breakfastCategoryId = "NUDGE_BREAKFAST"
     static let completeAction = "COMPLETE"
     static let snoozeAction = "SNOOZE"
     static let rescheduleAction = "RESCHEDULE"
@@ -66,7 +68,11 @@ final class NotificationManager: NSObject, ObservableObject {
         let longCat = UNNotificationCategory(identifier: Self.longCategoryId,
                                              actions: [complete, snooze, rescheduleBtn, seeMore],
                                              intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([cat, longCat])
+        let bought = UNNotificationAction(identifier: Self.completeAction, title: "✓ Bought", options: [])
+        let breakfastCat = UNNotificationCategory(identifier: Self.breakfastCategoryId,
+                                                  actions: [bought, snooze, rescheduleBtn],
+                                                  intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([cat, longCat, breakfastCat])
     }
 
     /// Become the notification delegate. Do this only AFTER the SwiftUI scene exists (from
@@ -259,7 +265,7 @@ final class NotificationManager: NSObject, ObservableObject {
             // without lighting up the screen. High is time-sensitive; normal is active.
             content.sound = low ? nil : .default
             content.interruptionLevel = high ? .timeSensitive : (low ? .passive : .active)
-            content.categoryIdentifier = Self.category(forTitle: title)
+            content.categoryIdentifier = p.r.breakfast != nil ? Self.breakfastCategoryId : Self.category(forTitle: title)
             content.threadIdentifier = "nudge-\(p.r.listId ?? "reminders")"   // groups by list
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: p.fire)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
@@ -492,7 +498,13 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             // Complete, never toggle: if it was already completed elsewhere (the other device,
             // the widget) a toggle here would UN-complete it from a notification button.
             guard !store.reminders[i].isCompleted else { return }
-            store.toggleComplete(store.reminders[i]); await store.persistNow()
+            let isBreakfast = store.reminders[i].breakfast != nil
+            // Breakfast "Bought": tick against the latest list, and send the ticks before
+            // iOS suspends the app again.
+            if isBreakfast { await BreakfastStore.shared.refresh() }
+            guard let j = store.reminders.firstIndex(where: { $0.id == rid }), !store.reminders[j].isCompleted else { return }
+            store.toggleComplete(store.reminders[j]); await store.persistNow()
+            if isBreakfast { await BreakfastStore.shared.flushNow() }
         case Self.snoozeAction:
             store.snooze(store.reminders[i], minutes: 60); await store.persistNow()
         case Self.rescheduleAction:

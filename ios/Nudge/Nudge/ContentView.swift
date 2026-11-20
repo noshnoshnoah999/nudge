@@ -148,7 +148,7 @@ struct ContentView: View {
         .sheet(item: $autoClaudeURL) { SafariView(url: $0.url) }
         .sheet(item: $rescheduleResult) { SmartReschedulePreviewView(proposed: $0.changes).environmentObject(store) }
         .sheet(isPresented: $showTimetable) { TimetableView().environmentObject(store) }
-        .sheet(isPresented: $showBreakfast) { BreakfastView() }
+        .sheet(isPresented: $showBreakfast) { BreakfastView().environmentObject(store) }
         .sheet(isPresented: $showCompleted) { CompletedHistoryView().environmentObject(store) }
         .sheet(item: $rescheduleTarget) { r in RescheduleOptionsView(reminder: r).environmentObject(store) }
         .sheet(isPresented: $showBulkMove, onDismiss: {
@@ -192,7 +192,7 @@ struct ContentView: View {
             if router.pendingQuickAdd { router.pendingQuickAdd = false; showAdd = true }
             if router.pendingQuickCatch { router.pendingQuickCatch = false; showQuickCatch = true }
             await store.refresh()
-            Task { await BreakfastStore.shared.refresh() }   // Budget's breakfast list (never blocks the rest)
+            Task { await BreakfastStore.shared.refresh(); store.syncBreakfastReminders() }   // Budget's breakfast list (never blocks the rest)
             store.purgeOldCompleted()      // clear reminders completed >3 weeks ago
             stuckCount = store.stuckCount()
             await sync.syncNow(); await notifier.reschedule()
@@ -215,7 +215,7 @@ struct ContentView: View {
                 // mid-edit store change can drop the title field's keyboard focus.
                 if showAdd || showQuickCatch || editingReminder != nil || showSettings { continue }
                 await store.refresh()
-                Task { await BreakfastStore.shared.refresh() }
+                Task { await BreakfastStore.shared.refresh(); store.syncBreakfastReminders() }
                 stuckCount = store.stuckCount()
                 await notifier.clearStaleDelivered()   // clear alerts for reminders completed elsewhere
             }
@@ -269,7 +269,7 @@ struct ContentView: View {
                     LockShield.shared.hide()
                 }
                 if didLoad {
-                    Task { await BreakfastStore.shared.refresh() }
+                    Task { await BreakfastStore.shared.refresh(); store.syncBreakfastReminders() }
                     Task { await store.refresh(); store.purgeOldCompleted()
                            stuckCount = store.stuckCount()
                            await sync.syncNow(); await notifier.reschedule()

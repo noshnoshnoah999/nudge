@@ -165,16 +165,57 @@ final class BreakfastStore: ObservableObject {
 
     /// Flip one row open ↔ done. Shows at once; the PATCH is queued and sent straight away.
     func toggle(_ row: BreakfastRow) {
-        guard !row.isSkipped, let i = rows.firstIndex(where: { $0.id == row.id }) else { return }
-        let done = !rows[i].isDone
+        guard let cur = rows.first(where: { $0.id == row.id }) else { return }
+        setDone(cur.id, !cur.isDone)
+    }
+
+    /// Set one row done (bought today) or open. No-op for skipped / unknown rows or when it
+    /// is already in that state.
+    func setDone(_ id: String, _ done: Bool) {
+        guard let i = rows.firstIndex(where: { $0.id == id }), !rows[i].isSkipped, rows[i].isDone != done else { return }
         // Strictly newer than the row as we last saw it (see header: clock skew).
         let stamp = syncStamp(after: rows[i].updated_at)
-        let tick = BreakfastPendingTick(id: row.id, done: done, doneOn: done ? Self.dayKey() : nil, stamp: stamp)
-        pending[row.id] = tick
+        pending[id] = BreakfastPendingTick(id: id, done: done, doneOn: done ? Self.dayKey() : nil, stamp: stamp)
         savePending()
         applyPending()
         Task { await flushPending() }
     }
+
+    // MARK: - Buy reminders (BreakfastReminders.swift)
+
+    /// True once Budget has published rows for that week (any status).
+    func hasWeek(_ monday: String) -> Bool { rows.contains { $0.week == monday } }
+
+    /// Open (unbought, not skipped) rows of one week, in Budget's order.
+    func openRows(week monday: String) -> [BreakfastRow] {
+        rows.filter { $0.week == monday && !$0.isSkipped && !$0.isDone }
+            .sorted { ($0.sort, $0.unit, $0.id) < ($1.sort, $1.unit, $1.id) }
+    }
+
+    /// Tick what a buy reminder covers: every open unit ("all"), or up to `count` open units of
+    /// each item, lowest unit numbers first. Returns the row ids it ticked (kept for undo).
+    func markBought(_ plan: BreakfastPlan, week monday: String) -> [String] {
+        let open = openRows(week: monday)
+        var ids: [String] = []
+        if plan.mode == "all" {
+            ids = open.map(\.id)
+        } else {
+            for it in plan.items ?? [] where it.count > 0 {
+                ids += open.filter { $0.item_id == it.itemId }.prefix(it.count).map(\.id)
+            }
+        }
+        for id in ids { setDone(id, true) }
+        return ids
+    }
+
+    /// Undo `markBought`: untick those rows if they are still ticked.
+    func unmarkBought(_ ids: [String]) {
+        for id in ids { setDone(id, false) }
+    }
+
+    /// Send queued ticks now (used by the notification Bought button, which may run with the
+    /// app in the background and be suspended soon after).
+    func flushNow() async { await flushPending() }
 
     /// Number of ticks not yet confirmed by the server.
     var pendingCount: Int { pending.count }

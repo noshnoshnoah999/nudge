@@ -171,6 +171,11 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
     // in several. Ids refer to NudgeStore.folders (stored in the synced settings row); an id
     // whose folder no longer exists is simply ignored. nil/empty = not in any folder.
     var folderIds: [String]? = nil
+    // Breakfast buy reminder (2026-11-20): what to buy from the Breakfast list shared with Budget.
+    // Its week is the Mon–Sun week containing `dueDate`. Completing the reminder (anywhere in
+    // the app, or its notification's Bought button) ticks those units; unticking it unticks
+    // exactly the units it ticked (`breakfast.ticked`). See BreakfastReminders.swift.
+    var breakfast: BreakfastPlan? = nil
 
     var isCompleted: Bool { completed ?? false }
 
@@ -208,6 +213,19 @@ struct Reminder: Codable, Identifiable, Hashable, SyncItem {
         if let r = recurrence, r.freq != "none" { return true }
         return false
     }
+}
+
+/// What a Breakfast buy reminder covers (2026-11-20).
+struct BreakfastPlan: Codable, Hashable {
+    var mode: String                     // "all" = everything still unbought that week | "items"
+    var items: [BreakfastPlanItem]? = nil // mode "items": which items and how many units of each
+    var ticked: [String]? = nil          // breakfast_list row ids this reminder ticked (for undo)
+}
+
+struct BreakfastPlanItem: Codable, Hashable {
+    var itemId: String   // Budget's item id (breakfast_list.item_id)
+    var name: String     // last known name, used if the item leaves Budget's list
+    var count: Int       // units to buy
 }
 
 /// A user-made folder (2026-10-07). Lives in the synced settings row as an ordered array —

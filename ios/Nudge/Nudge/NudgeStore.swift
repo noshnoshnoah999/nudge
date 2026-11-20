@@ -686,6 +686,8 @@ final class NudgeStore: ObservableObject {
         reminders[i].snoozedUntil = nil
         reminders[i].updatedAt = now
         if nowComplete { clearNotifications(for: r.id) }   // drop any delivered/pending alert
+        // Breakfast buy reminder: tick / untick its units in Budget's shared list (this device only).
+        if reminders[i].breakfast != nil { applyBreakfastCompletion(at: i, nowComplete: nowComplete) }
         #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
         if nowComplete, #available(iOS 26.0, *) { NudgeAlarms.cancel(reminderId: r.id) }   // stop the urgent alarm
         #endif
@@ -704,6 +706,7 @@ final class NudgeStore: ObservableObject {
                     copy.completedAt = nil
                     copy.dueDate = next
                     copy.pinFrom = RecurrenceEngine.successorPinFrom(gapDays: copy.pinFromGapDays, nextDue: next)
+                    copy.breakfast?.ticked = nil   // next week's occurrence hasn't ticked anything
                     // Identical on purpose: createdAt == updatedAt is how an untick recognises
                     // a successor nobody has touched yet (below).
                     copy.createdAt = now
